@@ -42,11 +42,14 @@ def get_current_user(
         
     return user
 
+from app.core.constants import ADMIN_ROLES
+
 def get_current_admin(
     current_user: User = Depends(get_current_user)
 ) -> User:
     """Ensures current user has Administrator privileges."""
-    if not current_user.is_admin:
+    user_role_name = current_user.role.name if current_user.role else ""
+    if not (current_user.is_admin or user_role_name in ADMIN_ROLES):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acceso denegado. Se requieren privilegios de Administrador."

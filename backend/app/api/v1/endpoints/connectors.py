@@ -1,7 +1,8 @@
+import socket
 import time
-from typing import List, Any
+from typing import List, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from pydantic import BaseModel
 from app.api.deps import get_db, get_current_user, get_current_admin
 from app.models.user import User
 from app.models.connection import CorporateConnection, DatabaseType
@@ -15,6 +16,13 @@ from app.schemas.connection_schema import (
 )
 
 router = APIRouter()
+
+class MetadataDBTestRequest(BaseModel):
+    server: str
+    port: int
+    db_name: str
+    user: Optional[str] = None
+    password: Optional[str] = None
 
 @router.get("", response_model=List[CorporateConnectionOut])
 def list_connectors(
@@ -124,20 +132,43 @@ def test_connection_connectivity(
     test_in: ConnectionTestRequest,
     current_user: User = Depends(get_current_user)
 ) -> Any:
-    """Tests connectivity to target database host and port."""
+    """Tests real network TCP socket connectivity to target database host and port."""
     start_time = time.time()
     try:
-        # Simulate network socket test to database
-        time.sleep(0.3)
+        sock = socket.create_connection((test_in.host, test_in.port), timeout=3.0)
+        sock.close()
         latency_ms = int((time.time() - start_time) * 1000)
         return ConnectionTestResult(
             success=True,
-            message=f"Conexión exitosa a {test_in.db_type.value.upper()} ({test_in.host}:{test_in.port}/{test_in.database_name}) en modo SOLO LECTURA.",
+            message=f"Conexión exitosa al puerto {test_in.port} de {test_in.db_type.value.upper()} ({test_in.host}/{test_in.database_name}) en modo SOLO LECTURA.",
             latency_ms=latency_ms
         )
     except Exception as e:
         return ConnectionTestResult(
             success=False,
-            message=f"Error de conexión a {test_in.host}:{test_in.port} - {str(e)}",
+            message=f"No se pudo conectar a {test_in.host}:{test_in.port} ({test_in.db_type.value.upper()}) - {str(e)}",
+            latency_ms=0
+        )
+
+@router.post("/test-metadata-db", response_model=ConnectionTestResult)
+def test_metadata_db_connectivity(
+    test_in: MetadataDBTestRequest,
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """Tests real connectivity to target PostgreSQL metadata database."""
+    start_time = time.time()
+    try:
+        sock = socket.create_connection((test_in.server, test_in.port), timeout=3.0)
+        sock.close()
+        latency_ms = int((time.time() - start_time) * 1000)
+        return ConnectionTestResult(
+            success=True,
+            message=f"Servidor PostgreSQL alcanzable en {test_in.server}:{test_in.port} (Base de datos: {test_in.db_name}).",
+            latency_ms=latency_ms
+        )
+    except Exception as e:
+        return ConnectionTestResult(
+            success=False,
+            message=f"Error al conectar con PostgreSQL en {test_in.server}:{test_in.port} - {str(e)}",
             latency_ms=0
         )

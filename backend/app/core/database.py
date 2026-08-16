@@ -26,8 +26,10 @@ try:
         max_overflow=20,
         echo=False
     )
+    with engine.connect() as conn:
+        pass
 except Exception:
-    db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "demo_corporativa.db")
+    db_path = settings.SQLITE_DB_PATH
     DATABASE_URL = f"sqlite:///{db_path}"
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
@@ -46,9 +48,12 @@ def update_database_engine(server: str, port: int, user: str, password: str, db_
     global engine, SessionLocal
     try:
         new_url = get_database_url(server, port, user, password, db_name)
-        engine = create_engine(new_url, pool_pre_ping=True, pool_size=10, max_overflow=20)
+        new_engine = create_engine(new_url, pool_pre_ping=True, pool_size=10, max_overflow=20)
+        with new_engine.connect() as conn:
+            pass
+        engine = new_engine
     except Exception:
-        db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "demo_corporativa.db")
+        db_path = settings.SQLITE_DB_PATH
         new_url = f"sqlite:///{db_path}"
         engine = create_engine(new_url, connect_args={"check_same_thread": False})
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

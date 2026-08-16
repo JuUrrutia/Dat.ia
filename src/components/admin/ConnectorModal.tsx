@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useReducer, useEffect } from 'react';
 import { CorporateConnection, ConnectionFormData, connectorService, ConnectionTestResult } from '../../services/connector_service';
-import { Database, Server, Key, ShieldCheck, RefreshCw, CheckCircle2, AlertCircle, Save, X } from 'lucide-react';
+import { Database, RefreshCw, CheckCircle2, AlertCircle, Save, X } from 'lucide-react';
+import { ConnectorFormFields } from './ConnectorFormFields';
 
 interface ConnectorModalProps {
   isOpen: boolean;
@@ -9,104 +10,147 @@ interface ConnectorModalProps {
   onSaveSuccess: () => void;
 }
 
+interface State {
+  name: string;
+  dbType: 'postgresql' | 'mssql' | 'mysql' | 'oracle';
+  host: string;
+  port: number;
+  databaseName: string;
+  username: string;
+  password: string;
+  isActive: boolean;
+  isSubmitting: boolean;
+  testingConn: boolean;
+  testResult: ConnectionTestResult | null;
+  errorMessage: string | null;
+}
+
+type Action =
+  | { type: 'RESET_FORM'; payload: CorporateConnection | null }
+  | { type: 'SET_FIELD'; field: string; value: any }
+  | { type: 'CHANGE_DB_TYPE'; dbType: 'postgresql' | 'mssql' | 'mysql' | 'oracle' }
+  | { type: 'SET_TESTING'; testing: boolean }
+  | { type: 'SET_TEST_RESULT'; result: ConnectionTestResult | null }
+  | { type: 'SET_SUBMITTING'; submitting: boolean }
+  | { type: 'SET_ERROR'; message: string | null };
+
+const initialState: State = {
+  name: '',
+  dbType: 'postgresql',
+  host: 'localhost',
+  port: 5432,
+  databaseName: '',
+  username: '',
+  password: '',
+  isActive: true,
+  isSubmitting: false,
+  testingConn: false,
+  testResult: null,
+  errorMessage: null,
+};
+
+function modalReducer(state: State, action: Action): State {
+  switch (action.type) {
+    case 'RESET_FORM':
+      if (action.payload) {
+        return {
+          ...state,
+          name: action.payload.name,
+          dbType: action.payload.db_type,
+          host: action.payload.host,
+          port: action.payload.port,
+          databaseName: action.payload.database_name,
+          username: action.payload.username,
+          password: '',
+          isActive: action.payload.is_active,
+          testResult: null,
+          errorMessage: null,
+        };
+      }
+      return {
+        ...initialState,
+      };
+    case 'SET_FIELD':
+      return { ...state, [action.field]: action.value };
+    case 'CHANGE_DB_TYPE': {
+      let defaultPort = 5432;
+      if (action.dbType === 'mssql') defaultPort = 1433;
+      else if (action.dbType === 'mysql') defaultPort = 3306;
+      else if (action.dbType === 'oracle') defaultPort = 1521;
+      return { ...state, dbType: action.dbType, port: defaultPort };
+    }
+    case 'SET_TESTING':
+      return { ...state, testingConn: action.testing };
+    case 'SET_TEST_RESULT':
+      return { ...state, testResult: action.result, testingConn: false };
+    case 'SET_SUBMITTING':
+      return { ...state, isSubmitting: action.submitting };
+    case 'SET_ERROR':
+      return { ...state, errorMessage: action.message };
+    default:
+      return state;
+  }
+}
+
 export const ConnectorModal: React.FC<ConnectorModalProps> = ({
   isOpen,
   editingConnector,
   onClose,
   onSaveSuccess,
 }) => {
-  const [name, setName] = useState('');
-  const [dbType, setDbType] = useState<'postgresql' | 'mssql' | 'mysql' | 'oracle'>('postgresql');
-  const [host, setHost] = useState('localhost');
-  const [port, setPort] = useState(5432);
-  const [databaseName, setDatabaseName] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [isActive, setIsActive] = useState(true);
-
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [testingConn, setTestingConn] = useState(false);
-  const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [state, dispatch] = useReducer(modalReducer, initialState);
 
   useEffect(() => {
-    if (editingConnector) {
-      setName(editingConnector.name);
-      setDbType(editingConnector.db_type);
-      setHost(editingConnector.host);
-      setPort(editingConnector.port);
-      setDatabaseName(editingConnector.database_name);
-      setUsername(editingConnector.username);
-      setPassword('');
-      setIsActive(editingConnector.is_active);
-    } else {
-      setName('');
-      setDbType('postgresql');
-      setHost('localhost');
-      setPort(5432);
-      setDatabaseName('');
-      setUsername('');
-      setPassword('');
-      setIsActive(true);
+    if (isOpen) {
+      dispatch({ type: 'RESET_FORM', payload: editingConnector });
     }
-    setTestResult(null);
-    setErrorMessage(null);
   }, [editingConnector, isOpen]);
 
   if (!isOpen) return null;
 
-  const handleDbTypeChange = (type: 'postgresql' | 'mssql' | 'mysql' | 'oracle') => {
-    setDbType(type);
-    if (type === 'postgresql') setPort(5432);
-    else if (type === 'mssql') setPort(1433);
-    else if (type === 'mysql') setPort(3306);
-    else if (type === 'oracle') setPort(1521);
-  };
-
   const handleTestConnection = async () => {
-    if (!host || !databaseName || !username) {
-      setErrorMessage('Por favor completa host, base de datos y usuario antes de probar.');
+    if (!state.host || !state.databaseName || !state.username) {
+      dispatch({ type: 'SET_ERROR', message: 'Por favor completa host, base de datos y usuario antes de probar.' });
       return;
     }
 
-    setTestingConn(true);
-    setTestResult(null);
-    setErrorMessage(null);
+    dispatch({ type: 'SET_TESTING', testing: true });
+    dispatch({ type: 'SET_TEST_RESULT', result: null });
+    dispatch({ type: 'SET_ERROR', message: null });
 
     const formData: ConnectionFormData = {
-      name: name || 'Test',
-      db_type: dbType,
-      host,
-      port: Number(port),
-      database_name: databaseName,
-      username,
-      password,
+      name: state.name || 'Test',
+      db_type: state.dbType,
+      host: state.host,
+      port: Number(state.port),
+      database_name: state.databaseName,
+      username: state.username,
+      password: state.password,
     };
 
     const res = await connectorService.testConnection(formData);
-    setTestingConn(false);
-    setTestResult(res);
+    dispatch({ type: 'SET_TEST_RESULT', result: res });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !host.trim() || !databaseName.trim() || !username.trim()) {
-      setErrorMessage('Por favor completa todos los campos requeridos.');
+    if (!state.name.trim() || !state.host.trim() || !state.databaseName.trim() || !state.username.trim()) {
+      dispatch({ type: 'SET_ERROR', message: 'Por favor completa todos los campos requeridos.' });
       return;
     }
 
-    setIsSubmitting(true);
-    setErrorMessage(null);
+    dispatch({ type: 'SET_SUBMITTING', submitting: true });
+    dispatch({ type: 'SET_ERROR', message: null });
 
     const formData: ConnectionFormData = {
-      name,
-      db_type: dbType,
-      host,
-      port: Number(port),
-      database_name: databaseName,
-      username,
-      password: password || undefined,
-      is_active: isActive,
+      name: state.name,
+      db_type: state.dbType,
+      host: state.host,
+      port: Number(state.port),
+      database_name: state.databaseName,
+      username: state.username,
+      password: state.password || undefined,
+      is_active: state.isActive,
     };
 
     try {
@@ -119,9 +163,9 @@ export const ConnectorModal: React.FC<ConnectorModalProps> = ({
       onClose();
     } catch (err: any) {
       const msg = err.response?.data?.detail || 'Error al guardar la conexión en PostgreSQL.';
-      setErrorMessage(msg);
+      dispatch({ type: 'SET_ERROR', message: msg });
     } finally {
-      setIsSubmitting(false);
+      dispatch({ type: 'SET_SUBMITTING', submitting: false });
     }
   };
 
@@ -141,150 +185,49 @@ export const ConnectorModal: React.FC<ConnectorModalProps> = ({
               <p className="text-xs text-gray-400">Modo estricto de Solo Lectura (`READ ONLY`) con cifrado AES-256</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-dark-card transition-all">
+          <button
+            onClick={onClose}
+            aria-label="Cerrar modal"
+            className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-dark-card transition-colors"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4">
-          {errorMessage && (
+          {state.errorMessage && (
             <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center space-x-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMessage}</span>
+              <span>{state.errorMessage}</span>
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-              Nombre Identificador de la Conexión
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="ej. BD_FINANZAS_PROD"
-              className="w-full bg-dark-base border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500"
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-                Motor de Base de Datos
-              </label>
-              <select
-                value={dbType}
-                onChange={(e: any) => handleDbTypeChange(e.target.value)}
-                className="w-full bg-dark-base border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-brand-500"
-              >
-                <option value="postgresql">PostgreSQL</option>
-                <option value="mssql">Microsoft SQL Server</option>
-                <option value="mysql">MySQL / MariaDB</option>
-                <option value="oracle">Oracle Database</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-                Puerto Red
-              </label>
-              <input
-                type="number"
-                value={port}
-                onChange={(e) => setPort(Number(e.target.value))}
-                className="w-full bg-dark-base border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-brand-500"
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-                Host / Dirección IP Servidor
-              </label>
-              <input
-                type="text"
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
-                placeholder="10.0.1.45 o localhost"
-                className="w-full bg-dark-base border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-                Nombre de la Base de Datos
-              </label>
-              <input
-                type="text"
-                value={databaseName}
-                onChange={(e) => setDatabaseName(e.target.value)}
-                placeholder="ej. corp_finanzas"
-                className="w-full bg-dark-base border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500"
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-                Usuario Solo Lectura (READ ONLY)
-              </label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="usr_read_only"
-                className="w-full bg-dark-base border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-                Contraseña {editingConnector && '(Dejar vacío para no cambiar)'}
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-dark-base border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500"
-                required={!editingConnector}
-              />
-            </div>
-          </div>
-
-          {/* Active Switch */}
-          <div className="flex items-center space-x-3 pt-2">
-            <input
-              type="checkbox"
-              id="isActiveCheck"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-              className="w-4 h-4 text-brand-600 rounded bg-dark-base border-dark-border focus:ring-brand-500"
-            />
-            <label htmlFor="isActiveCheck" className="text-xs text-gray-300 font-medium cursor-pointer">
-              Habilitar esta fuente de datos para consultas analíticas
-            </label>
-          </div>
+          <ConnectorFormFields
+            name={state.name}
+            dbType={state.dbType}
+            host={state.host}
+            port={state.port}
+            databaseName={state.databaseName}
+            username={state.username}
+            password={state.password}
+            isActive={state.isActive}
+            editingConnector={editingConnector}
+            onFieldChange={(field, value) => dispatch({ type: 'SET_FIELD', field, value })}
+            onDbTypeChange={(dbType) => dispatch({ type: 'CHANGE_DB_TYPE', dbType })}
+          />
 
           {/* Test Result Banner */}
-          {testResult && (
+          {state.testResult && (
             <div
               className={`p-3 rounded-xl border text-xs flex items-center space-x-2 animate-fadeIn ${
-                testResult.success
+                state.testResult.success
                   ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
                   : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
               }`}
             >
               <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>{testResult.message} ({testResult.latency_ms} ms)</span>
+              <span>{state.testResult.message} ({state.testResult.latency_ms} ms)</span>
             </div>
           )}
 
@@ -293,26 +236,26 @@ export const ConnectorModal: React.FC<ConnectorModalProps> = ({
             <button
               type="button"
               onClick={handleTestConnection}
-              disabled={testingConn}
-              className="flex items-center space-x-1.5 text-xs bg-dark-base hover:bg-dark-border text-brand-400 border border-brand-500/30 px-4 py-2 rounded-xl transition-all"
+              disabled={state.testingConn}
+              className="flex items-center space-x-1.5 text-xs bg-dark-base hover:bg-dark-border text-brand-400 border border-brand-500/30 px-4 py-2 rounded-xl transition-colors"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${testingConn ? 'animate-spin' : ''}`} />
-              <span>{testingConn ? 'Probando Red...' : 'Probar Conexión BD'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${state.testingConn ? 'animate-spin' : ''}`} />
+              <span>{state.testingConn ? 'Probando Red...' : 'Probar Conexión BD'}</span>
             </button>
 
             <div className="flex items-center space-x-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-xl bg-dark-card hover:bg-dark-border text-gray-300 text-xs font-medium transition-all"
+                className="px-4 py-2 rounded-xl bg-dark-card hover:bg-dark-border text-gray-300 text-xs font-medium transition-colors"
               >
                 Cancelar
               </button>
 
               <button
                 type="submit"
-                disabled={isSubmitting}
-                className="flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold px-5 py-2 rounded-xl shadow-lg shadow-purple-600/30 transition-all"
+                disabled={state.isSubmitting}
+                className="flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold px-5 py-2 rounded-xl shadow-lg shadow-purple-600/30 transition-colors"
               >
                 <Save className="w-4 h-4" />
                 <span>{editingConnector ? 'Guardar Cambios' : 'Registrar Conexión BD'}</span>

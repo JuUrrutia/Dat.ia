@@ -22,8 +22,11 @@ class LLMService:
 
     @classmethod
     def _clean_thinking_tags(cls, text: str) -> str:
-        """Removes <think>...</think> blocks from Qwen3/DeepSeek reasoning models."""
-        cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+        """Removes <think>...</think> blocks and ANSI escape codes from LLM output."""
+        # Strip ANSI escape codes (terminal formatting injected by some local models)
+        cleaned = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)
+        # Strip <think>...</think> reasoning blocks (Qwen3 / DeepSeek R1)
+        cleaned = re.sub(r'<think>.*?</think>', '', cleaned, flags=re.DOTALL).strip()
         return cleaned if cleaned else text
 
     @classmethod
@@ -41,7 +44,7 @@ class LLMService:
         Queries the active local LLM server (llama.cpp / Ollama) and returns generated completion.
         Accepts optional dynamic config from request (base_url, model_name) to override settings.
         """
-        effective_model = model_name or settings.OLLAMA_MODEL or "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M"
+        effective_model = model_name or settings.OLLAMA_MODEL
 
         # Build list of URLs to try based on provided config or defaults
         urls_to_try = []

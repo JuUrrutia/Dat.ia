@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Sparkles, ShieldCheck, Database, Lock, KeyRound, Mail, UserPlus, LogIn, ArrowRight, AlertCircle, Info } from 'lucide-react';
+import { Sparkles, ShieldCheck, Database, Lock, KeyRound, Mail, UserPlus, LogIn, ArrowRight, AlertCircle } from 'lucide-react';
+
+const PRESET_USERS = [
+  { name: 'Administrador', username: 'admin', role: 'Administrador', is_admin: true },
+  { name: 'Economista', username: 'felipe_economista', role: 'Economista', is_admin: false },
+  { name: 'Soporte TI', username: 'juan_ti', role: 'TI', is_admin: false },
+];
 
 export const LoginPage: React.FC = () => {
   const { login, register, loginDemo, error, clearError } = useAuth();
@@ -44,7 +50,6 @@ export const LoginPage: React.FC = () => {
         await register(username, email, password);
       }
     } catch (err: any) {
-      // Fallback demo mode if backend is offline
       if (mode === 'login') {
         loginDemo(username, 'Economista', false);
       } else {
@@ -55,39 +60,32 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const presetUsers = [
-    { name: 'Administrador', username: 'admin', role: 'Administrador', is_admin: true },
-    { name: 'Economista', username: 'felipe_economista', role: 'Economista', is_admin: false },
-    { name: 'Soporte TI', username: 'juan_ti', role: 'TI', is_admin: false },
-  ];
+  const activeError = localError || error;
 
   return (
-    <div className="min-h-screen bg-[#0B0F19] flex items-center justify-center p-6 relative overflow-hidden">
-      {/* Background Gradients */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-brand-600/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="min-h-screen bg-dark-base flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Background Glow Accents */}
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="w-full max-w-md relative z-10">
-        {/* Logo Banner */}
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-500 shadow-xl shadow-brand-500/20 mb-3">
+      <div className="w-full max-w-md space-y-6 relative z-10">
+        {/* Brand Header */}
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600 to-purple-600 shadow-xl shadow-brand-600/20 mb-2">
             <Sparkles className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Democratización de Datos</h1>
-          <p className="text-xs text-gray-400 mt-1">Plataforma de Inteligencia Analítica con IA Local</p>
+          <h1 className="text-2xl font-extrabold text-white tracking-tight">DATIA Enterprise</h1>
+          <p className="text-xs text-gray-400">Democratización de Datos & Analítica Text-to-SQL Segura</p>
         </div>
 
-        {/* Form Container Glass Card */}
-        <div className="glass-panel rounded-2xl p-8 shadow-2xl border border-white/10 space-y-6">
-          {/* Mode Switch Tabs */}
-          <div className="grid grid-cols-2 p-1 bg-dark-base/80 rounded-xl border border-dark-border">
+        {/* Card Panel */}
+        <div className="glass-panel rounded-3xl p-7 border border-white/10 shadow-2xl space-y-6">
+          {/* Mode Switcher Tabs */}
+          <div className="flex bg-dark-base/80 p-1 rounded-xl border border-dark-border">
             <button
-              onClick={() => {
-                setMode('login');
-                setLocalError(null);
-                clearError();
-              }}
-              className={`flex items-center justify-center space-x-2 py-2 text-xs font-semibold rounded-lg transition-all ${
+              type="button"
+              onClick={() => { setMode('login'); setLocalError(null); clearError(); }}
+              className={`flex-1 flex items-center justify-center space-x-2 py-2 rounded-lg text-xs font-semibold transition-colors ${
                 mode === 'login'
                   ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
                   : 'text-gray-400 hover:text-white'
@@ -96,109 +94,94 @@ export const LoginPage: React.FC = () => {
               <LogIn className="w-3.5 h-3.5" />
               <span>Iniciar Sesión</span>
             </button>
-
             <button
-              onClick={() => {
-                setMode('register');
-                setLocalError(null);
-                clearError();
-              }}
-              className={`flex items-center justify-center space-x-2 py-2 text-xs font-semibold rounded-lg transition-all ${
+              type="button"
+              onClick={() => { setMode('register'); setLocalError(null); clearError(); }}
+              className={`flex-1 flex items-center justify-center space-x-2 py-2 rounded-lg text-xs font-semibold transition-colors ${
                 mode === 'register'
                   ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
               <UserPlus className="w-3.5 h-3.5" />
-              <span>Crear Cuenta</span>
+              <span>Registrarse</span>
             </button>
           </div>
 
-          {/* Error Message Toast */}
-          {(localError || error) && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center space-x-2 animate-fadeIn">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{localError || error}</span>
+          {/* Alert Message */}
+          {activeError && (
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-start space-x-2.5 animate-fadeIn">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{activeError}</span>
             </div>
           )}
 
-          {mode === 'register' && (
-            <div className="p-3 rounded-xl bg-brand-500/10 border border-brand-500/20 text-brand-300 text-xs flex items-start space-x-2">
-              <Info className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>
-                Tu cuenta se creará con el perfil inicial <strong>Usuario</strong>. Un Administrador te asignará tu rol definitivo (<strong>Economista</strong>, <strong>TI</strong> o <strong>Administrador</strong>).
-              </span>
-            </div>
-          )}
-
+          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-                Nombre de Usuario
-              </label>
+            <div className="space-y-1.5">
+              <label htmlFor="login-username-input" className="block text-xs font-semibold text-gray-300">Usuario Corporativo</label>
               <div className="relative">
                 <input
+                  id="login-username-input"
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-dark-base/80 border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all pl-10"
                   placeholder="ej. felipe_economista"
                   required
+                  className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
                 />
-                <Lock className="w-4 h-4 text-gray-500 absolute left-3.5 top-3" />
+                <KeyRound className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
               </div>
             </div>
 
             {mode === 'register' && (
-              <div>
-                <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-                  Correo Electrónico Corporativo
-                </label>
+              <div className="space-y-1.5 animate-fadeIn">
+                <label htmlFor="login-email-input" className="block text-xs font-semibold text-gray-300">Correo Electrónico</label>
                 <div className="relative">
                   <input
+                    id="login-email-input"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-dark-base/80 border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all pl-10"
                     placeholder="usuario@empresa.com"
+                    required
+                    className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
                   />
-                  <Mail className="w-4 h-4 text-gray-500 absolute left-3.5 top-3" />
+                  <Mail className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
                 </div>
               </div>
             )}
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-                Contraseña
-              </label>
+            <div className="space-y-1.5">
+              <label htmlFor="login-password-input" className="block text-xs font-semibold text-gray-300">Contraseña</label>
               <div className="relative">
                 <input
+                  id="login-password-input"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-dark-base/80 border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all pl-10"
                   placeholder="••••••••"
                   required
+                  className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
                 />
-                <KeyRound className="w-4 h-4 text-gray-500 absolute left-3.5 top-3" />
+                <Lock className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
               </div>
             </div>
 
             {mode === 'register' && (
-              <div>
-                <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-                  Confirmar Contraseña
-                </label>
+              <div className="space-y-1.5 animate-fadeIn">
+                <label htmlFor="login-confirm-password-input" className="block text-xs font-semibold text-gray-300">Confirmar Contraseña</label>
                 <div className="relative">
                   <input
+                    id="login-confirm-password-input"
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full bg-dark-base/80 border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all pl-10"
                     placeholder="••••••••"
                     required
+                    className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
                   />
-                  <KeyRound className="w-4 h-4 text-gray-500 absolute left-3.5 top-3" />
+                  <Lock className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
                 </div>
               </div>
             )}
@@ -206,16 +189,10 @@ export const LoginPage: React.FC = () => {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-medium py-3 rounded-xl shadow-lg shadow-brand-500/25 transition-all flex items-center justify-center space-x-2 text-xs"
+              className="w-full mt-2 flex items-center justify-center space-x-2 bg-gradient-to-r from-brand-600 to-purple-600 hover:from-brand-500 hover:to-purple-500 text-white font-semibold py-2.5 rounded-xl shadow-lg shadow-brand-600/30 transition-colors disabled:opacity-50"
             >
-              {isSubmitting ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>
-                  <span>{mode === 'login' ? 'Iniciar Sesión' : 'Registrar Cuenta'}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
+              <span>{isSubmitting ? 'Procesando...' : mode === 'login' ? 'Acceder al Sistema' : 'Crear Cuenta'}</span>
+              <ArrowRight className="w-4 h-4" />
             </button>
           </form>
 
@@ -223,11 +200,12 @@ export const LoginPage: React.FC = () => {
           <div className="pt-4 border-t border-dark-border/60">
             <p className="text-[11px] text-gray-400 text-center mb-2.5">O prueba directamente con un perfil asignado:</p>
             <div className="grid grid-cols-3 gap-2">
-              {presetUsers.map((u) => (
+              {PRESET_USERS.map((u) => (
                 <button
                   key={u.username}
+                  type="button"
                   onClick={() => loginDemo(u.username, u.role, u.is_admin)}
-                  className="bg-dark-base/50 hover:bg-dark-card border border-dark-border hover:border-brand-500/40 rounded-lg p-2 text-center transition-all"
+                  className="bg-dark-base/50 hover:bg-dark-card border border-dark-border hover:border-brand-500/40 rounded-lg p-2 text-center transition-colors"
                 >
                   <div className="text-[11px] font-semibold text-gray-200 truncate">{u.name}</div>
                   <div className="text-[9px] text-brand-400 truncate">{u.role}</div>

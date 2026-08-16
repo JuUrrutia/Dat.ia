@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.services.llm_service import LLMService
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -56,7 +57,7 @@ async def test_llm_connection(
                     return LLMTestResponse(
                         success=True,
                         message=f"Conectado exitosamente con Ollama en {url}.",
-                        available_models=models_list if models_list else ["qwen2.5-coder:7b"],
+                        available_models=models_list if models_list else [settings.OLLAMA_MODEL],
                         latency_ms=latency
                     )
         except Exception:
@@ -82,7 +83,7 @@ async def test_llm_connection(
                             models_list = [m_name]
 
                     if not models_list:
-                        models_list = [req.model_name or "Qwen3.8-27B-Heretic-Abliterated"]
+                        models_list = [req.model_name or settings.OLLAMA_MODEL]
 
                     return LLMTestResponse(
                         success=True,
@@ -97,7 +98,7 @@ async def test_llm_connection(
     return LLMTestResponse(
         success=False,
         message=f"No se pudo contactar al servidor LLM en {url}. Si usas llama.exe serve, verifica que esté escuchando en {url}.",
-        available_models=[req.model_name or "Observerx/Qwen3.8-27B-Heretic-Abliterated-Uncensored-GGUF:Q4_K_M"],
+        available_models=[req.model_name or settings.OLLAMA_MODEL],
         latency_ms=0
     )
 

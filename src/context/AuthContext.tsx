@@ -1,6 +1,15 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { User, AppSettings } from '../types';
 import { authService } from '../services/auth_service';
+import { getAuthToken } from '../services/api_client';
+import {
+  DEFAULT_LLM_PROVIDER,
+  DEFAULT_OLLAMA_URL,
+  DEFAULT_LLM_MODEL,
+  DEFAULT_POSTGRES_HOST,
+  DEFAULT_POSTGRES_PORT,
+  DEFAULT_POSTGRES_DB
+} from '../constants';
 
 type PageView = 'login' | 'dashboard' | 'settings' | 'admin';
 
@@ -20,23 +29,24 @@ interface AuthContextType {
 }
 
 const defaultSettings: AppSettings = {
-  llm_provider: 'llama_cpp',
-  ollama_url: 'http://127.0.0.1:8080',
-  ollama_model: 'Observerx/Qwen3.8-27B-Heretic-Abliterated-Uncensored-GGUF:Q4_K_M',
-  postgres_host: 'localhost',
-  postgres_port: 5432,
-  postgres_db: 'democratizacion_metadatos',
+  llm_provider: DEFAULT_LLM_PROVIDER as any,
+  ollama_url: DEFAULT_OLLAMA_URL,
+  ollama_model: DEFAULT_LLM_MODEL,
+  postgres_host: DEFAULT_POSTGRES_HOST,
+  postgres_port: DEFAULT_POSTGRES_PORT,
+  postgres_db: DEFAULT_POSTGRES_DB,
   auto_detect_llm: true,
 };
 
+const SETTINGS_KEY = 'app_settings:v1';
+
 const loadPersistedSettings = (): AppSettings => {
   try {
-    const stored = localStorage.getItem('app_settings');
-    if (stored) {
-      return { ...defaultSettings, ...JSON.parse(stored) };
-    }
-  } catch { /* ignore parse errors */ }
-  return defaultSettings;
+    const saved = localStorage.getItem(SETTINGS_KEY);
+    return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
+  } catch {
+    return defaultSettings;
+  }
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -48,10 +58,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Restore session from token on app startup
+  // Restore session from active in-memory token on app startup
   useEffect(() => {
     const restoreSession = async () => {
-      const token = localStorage.getItem('token');
+      const token = getAuthToken();
       if (token) {
         try {
           const profile = await authService.getCurrentUser();
@@ -73,7 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     restoreSession();
   }, []);
 
-  const login = async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string) => {
     setIsLoading(true);
     setError(null);
     try {
@@ -87,9 +97,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const register = async (username: string, email: string, password: string, roleId?: number, isAdmin?: boolean) => {
+  const register = useCallback(async (username: string, email: string, password: string, roleId?: number, isAdmin?: boolean) => {
     setIsLoading(true);
     setError(null);
     try {
@@ -103,9 +113,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [login]);
 
-  const loginDemo = (username: string, role: string = 'Analista Financiero', isAdmin: boolean = false) => {
+  const loginDemo = useCallback((username: string, role: string = 'Analista Financiero', isAdmin: boolean = false) => {
     setUser({
       id: Date.now(),
       username,
@@ -114,43 +124,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       role_name: role,
     });
     setActivePage('dashboard');
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     authService.logout();
     setUser(null);
     setActivePage('login');
-  };
+  }, []);
 
-  const updateSettings = (newSettings: Partial<AppSettings>) => {
-    setSettings((prev) => {
-      const updated = { ...prev, ...newSettings };
-      try {
-        localStorage.setItem('app_settings', JSON.stringify(updated));
-      } catch { /* ignore storage errors */ }
-      return updated;
-    });
-  };
+  const updateSettings = useCallback((newSettings: Partial<AppSettings>) => {
+    const updated = { ...settings, ...newSettings };
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
+    } catch { /* ignore storage errors */ }
+    setSettings(updated);
+  }, [settings]);
 
-  const clearError = () => setError(null);
+  const clearError = useCallback(() => setError(null), []);
+
+  const contextValue = useMemo(
+    () => ({
+      user,
+      activePage,
+      settings,
+      isLoading,
+      error,
+      login,
+      register,
+      loginDemo,
+      logout,
+      setActivePage,
+      updateSettings,
+      clearError,
+    }),
+    [
+      user,
+      activePage,
+      settings,
+      isLoading,
+      error,
+      login,
+      register,
+      loginDemo,
+      logout,
+      updateSettings,
+      clearError,
+    ]
+  );
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        activePage,
-        settings,
-        isLoading,
-        error,
-        login,
-        register,
-        loginDemo,
-        logout,
-        setActivePage,
-        updateSettings,
-        clearError,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
