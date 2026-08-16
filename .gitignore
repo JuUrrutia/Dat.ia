@@ -1,0 +1,57 @@
+# Node dependencies & builds
+node_modules/
+dist/
+dist-electron/
+release/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python & environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local configuration & environment variables
+.env
+.env.local
+.env.*.local
+
+# IDEs & System files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# SQLite temp files
+*.db-journal
+*.db-wal
+*.db-shm

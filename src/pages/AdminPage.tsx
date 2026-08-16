@@ -1,0 +1,347 @@
+import React, { useState, useEffect } from 'react';
+import { ShieldAlert, Users, Database, BookOpen, Plus, Sparkles, Check, Edit3, Trash2, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { CorporateConnection, connectorService, ConnectionTestResult } from '../services/connector_service';
+import { ConnectorModal } from '../components/admin/ConnectorModal';
+
+export const AdminPage: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'users' | 'connectors' | 'catalog'>('connectors');
+
+  // Connectors State
+  const [connectors, setConnectors] = useState<CorporateConnection[]>([]);
+  const [isLoadingConnectors, setIsLoadingConnectors] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingConnector, setEditingConnector] = useState<CorporateConnection | null>(null);
+
+  const [testingId, setTestingId] = useState<number | null>(null);
+  const [testResultsMap, setTestResultsMap] = useState<Record<number, ConnectionTestResult>>({});
+
+  const mockUsers = [
+    { id: 1, name: 'admin', email: 'admin@empresa.com', role: 'Administrador', is_admin: true },
+    { id: 2, name: 'felipe_economista', email: 'felipe@empresa.com', role: 'Economista', is_admin: false },
+    { id: 3, name: 'juan_ti', email: 'juan@empresa.com', role: 'TI', is_admin: false },
+    { id: 4, name: 'nuevo_usuario', email: 'usuario@empresa.com', role: 'Usuario (Inicial)', is_admin: false },
+  ];
+
+  const mockCatalog = [
+    { table: 'fact_ventas', column: 'monto_total', desc: 'Monto bruto en USD antes de impuestos', formula: 'SUM(precio_unitario * cantidad)', is_ai: true },
+    { table: 'fact_ventas', column: 'costo_total', desc: 'Costo de venta directo asociado', formula: 'SUM(costo_unitario * cantidad)', is_ai: true },
+    { table: 'dim_clientes', column: 'rut_dni_cliente', desc: 'Documento personal cliente (ENMASCARADO)', formula: 'MASKED / HASH', is_ai: false },
+    { table: 'fact_incidentes_ti', column: 'horas_resolucion', desc: 'Tiempo de resolución en horas SLA', formula: 'AVG(horas_resolucion)', is_ai: true },
+  ];
+
+  const [aiEnriching, setAiEnriching] = useState(false);
+  const [aiSuccess, setAiSuccess] = useState(false);
+
+  // Load Connectors
+  const fetchConnectors = async () => {
+    setIsLoadingConnectors(true);
+    try {
+      const data = await connectorService.getConnectors();
+      setConnectors(data);
+    } catch {
+      // Handled in connectorService fallback
+    } finally {
+      setIsLoadingConnectors(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchConnectors();
+  }, []);
+
+  const handleOpenCreateModal = () => {
+    setEditingConnector(null);
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (conn: CorporateConnection) => {
+    setEditingConnector(conn);
+    setIsModalOpen(true);
+  };
+
+  const handleDeleteConnector = async (id: number, name: string) => {
+    if (!window.confirm(`¿Estás seguro de eliminar la conexión BD '${name}'?`)) return;
+    try {
+      await connectorService.deleteConnector(id);
+      fetchConnectors();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Error al eliminar la conexión.');
+    }
+  };
+
+  const handleTestCardConnection = async (conn: CorporateConnection) => {
+    setTestingId(conn.id);
+    const result = await connectorService.testConnection({
+      name: conn.name,
+      db_type: conn.db_type,
+      host: conn.host,
+      port: conn.port,
+      database_name: conn.database_name,
+      username: conn.username,
+    });
+    setTestingId(null);
+    setTestResultsMap((prev) => ({ ...prev, [conn.id]: result }));
+  };
+
+  const handleRunAiCatalog = () => {
+    setAiEnriching(true);
+    setTimeout(() => {
+      setAiEnriching(false);
+      setAiSuccess(true);
+      setTimeout(() => setAiSuccess(false), 3000);
+    }, 1500);
+  };
+
+  return (
+    <div className="flex-1 bg-dark-base overflow-y-auto p-6 space-y-6">
+      {/* Header Banner */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-white flex items-center gap-2">
+            <ShieldAlert className="w-5 h-5 text-purple-400" /> Panel de Gobernanza & Fuentes BD Corporativas
+          </h1>
+          <p className="text-xs text-gray-400">
+            Administración de conexiones a PostgreSQL, SQL Server, MySQL y Oracle con cifrado AES-256
+          </p>
+        </div>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="flex items-center space-x-2 border-b border-dark-border pb-1">
+        <button
+          onClick={() => setActiveTab('connectors')}
+          className={`flex items-center space-x-2 px-4 py-2 text-xs font-medium border-b-2 transition-all ${
+            activeTab === 'connectors' ? 'border-purple-500 text-purple-400 font-semibold' : 'border-transparent text-gray-400 hover:text-white'
+          }`}
+        >
+          <Database className="w-4 h-4" />
+          <span>Fuentes BD Corporativas ({connectors.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('users')}
+          className={`flex items-center space-x-2 px-4 py-2 text-xs font-medium border-b-2 transition-all ${
+            activeTab === 'users' ? 'border-purple-500 text-purple-400 font-semibold' : 'border-transparent text-gray-400 hover:text-white'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>Usuarios & Asignación de Roles</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('catalog')}
+          className={`flex items-center space-x-2 px-4 py-2 text-xs font-medium border-b-2 transition-all ${
+            activeTab === 'catalog' ? 'border-purple-500 text-purple-400 font-semibold' : 'border-transparent text-gray-400 hover:text-white'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          <span>Catálogo Semántico (IA)</span>
+        </button>
+      </div>
+
+      {/* Tab 1: Corporate DB Connectors (Full Functional CRUD) */}
+      {activeTab === 'connectors' && (
+        <div className="glass-panel rounded-2xl p-6 border border-white/10 space-y-5">
+          <div className="flex items-center justify-between border-b border-dark-border pb-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Fuentes de Datos Corporativas Registradas</h3>
+              <p className="text-xs text-gray-400">Conexiones operativas en modo Solo Lectura (`READ ONLY`)</p>
+            </div>
+
+            <button
+              onClick={handleOpenCreateModal}
+              className="flex items-center space-x-1.5 text-xs bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium px-4 py-2 rounded-xl shadow-lg shadow-purple-600/30 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Registrar Nueva BD Corporativa</span>
+            </button>
+          </div>
+
+          {/* Connectors Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {connectors.map((c) => {
+              const testRes = testResultsMap[c.id];
+              return (
+                <div key={c.id} className="glass-card p-5 rounded-2xl border border-white/10 space-y-4 hover:border-purple-500/30 transition-all">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <div className="font-bold text-white text-sm flex items-center space-x-2">
+                        <span>{c.name}</span>
+                        <span className="text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded font-mono uppercase">
+                          {c.db_type}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-400 flex items-center space-x-2">
+                        <span>Host: <span className="text-gray-200 font-mono">{c.host}:{c.port}</span></span>
+                        <span>•</span>
+                        <span>BD: <span className="text-gray-200 font-mono">{c.database_name}</span></span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-1">
+                      <button
+                        onClick={() => handleOpenEditModal(c)}
+                        title="Editar Conexión"
+                        className="p-2 rounded-lg text-gray-400 hover:text-brand-400 hover:bg-brand-500/10 border border-transparent hover:border-brand-500/20 transition-all"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteConnector(c.id, c.name)}
+                        title="Eliminar Conexión"
+                        className="p-2 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-2 border-t border-dark-border/60">
+                    <div className="flex items-center space-x-2">
+                      <span className={`w-2 h-2 rounded-full ${c.is_active ? 'bg-emerald-400' : 'bg-gray-500'}`} />
+                      <span className="text-gray-400">{c.is_active ? 'Activa para Consultas' : 'Inactiva'}</span>
+                    </div>
+
+                    <button
+                      onClick={() => handleTestCardConnection(c)}
+                      disabled={testingId === c.id}
+                      className="flex items-center space-x-1 text-xs text-brand-400 hover:text-brand-300 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/20 px-3 py-1 rounded-lg transition-all"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${testingId === c.id ? 'animate-spin' : ''}`} />
+                      <span>{testingId === c.id ? 'Probando...' : 'Probar Red'}</span>
+                    </button>
+                  </div>
+
+                  {testRes && (
+                    <div
+                      className={`p-2.5 rounded-xl border text-[11px] flex items-center space-x-2 animate-fadeIn ${
+                        testRes.success
+                          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                          : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">{testRes.message}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Tab 2: Users & Roles */}
+      {activeTab === 'users' && (
+        <div className="glass-panel rounded-2xl p-6 border border-white/10 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-white">Matriz de Usuarios y Asignación de Perfiles RBAC</h3>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-dark-border">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-dark-base border-b border-dark-border text-gray-400 uppercase">
+                <tr>
+                  <th className="px-4 py-3">Usuario</th>
+                  <th className="px-4 py-3">Correo</th>
+                  <th className="px-4 py-3">Rol RBAC Asignado</th>
+                  <th className="px-4 py-3">Es Admin</th>
+                  <th className="px-4 py-3">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-border text-gray-200">
+                {mockUsers.map((u) => (
+                  <tr key={u.id} className="hover:bg-dark-card/50">
+                    <td className="px-4 py-3 font-medium">{u.name}</td>
+                    <td className="px-4 py-3 text-gray-400">{u.email}</td>
+                    <td className="px-4 py-3">
+                      <span className="bg-brand-500/10 text-brand-400 border border-brand-500/20 px-2 py-0.5 rounded">
+                        {u.role}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">{u.is_admin ? 'Sí' : 'No'}</td>
+                    <td className="px-4 py-3">
+                      <button className="text-purple-400 hover:text-purple-300 font-medium">Editar Perfil</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 3: Semantic Catalog & AI Auto-Enrichment */}
+      {activeTab === 'catalog' && (
+        <div className="glass-panel rounded-2xl p-6 border border-white/10 space-y-5">
+          <div className="flex items-center justify-between border-b border-dark-border pb-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Catálogo Semántico y Diccionario de Datos</h3>
+              <p className="text-xs text-gray-400">Enriquece tablas y columnas con descripciones en español y fórmulas</p>
+            </div>
+
+            <button
+              onClick={handleRunAiCatalog}
+              disabled={aiEnriching}
+              className="flex items-center space-x-2 text-xs bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium px-4 py-2 rounded-xl shadow-lg shadow-purple-600/30 transition-all"
+            >
+              <Sparkles className={`w-4 h-4 ${aiEnriching ? 'animate-spin' : ''}`} />
+              <span>{aiEnriching ? 'Analizando Esquema...' : 'Auto-enriquecer con IA'}</span>
+            </button>
+          </div>
+
+          {aiSuccess && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center space-x-2">
+              <Check className="w-4 h-4" />
+              <span>Catálogo semántico enriquecido automáticamente con descripciones generadas por la IA local.</span>
+            </div>
+          )}
+
+          <div className="overflow-x-auto rounded-xl border border-dark-border">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-dark-base border-b border-dark-border text-gray-400 uppercase">
+                <tr>
+                  <th className="px-4 py-3">Tabla</th>
+                  <th className="px-4 py-3">Columna</th>
+                  <th className="px-4 py-3">Descripción Semántica</th>
+                  <th className="px-4 py-3">Fórmula / Regla</th>
+                  <th className="px-4 py-3">Origen</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-border text-gray-200">
+                {mockCatalog.map((cat, idx) => (
+                  <tr key={idx} className="hover:bg-dark-card/50">
+                    <td className="px-4 py-3 font-mono text-brand-400">{cat.table}</td>
+                    <td className="px-4 py-3 font-mono">{cat.column}</td>
+                    <td className="px-4 py-3">{cat.desc}</td>
+                    <td className="px-4 py-3 font-mono text-gray-400">{cat.formula}</td>
+                    <td className="px-4 py-3">
+                      {cat.is_ai ? (
+                        <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded text-[10px]">
+                          IA Auto-generado
+                        </span>
+                      ) : (
+                        <span className="bg-gray-500/10 text-gray-400 border border-gray-500/20 px-2 py-0.5 rounded text-[10px]">
+                          Manual Admin
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal for Creating & Editing Connection */}
+      <ConnectorModal
+        isOpen={isModalOpen}
+        editingConnector={editingConnector}
+        onClose={() => setIsModalOpen(false)}
+        onSaveSuccess={fetchConnectors}
+      />
+    </div>
+  );
+};
