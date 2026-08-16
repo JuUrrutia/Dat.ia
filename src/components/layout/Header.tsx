@@ -11,7 +11,7 @@ export const Header: React.FC = () => {
     <header className="h-16 border-b border-dark-border bg-dark-surface/90 backdrop-blur-md px-6 flex items-center justify-between z-20">
       {/* Brand & Offline Status Badge */}
       <div className="flex items-center space-x-4">
-        <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActivePage('dashboard')}>
+        <button type="button" className="flex items-center space-x-3 text-left focus:outline-none" onClick={() => setActivePage('dashboard')}>
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/20">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
@@ -24,7 +24,7 @@ export const Header: React.FC = () => {
             </h1>
             <p className="text-xs text-gray-400">Soberanía de Datos Corporativos</p>
           </div>
-        </div>
+        </button>
 
         <div className="hidden md:flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
           <WifiOff className="w-3.5 h-3.5" />
@@ -36,7 +36,7 @@ export const Header: React.FC = () => {
       <nav className="flex items-center space-x-1 bg-dark-base/60 p-1 rounded-xl border border-dark-border">
         <button
           onClick={() => setActivePage('dashboard')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-medium transition-all ${
+          className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
             activePage === 'dashboard'
               ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
               : 'text-gray-400 hover:text-white hover:bg-dark-card/50'
@@ -48,7 +48,7 @@ export const Header: React.FC = () => {
 
         <button
           onClick={() => setActivePage('settings')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-medium transition-all ${
+          className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
             activePage === 'settings'
               ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
               : 'text-gray-400 hover:text-white hover:bg-dark-card/50'
@@ -61,7 +61,7 @@ export const Header: React.FC = () => {
         {user.is_admin && (
           <button
             onClick={() => setActivePage('admin')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-medium transition-all ${
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
               activePage === 'admin'
                 ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
                 : 'text-gray-400 hover:text-white hover:bg-dark-card/50'
@@ -85,7 +85,7 @@ export const Header: React.FC = () => {
         <button
           onClick={logout}
           title="Cerrar Sesión"
-          className="p-2 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all"
+          className="p-2 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-colors"
         >
           <LogOut className="w-4 h-4" />
         </button>

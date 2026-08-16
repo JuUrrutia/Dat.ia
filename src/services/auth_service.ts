@@ -1,4 +1,4 @@
-import { apiClient } from './api_client';
+import { apiClient, setAuthToken } from './api_client';
 import { User } from '../types';
 
 export interface LoginResponse {
@@ -11,7 +11,7 @@ export const authService = {
   async login(username: string, password: string): Promise<LoginResponse> {
     const res = await apiClient.post<LoginResponse>('/auth/login', { username, password });
     if (res.data.access_token) {
-      localStorage.setItem('token', res.data.access_token);
+      setAuthToken(res.data.access_token);
     }
     return res.data;
   },
@@ -38,14 +38,14 @@ export const authService = {
       return res.data;
     } catch {
       return [
-        { id: 1, name: 'Analista de Finanzas y Ventas', description: 'Acceso a finanzas y ventas' },
-        { id: 2, name: 'Ejecutivo Comercial', description: 'Acceso a ventas y clientes' },
+        { id: 1, name: 'Economista', description: 'Acceso a información económica, financiera, facturación y costos' },
+        { id: 2, name: 'TI', description: 'Acceso a métricas de infraestructura, rendimiento de servidores e incidentes' },
+        { id: 3, name: 'Usuario', description: 'Perfil inicial por defecto sin asignación de dominios' },
       ];
     }
   },
 
   logout() {
-    localStorage.removeItem('token');
+    setAuthToken(null);
   }
 };
-

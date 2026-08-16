@@ -45,4 +45,6 @@ class QueryResponse(BaseModel):
     chart_option: Dict[str, Any] = {} # ECharts option JSON object
     data_columns: List[str] = []
     data_rows: List[Dict[str, Any]] = []
+    response_type: str = "data_analysis" # data_analysis | advisory | explanation | hybrid
+    conversational_response: Optional[str] = None # Respuesta conversacional rica (advisory/explanation/hybrid)
     traceability: TraceabilityAudit

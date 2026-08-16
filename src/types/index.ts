@@ -52,6 +52,8 @@ export interface QueryResult {
   data_rows: Record<string, any>[];
   traceability: TraceabilityAudit;
   pipeline_source?: 'backend' | 'llm_direct' | 'fallback';
+  response_type?: 'data_analysis' | 'advisory' | 'explanation' | 'hybrid';
+  conversational_response?: string; // Respuesta conversacional rica (advisory/explanation/hybrid)
 }
 
 export interface AppSettings {

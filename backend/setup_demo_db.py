@@ -392,11 +392,21 @@ def setup_demo_sqlite():
     conn.commit()
     
     # Verify counts
-    tables = ['dim_categorias', 'dim_productos', 'dim_clientes', 'fact_ventas', 'fact_ingresos_costos', 'dim_empleados', 'dim_servidores', 'fact_incidentes_ti', 'fact_consumo_recursos']
+    table_queries = {
+        'dim_categorias': "SELECT COUNT(*) FROM dim_categorias",
+        'dim_productos': "SELECT COUNT(*) FROM dim_productos",
+        'dim_clientes': "SELECT COUNT(*) FROM dim_clientes",
+        'fact_ventas': "SELECT COUNT(*) FROM fact_ventas",
+        'fact_ingresos_costos': "SELECT COUNT(*) FROM fact_ingresos_costos",
+        'dim_empleados': "SELECT COUNT(*) FROM dim_empleados",
+        'dim_servidores': "SELECT COUNT(*) FROM dim_servidores",
+        'fact_incidentes_ti': "SELECT COUNT(*) FROM fact_incidentes_ti",
+        'fact_consumo_recursos': "SELECT COUNT(*) FROM fact_consumo_recursos",
+    }
     print("=== BASE DE DATOS CORPORATIVA GENERADA EXITOSAMENTE ===")
     total_recs = 0
-    for t in tables:
-        count = cursor.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+    for t, query in table_queries.items():
+        count = cursor.execute(query).fetchone()[0]
         total_recs += count
         print(f"-> {t}: {count} registros")
     print(f"TOTAL TOTAL: {total_recs} registros en demo_corporativa.db")

@@ -63,6 +63,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows }) =
     link.href = url;
     link.download = `exportacion_datos_${Date.now()}.csv`;
     link.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -88,7 +89,8 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows }) =
                 setCurrentPage(1);
               }}
               placeholder="Buscar en la tabla..."
-              className="bg-dark-base border border-dark-border text-xs text-white placeholder-gray-500 rounded-lg pl-8 pr-3 py-1.5 focus:outline-none focus:border-brand-500 transition-all w-48"
+              aria-label="Buscar en la tabla"
+              className="bg-dark-base border border-dark-border text-xs text-white placeholder-gray-500 rounded-lg pl-8 pr-3 py-1.5 focus:outline-none focus:border-brand-500 transition-colors w-48"
             />
             <Search className="w-3.5 h-3.5 text-gray-500 absolute left-2.5 top-2" />
           </div>
@@ -96,7 +98,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows }) =
           {/* Export CSV Button */}
           <button
             onClick={handleExportCSV}
-            className="flex items-center space-x-1.5 text-xs bg-dark-base hover:bg-dark-border text-gray-300 border border-dark-border px-3 py-1.5 rounded-lg transition-all"
+            className="flex items-center space-x-1.5 text-xs bg-dark-base hover:bg-dark-border text-gray-300 border border-dark-border px-3 py-1.5 rounded-lg transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
             <span>CSV</span>
@@ -112,28 +114,46 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows }) =
               {columns.map((col) => (
                 <th
                   key={col}
-                  onClick={() => handleSort(col)}
-                  className="px-4 py-3 cursor-pointer hover:text-white transition-all font-semibold select-none"
+                  className="px-4 py-3 font-semibold select-none"
                 >
-                  <div className="flex items-center space-x-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSort(col)}
+                    className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors cursor-pointer text-left focus:outline-none focus:text-white"
+                    aria-label={`Ordenar por ${col}`}
+                  >
                     <span>{col}</span>
                     <ArrowUpDown className="w-3 h-3 text-gray-500" />
-                  </div>
+                  </button>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-dark-border text-xs text-gray-200">
             {paginatedRows.length > 0 ? (
-              paginatedRows.map((row, idx) => (
-                <tr key={idx} className="hover:bg-dark-card/50 transition-all">
-                  {columns.map((col) => (
-                    <td key={col} className="px-4 py-2.5 whitespace-nowrap">
-                      {row[col] !== null && row[col] !== undefined ? String(row[col]) : '-'}
-                    </td>
-                  ))}
-                </tr>
-              ))
+              paginatedRows.map((row, idx) => {
+                const rowKey =
+                  row.id ??
+                  row.id_venta ??
+                  row.id_producto ??
+                  row.id_cliente ??
+                  row.id_empleado ??
+                  row.id_servidor ??
+                  row.id_registro ??
+                  row.id_incidente ??
+                  row.id_consumo ??
+                  row.id_categoria ??
+                  columns.map((c) => String(row[c])).join('-');
+                return (
+                  <tr key={rowKey} className="hover:bg-dark-card/50 transition-colors">
+                    {columns.map((col) => (
+                      <td key={col} className="px-4 py-2.5 whitespace-nowrap">
+                        {row[col] !== null && row[col] !== undefined ? String(row[col]) : '-'}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })
             ) : (
               <tr>
                 <td colSpan={columns.length} className="text-center py-6 text-gray-500 text-xs">
@@ -155,7 +175,8 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows }) =
           <button
             onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
             disabled={currentPage === 1}
-            className="p-1.5 rounded-lg bg-dark-base border border-dark-border text-gray-400 hover:text-white disabled:opacity-40 transition-all"
+            aria-label="Página anterior"
+            className="p-1.5 rounded-lg bg-dark-base border border-dark-border text-gray-400 hover:text-white disabled:opacity-40 transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -163,7 +184,8 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows }) =
           <button
             onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
             disabled={currentPage === totalPages}
-            className="p-1.5 rounded-lg bg-dark-base border border-dark-border text-gray-400 hover:text-white disabled:opacity-40 transition-all"
+            aria-label="Página siguiente"
+            className="p-1.5 rounded-lg bg-dark-base border border-dark-border text-gray-400 hover:text-white disabled:opacity-40 transition-colors"
           >
             <ChevronRight className="w-4 h-4" />
           </button>

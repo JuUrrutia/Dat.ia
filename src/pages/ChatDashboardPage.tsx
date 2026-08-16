@@ -127,30 +127,27 @@ export const ChatDashboardPage: React.FC = () => {
     try {
       const newResult = await queryService.sendQuery(text, userRole, settings);
 
-      setThreads((prevThreads) => {
-        if (activeThreadId) {
-          // Append to EXISTING thread
-          return prevThreads.map((thread) => {
-            if (thread.id === activeThreadId) {
-              return {
-                ...thread,
-                results: [...thread.results, newResult],
-              };
-            }
-            return thread;
-          });
-        } else {
-          // Create NEW thread
-          const newThread: FullThread = {
-            id: `thread-${Date.now()}`,
-            title: text,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            results: [newResult],
-          };
-          setActiveThreadId(newThread.id);
-          return [newThread, ...prevThreads];
-        }
-      });
+      if (activeThreadId) {
+        // Append to EXISTING thread
+        setThreads((prevThreads) =>
+          prevThreads.map((thread) =>
+            thread.id === activeThreadId
+              ? { ...thread, results: [...thread.results, newResult] }
+              : thread
+          )
+        );
+      } else {
+        // Create NEW thread
+        const newThreadId = `thread-${Date.now()}`;
+        const newThread: FullThread = {
+          id: newThreadId,
+          title: text,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          results: [newResult],
+        };
+        setActiveThreadId(newThreadId);
+        setThreads((prevThreads) => [newThread, ...prevThreads]);
+      }
     } catch {
       // Handled in queryService fallback
     } finally {
@@ -209,7 +206,7 @@ export const ChatDashboardPage: React.FC = () => {
 
                         <button
                           onClick={() => setActiveTraceability(result.traceability)}
-                          className="flex items-center space-x-1.5 text-xs text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 px-3 py-1 rounded-lg transition-all"
+                          className="flex items-center space-x-1.5 text-xs text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 px-3 py-1 rounded-lg transition-colors"
                         >
                           <ShieldCheck className="w-3.5 h-3.5" />
                           <span>Auditar SQL & AST</span>
@@ -267,11 +264,11 @@ export const ChatDashboardPage: React.FC = () => {
             <span className="text-xs text-gray-400 font-medium shrink-0 flex items-center gap-1">
               <Sparkles className="w-3.5 h-3.5 text-brand-400" /> Sugerencias Activas:
             </span>
-            {promptSuggestions.map((sug, i) => (
+            {promptSuggestions.map((sug) => (
               <button
-                key={i}
+                key={sug}
                 onClick={() => handleSendPrompt(sug)}
-                className="text-xs text-gray-300 bg-dark-base hover:bg-dark-card border border-dark-border hover:border-brand-500/30 rounded-lg px-3 py-1 whitespace-nowrap transition-all hover:text-white"
+                className="text-xs text-gray-300 bg-dark-base hover:bg-dark-card border border-dark-border hover:border-brand-500/30 rounded-lg px-3 py-1 whitespace-nowrap transition-colors hover:text-white"
               >
                 {sug}
               </button>
@@ -286,12 +283,14 @@ export const ChatDashboardPage: React.FC = () => {
               onChange={(e) => setPromptInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSendPrompt(promptInput)}
               placeholder="Haz una pregunta sobre tus datos o pulsa una sugerencia..."
-              className="w-full bg-dark-base border border-dark-border rounded-xl pl-4 pr-12 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all shadow-inner"
+              aria-label="Pregunta sobre tus datos"
+              className="w-full bg-dark-base border border-dark-border rounded-xl pl-4 pr-12 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors shadow-inner"
             />
             <button
               onClick={() => handleSendPrompt(promptInput)}
               disabled={isGenerating || !promptInput.trim()}
-              className="absolute right-2 p-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-40 transition-all shadow-md shadow-brand-600/30"
+              aria-label="Enviar consulta"
+              className="absolute right-2 p-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-40 transition-colors shadow-md shadow-brand-600/30"
             >
               {isGenerating ? (
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

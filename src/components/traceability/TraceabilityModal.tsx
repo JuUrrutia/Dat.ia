@@ -35,7 +35,8 @@ export const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ traceabili
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-dark-card transition-all"
+            aria-label="Cerrar modal de trazabilidad"
+            className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-dark-card transition-colors"
           >
             ✕
           </button>
@@ -96,7 +97,7 @@ export const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ traceabili
               </div>
               <button
                 onClick={handleCopySQL}
-                className="flex items-center space-x-1 text-xs text-brand-400 hover:text-brand-300 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/20 px-3 py-1 rounded-lg transition-all"
+                className="flex items-center space-x-1 text-xs text-brand-400 hover:text-brand-300 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/20 px-3 py-1 rounded-lg transition-colors"
               >
                 {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copied ? 'Copiado' : 'Copiar SQL'}</span>
@@ -113,7 +114,7 @@ export const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ traceabili
           <span>Gobernanza RBAC: Inyección de esquema dinámico y filtro AST activo</span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-dark-card hover:bg-dark-border text-white text-xs font-medium transition-all"
+            className="px-4 py-1.5 rounded-lg bg-dark-card hover:bg-dark-border text-white text-xs font-medium transition-colors"
           >
             Cerrar
           </button>

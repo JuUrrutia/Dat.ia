@@ -75,7 +75,7 @@ export const llmClientService = {
           let models: string[] = [];
 
           if (data.data && Array.isArray(data.data)) {
-            models = data.data.map((m: any) => m.id || '').filter(Boolean);
+            models = data.data.flatMap((m: any) => (m.id ? [m.id] : []));
           } else if (data.default_generation_settings || data.model) {
             const mName = data.default_generation_settings?.model || data.model || '';
             if (mName) models = [mName];

@@ -3,14 +3,22 @@ import time
 import os
 import re
 import json
-from typing import Dict, Any, List, Set, Tuple
+from typing import Dict, Any, List, Set, Tuple, Optional
+from sqlalchemy.orm import Session
+from app.core.config import settings
+from app.core.constants import (
+    ADMIN_ROLES, ROLE_USUARIO, ROLE_TI, ROLE_ECONOMISTA, DEFAULT_DEMO_ROLE,
+    CHART_COLOR_RED, CHART_COLOR_AMBER, CHART_COLOR_EMERALD, CHART_COLOR_CYAN,
+    CHART_COLOR_BLUE, CHART_COLOR_PURPLE, CHART_COLOR_TEXT_MUTED, CHART_COLOR_TEXT_LIGHT
+)
 from app.services.ast_validator import ASTValidator, ASTValidationError
 from app.services.llm_service import LLMService
+from app.services.dynamic_schema import DynamicSchemaPruningService
 from app.schemas.query_schema import QueryResponse, KPICard, TraceabilityAudit, ExecutiveReport, MetricGauge
 
-DEMO_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "demo_corporativa.db")
+DEMO_DB_PATH = settings.SQLITE_DB_PATH
 
-# Domain Table Mapping for RBAC
+# Domain Table Mapping for RBAC Fallback (Offline Mode)
 DOMAIN_TABLES = {
     "Economía & Finanzas": {"dim_categorias", "dim_productos", "dim_clientes", "fact_ventas", "fact_ingresos_costos", "dim_empleados"},
     "Tecnología & TI": {"dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos"},
@@ -76,23 +84,55 @@ class QueryEngine:
     }
 
     @classmethod
-    def get_allowed_tables_for_role(cls, user_role: str, is_admin: bool) -> Set[str]:
-        if is_admin or user_role in ("Administrador", "Super Administrador", "Admin"):
+    def get_allowed_tables_for_role(
+        cls,
+        user_role: str,
+        is_admin: bool,
+        db: Optional[Session] = None,
+        role_id: Optional[int] = None,
+        connection_id: int = 1
+    ) -> Set[str]:
+        if is_admin or user_role in ADMIN_ROLES:
             return ALL_TABLES
-        if user_role == "TI":
+        if db is not None:
+            try:
+                schema_info = DynamicSchemaPruningService.get_authorized_schema_prompt(
+                    db=db, role_id=role_id, connection_id=connection_id, is_admin=is_admin
+                )
+                if schema_info.get("allowed_tables"):
+                    return schema_info["allowed_tables"]
+            except Exception:
+                pass
+        if user_role == ROLE_TI:
             return DOMAIN_TABLES["Tecnología & TI"]
-        if user_role in ("Economista", "Analista Financiero", "Finanzas"):
+        if user_role in (ROLE_ECONOMISTA, "Analista Financiero", "Finanzas"):
             return DOMAIN_TABLES["Economía & Finanzas"]
         return set()
 
     @classmethod
-    def get_blocked_columns_for_role(cls, user_role: str, is_admin: bool) -> Set[str]:
+    def get_blocked_columns_for_role(
+        cls,
+        user_role: str,
+        is_admin: bool,
+        db: Optional[Session] = None,
+        role_id: Optional[int] = None,
+        connection_id: int = 1
+    ) -> Set[str]:
         """Returns confidential column names blocked from querying by non-admin roles (Column-Level Security)."""
-        if is_admin or user_role in ("Administrador", "Super Administrador", "Admin"):
+        if is_admin or user_role in ADMIN_ROLES:
             return set()
-        if user_role in ("Economista", "Analista Financiero", "Finanzas"):
+        if db is not None:
+            try:
+                schema_info = DynamicSchemaPruningService.get_authorized_schema_prompt(
+                    db=db, role_id=role_id, connection_id=connection_id, is_admin=is_admin
+                )
+                if "blocked_columns" in schema_info:
+                    return schema_info["blocked_columns"]
+            except Exception:
+                pass
+        if user_role in (ROLE_ECONOMISTA, "Analista Financiero", "Finanzas"):
             return {"tarjeta_credito_token", "api_key_servicio", "cuenta_bancaria_iban"}
-        if user_role == "TI":
+        if user_role == ROLE_TI:
             return {"api_key_servicio", "tarjeta_credito_token", "salario_bruto", "bono_anual", "cuenta_bancaria_iban"}
         return CONFIDENTIAL_COLUMNS
 
@@ -100,25 +140,28 @@ class QueryEngine:
     async def execute_query(
         cls,
         question: str,
-        user_role: str = "Economista",
-        is_admin: bool = False
+        user_role: str = DEFAULT_DEMO_ROLE,
+        is_admin: bool = False,
+        db: Optional[Session] = None,
+        role_id: Optional[int] = None,
+        connection_id: int = 1
     ) -> QueryResponse:
 
         # 1. RBAC check for unassigned "Usuario" role
-        if not is_admin and (user_role == "Usuario" or not user_role):
+        if not is_admin and (user_role == ROLE_USUARIO or not user_role):
             return cls._build_rbac_denied_response(
                 question,
                 "Tu cuenta se encuentra registrada con el perfil inicial 'Usuario'. Un Administrador debe asignarte un rol (Economista o TI) para acceder a los datos corporativos."
             )
 
-        allowed_tables = cls.get_allowed_tables_for_role(user_role, is_admin)
+        allowed_tables = cls.get_allowed_tables_for_role(user_role, is_admin, db=db, role_id=role_id, connection_id=connection_id)
         if not allowed_tables:
             return cls._build_rbac_denied_response(
                 question,
                 f"El rol '{user_role}' no tiene tablas asignadas en la matriz RBAC."
             )
 
-        blocked_columns = cls.get_blocked_columns_for_role(user_role, is_admin)
+        blocked_columns = cls.get_blocked_columns_for_role(user_role, is_admin, db=db, role_id=role_id, connection_id=connection_id)
 
         start_time = time.time()
         llm_response_text = None
@@ -167,6 +210,9 @@ Responde ÚNICAMENTE con el bloque ```sql ... ```."""
                         candidate_sql = select_match.group(1).strip().rstrip(';')
         except Exception:
             is_llm_active = False
+
+        # 2.5 Classify user intent
+        response_type = await cls._classify_intent(question, is_llm_active)
 
         # Fallback candidate SQL if LLM is offline or produced no SQL
         if not candidate_sql:
@@ -237,6 +283,13 @@ Responde ÚNICAMENTE con el bloque ```sql ... ```."""
         final_exec_report = llm_exec_report or fallback_exec_report
         final_summary = final_exec_report.overview if final_exec_report and final_exec_report.overview else fallback_summary
 
+        # 6.5 Generate conversational response for advisory/explanation/hybrid
+        conversational = None
+        if response_type in ("advisory", "explanation", "hybrid"):
+            conversational = await cls._generate_conversational_response(
+                question, user_role, response_type, rows, columns, is_llm_active
+            )
+
         return QueryResponse(
             question=question,
             summary_text=final_summary,
@@ -247,6 +300,8 @@ Responde ÚNICAMENTE con el bloque ```sql ... ```."""
             chart_option=chart_option,
             data_columns=columns,
             data_rows=rows,
+            response_type=response_type,
+            conversational_response=conversational,
             traceability=TraceabilityAudit(
                 sql_executed=secured_sql,
                 execution_time_ms=exec_time_ms,
@@ -256,6 +311,116 @@ Responde ÚNICAMENTE con el bloque ```sql ... ```."""
                 explanation=f"Consulta generada y validada con IA Local ({'Qwen2.5-Coder' if is_llm_active else 'Modo Determinístico'}). Tablas autorizadas: {', '.join(allowed_tables)}."
             )
         )
+
+    @classmethod
+    async def _classify_intent(cls, question: str, is_llm_active: bool) -> str:
+        if not is_llm_active:
+            q_lower = question.lower()
+            if any(k in q_lower for k in ["qué es", "qué significa", "explícame", "explica", "cómo funciona", "define", "definición"]):
+                return "explanation"
+            elif any(k in q_lower for k in ["analiza y recomienda", "evalúa y sugiere", "diagnóstico y recomendaciones", "análisis con recomendaciones"]):
+                return "hybrid"
+            elif any(k in q_lower for k in ["ideas", "recomienda", "sugerencias", "estrategia", "estrategias", "consejos", "cómo mejorar", "qué puedo hacer", "propuestas", "iniciativas", "mejores prácticas", "opinión", "qué opinas"]):
+                return "advisory"
+            return "data_analysis"
+
+        system_prompt = (
+            "Clasifica la intención de la pregunta del usuario en EXACTAMENTE una categoría.\n"
+            "Responde SOLO con una de estas palabras: data_analysis, advisory, explanation, hybrid\n\n"
+            "- data_analysis: Preguntas que piden datos, cifras, reportes, rankings, comparaciones numéricas. Ejemplos: \"Top 10 productos\", \"Ingresos del Q3\", \"¿Cuántas ventas hubo?\"\n"
+            "- advisory: Preguntas que piden ideas, estrategias, consejos, recomendaciones de mejora. Ejemplos: \"Ideas para mejorar ventas\", \"¿Qué estrategia recomiendas?\", \"Cómo reducir costos\"\n"
+            "- explanation: Preguntas que piden explicar un concepto o definición. Ejemplos: \"¿Qué es el margen bruto?\", \"Explícame qué es RBAC\"\n"
+            "- hybrid: Preguntas que combinan análisis de datos CON recomendaciones. Ejemplos: \"Analiza las ventas y recomienda mejoras\", \"Evalúa el inventario y sugiere optimizaciones\""
+        )
+        try:
+            resp = await LLMService.generate_completion(
+                question,
+                system_prompt=system_prompt,
+                max_tokens=30,
+                temperature=0.01
+            )
+            if resp:
+                resp = resp.strip().lower()
+                for t in ["data_analysis", "advisory", "explanation", "hybrid"]:
+                    if t in resp:
+                        return t
+        except Exception:
+            pass
+        return "data_analysis"
+
+    @classmethod
+    async def _generate_conversational_response(
+        cls,
+        question: str,
+        user_role: str,
+        response_type: str,
+        data_context: Optional[List[Dict[str, Any]]] = None,
+        columns: Optional[List[str]] = None,
+        is_llm_active: bool = False
+    ) -> Optional[str]:
+        if not is_llm_active:
+            return None
+        
+        if response_type == "advisory":
+            system_prompt = (
+                "Eres un consultor ejecutivo senior especializado en estrategia empresarial y optimización corporativa.\n"
+                "Tu objetivo es responder la pregunta del usuario con IDEAS CONCRETAS, ACCIONABLES Y DE ALTO VALOR ESTRATÉGICO.\n\n"
+                "REGLAS:\n"
+                "1. Entrega respuestas RICAS, DETALLADAS y PROFESIONALES en español.\n"
+                "2. Usa los datos reales de la empresa (proporcionados abajo) para contextualizar y fundamentar tus recomendaciones.\n"
+                "3. Estructura tu respuesta con secciones claras usando markdown:\n"
+                "   - Usa ## para títulos de sección\n"
+                "   - Usa **negrita** para énfasis\n"
+                "   - Usa listas numeradas para ideas/recomendaciones\n"
+                "   - Usa > para citas o destacados importantes\n"
+                "4. Sé ESPECÍFICO: menciona productos, clientes, montos y porcentajes reales de los datos cuando sea relevante.\n"
+                "5. Cada idea/recomendación debe incluir: qué hacer, por qué, y el impacto esperado.\n"
+                "6. NO generes SQL ni tablas de datos. Tu rol es el de ASESOR ESTRATÉGICO."
+            )
+            temp = 0.3
+        elif response_type == "explanation":
+            system_prompt = (
+                "Eres un experto en análisis de datos corporativos y gobernanza empresarial.\n"
+                "Tu objetivo es EXPLICAR de forma clara, profesional y educativa el concepto que pregunta el usuario.\n\n"
+                "REGLAS:\n"
+                "1. Explica el concepto de forma clara y accesible, pero profesional.\n"
+                "2. Si hay datos de la empresa disponibles, usa ejemplos concretos de esos datos para ilustrar.\n"
+                "3. Estructura tu respuesta con markdown:\n"
+                "   - Usa ## para secciones\n"
+                "   - Usa **negrita** para términos clave\n"
+                "   - Usa ejemplos prácticos\n"
+                "4. NO generes SQL. Tu rol es EDUCATIVO."
+            )
+            temp = 0.2
+        elif response_type == "hybrid":
+            system_prompt = (
+                "Eres un Director de Estrategia Corporativa (CSO) con expertise en análisis de datos y planificación estratégica.\n"
+                "Tu objetivo es ANALIZAR los datos reales de la empresa Y generar RECOMENDACIONES ESTRATÉGICAS basadas en ese análisis.\n\n"
+                "REGLAS:\n"
+                "1. Primero presenta un DIAGNÓSTICO basado en los datos reales (cifras, tendencias, anomalías).\n"
+                "2. Luego presenta RECOMENDACIONES ACCIONABLES fundamentadas en ese diagnóstico.\n"
+                "3. Usa markdown con secciones claras (## Diagnóstico, ## Hallazgos Clave, ## Recomendaciones Estratégicas).\n"
+                "4. Sé CUANTITATIVO: cita cifras exactas, porcentajes, nombres de productos/clientes de los datos.\n"
+                "5. Cada recomendación debe tener: acción concreta, justificación basada en datos, impacto esperado.\n"
+                "6. NO generes SQL. Analiza los datos proporcionados directamente."
+            )
+            temp = 0.3
+        else:
+            return None
+
+        prompt = f"Pregunta del usuario ({user_role}): \"{question}\"\n"
+        if data_context:
+            prompt += f"\nContexto de datos (primeras 40 filas):\n{json.dumps(data_context[:40], ensure_ascii=False, indent=2)}"
+
+        try:
+            return await LLMService.generate_completion(
+                prompt,
+                system_prompt=system_prompt,
+                max_tokens=1200,
+                temperature=temp
+            )
+        except Exception:
+            return None
 
     @classmethod
     async def _generate_deep_executive_report_with_llm(
@@ -427,21 +592,21 @@ Genera el informe ejecutivo en formato JSON."""
             )
 
             gauges = [
-                MetricGauge(title="Nivel Salud Stock", percentage=max(10, 100 - len(rows) * 5), value_label=f"{len(rows)} Críticos", target_label="Meta: 0 Críticos", color="#EF4444" if len(rows) > 8 else "#F59E0B"),
-                MetricGauge(title="Disponibilidad en Bodega", percentage=min(100, round((total_stock / 300) * 100, 1)), value_label=f"{total_stock}u", target_label="Capacidad 300u", color="#10B981")
+                MetricGauge(title="Nivel Salud Stock", percentage=max(10, 100 - len(rows) * 5), value_label=f"{len(rows)} Críticos", target_label="Meta: 0 Críticos", color=CHART_COLOR_RED if len(rows) > 8 else CHART_COLOR_AMBER),
+                MetricGauge(title="Disponibilidad en Bodega", percentage=min(100, round((total_stock / 300) * 100, 1)), value_label=f"{total_stock}u", target_label="Capacidad 300u", color=CHART_COLOR_EMERALD)
             ]
 
             chart_type = "bar"
             y_data = [r.get(stock_col, 0) for r in rows] if stock_col else [1] * len(rows)
             chart_option = {
                 "tooltip": {"trigger": "axis", "formatter": "{b}: {c} unidades en stock"},
-                "xAxis": {"type": "category", "data": x_data, "axisLabel": {"color": "#9CA3AF", "rotate": 15 if len(rows) > 3 else 0}},
-                "yAxis": {"type": "value", "name": "Unidades", "axisLabel": {"color": "#9CA3AF"}},
+                "xAxis": {"type": "category", "data": x_data, "axisLabel": {"color": CHART_COLOR_TEXT_MUTED, "rotate": 15 if len(rows) > 3 else 0}},
+                "yAxis": {"type": "value", "name": "Unidades", "axisLabel": {"color": CHART_COLOR_TEXT_MUTED}},
                 "series": [{
                     "name": "Stock Disponible",
                     "type": "bar",
                     "data": y_data,
-                    "itemStyle": {"color": "#F59E0B", "borderRadius": [6, 6, 0, 0]}
+                    "itemStyle": {"color": CHART_COLOR_AMBER, "borderRadius": [6, 6, 0, 0]}
                 }]
             }
             return kpis, chart_type, chart_option, summary, exec_rep, gauges
@@ -488,8 +653,8 @@ Genera el informe ejecutivo en formato JSON."""
                 )
 
                 gauges = [
-                    MetricGauge(title="Meta Comercial", percentage=min(100, round((total_val / 200000) * 100, 1)), value_label=f"${total_val/1000:,.1f}K", target_label="Meta: $200K", color="#10B981"),
-                    MetricGauge(title="Concentración Líder", percentage=round(pct, 1), value_label=f"{pct:.1f}%", target_label="Límite Sano: 50%", color="#06B6D4")
+                    MetricGauge(title="Meta Comercial", percentage=min(100, round((total_val / 200000) * 100, 1)), value_label=f"${total_val/1000:,.1f}K", target_label="Meta: $200K", color=CHART_COLOR_EMERALD),
+                    MetricGauge(title="Concentración Líder", percentage=round(pct, 1), value_label=f"{pct:.1f}%", target_label="Límite Sano: 50%", color=CHART_COLOR_CYAN)
                 ]
 
                 y_data = [r.get(val_col, 0) for r in rows]
@@ -505,20 +670,20 @@ Genera el informe ejecutivo en formato JSON."""
                             "type": "pie",
                             "radius": ["40%", "70%"],
                             "itemStyle": {"borderRadius": 8, "borderColor": "#111827", "borderWidth": 2},
-                            "label": {"show": True, "color": "#F3F4F6"},
+                            "label": {"show": True, "color": CHART_COLOR_TEXT_LIGHT},
                             "data": pie_series
                         }]
                     }
                 else:
                     chart_option = {
                         "tooltip": {"trigger": "axis", "formatter": "{b}: ${c:,.2f}"},
-                        "xAxis": {"type": "category", "data": x_data, "axisLabel": {"color": "#9CA3AF", "rotate": 20 if len(rows) > 4 else 0}},
-                        "yAxis": {"type": "value", "name": "USD ($)", "axisLabel": {"color": "#9CA3AF"}},
+                        "xAxis": {"type": "category", "data": x_data, "axisLabel": {"color": CHART_COLOR_TEXT_MUTED, "rotate": 20 if len(rows) > 4 else 0}},
+                        "yAxis": {"type": "value", "name": "USD ($)", "axisLabel": {"color": CHART_COLOR_TEXT_MUTED}},
                         "series": [{
                             "name": val_col.replace('_', ' ').title(),
                             "type": "bar",
                             "data": y_data,
-                            "itemStyle": {"color": "#8B5CF6", "borderRadius": [6, 6, 0, 0]}
+                            "itemStyle": {"color": CHART_COLOR_PURPLE, "borderRadius": [6, 6, 0, 0]}
                         }]
                     }
                 return kpis, chart_type, chart_option, summary, exec_rep, gauges
@@ -564,21 +729,21 @@ Genera el informe ejecutivo en formato JSON."""
                 )
 
                 gauges = [
-                    MetricGauge(title="Presupuesto Asignado", percentage=78.2, value_label=f"${total_sal/1000:,.1f}K", target_label="Tope: $60K", color="#10B981"),
-                    MetricGauge(title="Índice Retención", percentage=94.5, value_label="94.5%", target_label="Meta: >90%", color="#8B5CF6")
+                    MetricGauge(title="Presupuesto Asignado", percentage=78.2, value_label=f"${total_sal/1000:,.1f}K", target_label="Tope: $60K", color=CHART_COLOR_EMERALD),
+                    MetricGauge(title="Índice Retención", percentage=94.5, value_label="94.5%", target_label="Meta: >90%", color=CHART_COLOR_PURPLE)
                 ]
 
                 y_data = [r.get(sal_col, 0) for r in rows]
                 chart_type = "bar"
                 chart_option = {
                     "tooltip": {"trigger": "axis", "formatter": "{b}: ${c:,.2f}"},
-                    "xAxis": {"type": "category", "data": x_data, "axisLabel": {"color": "#9CA3AF", "rotate": 25 if len(rows) > 4 else 0}},
-                    "yAxis": {"type": "value", "name": "USD ($)", "axisLabel": {"color": "#9CA3AF"}},
+                    "xAxis": {"type": "category", "data": x_data, "axisLabel": {"color": CHART_COLOR_TEXT_MUTED, "rotate": 25 if len(rows) > 4 else 0}},
+                    "yAxis": {"type": "value", "name": "USD ($)", "axisLabel": {"color": CHART_COLOR_TEXT_MUTED}},
                     "series": [{
                         "name": sal_col.replace('_', ' ').title(),
                         "type": "bar",
                         "data": y_data,
-                        "itemStyle": {"color": "#10B981", "borderRadius": [6, 6, 0, 0]}
+                        "itemStyle": {"color": CHART_COLOR_EMERALD, "borderRadius": [6, 6, 0, 0]}
                     }]
                 }
                 return kpis, chart_type, chart_option, summary, exec_rep, gauges
@@ -621,21 +786,21 @@ Genera el informe ejecutivo en formato JSON."""
                 )
 
                 gauges = [
-                    MetricGauge(title="Carga Media CPU/RAM", percentage=min(100, round(avg_val, 1)), value_label=f"{avg_val:.1f} {unit}", target_label="Target: <70%", color="#06B6D4"),
-                    MetricGauge(title="Estabilidad Infra", percentage=99.8, value_label="99.8%", target_label="SLA: 99.9%", color="#10B981")
+                    MetricGauge(title="Carga Media CPU/RAM", percentage=min(100, round(avg_val, 1)), value_label=f"{avg_val:.1f} {unit}", target_label="Target: <70%", color=CHART_COLOR_CYAN),
+                    MetricGauge(title="Estabilidad Infra", percentage=99.8, value_label="99.8%", target_label="SLA: 99.9%", color=CHART_COLOR_EMERALD)
                 ]
 
                 y_data = [r.get(metric_col, 0) for r in rows]
                 chart_type = "line" if len(rows) > 8 else "bar"
                 chart_option = {
                     "tooltip": {"trigger": "axis", "formatter": f"{{b}}: {{c}} {unit}"},
-                    "xAxis": {"type": "category", "data": x_data, "axisLabel": {"color": "#9CA3AF"}},
-                    "yAxis": {"type": "value", "name": unit, "axisLabel": {"color": "#9CA3AF"}},
+                    "xAxis": {"type": "category", "data": x_data, "axisLabel": {"color": CHART_COLOR_TEXT_MUTED}},
+                    "yAxis": {"type": "value", "name": unit, "axisLabel": {"color": CHART_COLOR_TEXT_MUTED}},
                     "series": [{
                         "name": metric_col.replace('_', ' ').title(),
                         "type": chart_type,
                         "data": y_data,
-                        "itemStyle": {"color": "#06B6D4", "borderRadius": [6, 6, 0, 0]}
+                        "itemStyle": {"color": CHART_COLOR_CYAN, "borderRadius": [6, 6, 0, 0]}
                     }]
                 }
                 return kpis, chart_type, chart_option, summary, exec_rep, gauges
@@ -677,21 +842,21 @@ Genera el informe ejecutivo en formato JSON."""
             )
 
             gauges = [
-                MetricGauge(title="Cumplimiento SLA (<3h)", percentage=88.0, value_label=f"{avg_hrs:.1f}h", target_label="Meta: <2.5h", color="#10B981"),
-                MetricGauge(title="Disponibilidad Plataforma", percentage=99.6, value_label="99.6%", target_label="SLA: 99.9%", color="#06B6D4")
+                MetricGauge(title="Cumplimiento SLA (<3h)", percentage=88.0, value_label=f"{avg_hrs:.1f}h", target_label="Meta: <2.5h", color=CHART_COLOR_EMERALD),
+                MetricGauge(title="Disponibilidad Plataforma", percentage=99.6, value_label="99.6%", target_label="SLA: 99.9%", color=CHART_COLOR_CYAN)
             ]
 
             chart_type = "bar"
             y_data = [r.get(hrs_col, 0) for r in rows] if hrs_col else [1] * len(rows)
             chart_option = {
                 "tooltip": {"trigger": "axis", "formatter": "{b}: {c} hrs"},
-                "xAxis": {"type": "category", "data": x_data, "axisLabel": {"color": "#9CA3AF"}},
-                "yAxis": {"type": "value", "name": "Horas", "axisLabel": {"color": "#9CA3AF"}},
+                "xAxis": {"type": "category", "data": x_data, "axisLabel": {"color": CHART_COLOR_TEXT_MUTED}},
+                "yAxis": {"type": "value", "name": "Horas", "axisLabel": {"color": CHART_COLOR_TEXT_MUTED}},
                 "series": [{
                     "name": "Horas Resolución SLA",
                     "type": "bar",
                     "data": y_data,
-                    "itemStyle": {"color": "#3B82F6", "borderRadius": [6, 6, 0, 0]}
+                    "itemStyle": {"color": CHART_COLOR_BLUE, "borderRadius": [6, 6, 0, 0]}
                 }]
             }
             return kpis, chart_type, chart_option, summary, exec_rep, gauges
@@ -724,21 +889,21 @@ Genera el informe ejecutivo en formato JSON."""
             y_data = [r.get(num_col, 0) for r in rows]
             chart_option = {
                 "tooltip": {"trigger": "axis"},
-                "xAxis": {"type": "category", "data": x_data, "axisLabel": {"color": "#9CA3AF", "rotate": 20 if len(rows) > 4 else 0}},
-                "yAxis": {"type": "value", "axisLabel": {"color": "#9CA3AF"}},
+                "xAxis": {"type": "category", "data": x_data, "axisLabel": {"color": CHART_COLOR_TEXT_MUTED, "rotate": 20 if len(rows) > 4 else 0}},
+                "yAxis": {"type": "value", "axisLabel": {"color": CHART_COLOR_TEXT_MUTED}},
                 "series": [{
                     "name": num_col.replace('_', ' ').title(),
                     "type": "bar",
                     "data": y_data,
-                    "itemStyle": {"color": "#8B5CF6", "borderRadius": [6, 6, 0, 0]}
+                    "itemStyle": {"color": CHART_COLOR_PURPLE, "borderRadius": [6, 6, 0, 0]}
                 }]
             }
         else:
             chart_option = {
                 "tooltip": {"trigger": "axis"},
-                "xAxis": {"type": "category", "data": x_data[:10], "axisLabel": {"color": "#9CA3AF"}},
-                "yAxis": {"type": "value", "axisLabel": {"color": "#9CA3AF"}},
-                "series": [{"type": "bar", "data": [1] * min(len(x_data), 10), "itemStyle": {"color": "#3B82F6"}}]
+                "xAxis": {"type": "category", "data": x_data[:10], "axisLabel": {"color": CHART_COLOR_TEXT_MUTED}},
+                "yAxis": {"type": "value", "axisLabel": {"color": CHART_COLOR_TEXT_MUTED}},
+                "series": [{"type": "bar", "data": [1] * min(len(x_data), 10), "itemStyle": {"color": CHART_COLOR_BLUE}}]
             }
 
         summary = f"Informe de Negocio: Se procesaron exitosamente **{len(rows)} registro(s)** de la base de datos corporativa para la consulta '{question}'."

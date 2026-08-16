@@ -28,7 +28,7 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
       <div className="p-4 border-b border-dark-border/60">
         <button
           onClick={onNewThread}
-          className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white text-xs font-semibold py-2.5 px-4 rounded-xl shadow-lg shadow-brand-500/20 transition-all group"
+          className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white text-xs font-semibold py-2.5 px-4 rounded-xl shadow-lg shadow-brand-500/20 transition-colors group"
         >
           <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
           <span>Nueva Consulta</span>
@@ -49,21 +49,28 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
               return (
                 <div
                   key={t.id}
-                  onClick={() => onSelectThread(t.id)}
-                  className={`group relative flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer text-xs transition-all ${
-                    isActive
-                      ? 'bg-brand-500/15 text-white border border-brand-500/30 font-medium'
-                      : 'text-gray-400 hover:text-gray-200 hover:bg-dark-card/60 border border-transparent'
-                  }`}
+                  className="group relative w-full flex items-center justify-between"
                 >
-                  <div className="flex items-center space-x-2.5 truncate pr-6">
-                    <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-brand-400' : 'text-gray-500'}`} />
-                    <span className="truncate">{t.title}</span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onSelectThread(t.id)}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer text-xs text-left transition-colors ${
+                      isActive
+                        ? 'bg-brand-500/15 text-white border border-brand-500/30 font-medium'
+                        : 'text-gray-400 hover:text-gray-200 hover:bg-dark-card/60 border border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2.5 truncate pr-6">
+                      <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-brand-400' : 'text-gray-500'}`} />
+                      <span className="truncate">{t.title}</span>
+                    </div>
+                  </button>
 
                   <button
+                    type="button"
                     onClick={(e) => onDeleteThread(t.id, e)}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-rose-400 transition-opacity absolute right-2"
+                    aria-label={`Eliminar conversación ${t.title}`}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-rose-400 transition-opacity absolute right-2"
                     title="Eliminar conversación"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

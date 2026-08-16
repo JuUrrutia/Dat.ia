@@ -61,11 +61,11 @@ export const connectorService = {
     try {
       const res = await apiClient.post<ConnectionTestResult>('/connectors/test', data);
       return res.data;
-    } catch {
+    } catch (err: any) {
       return {
-        success: true,
-        message: `Conexión simulada exitosa a ${data.db_type.toUpperCase()} (${data.host}:${data.port}/${data.database_name}) en modo SOLO LECTURA.`,
-        latency_ms: 140
+        success: false,
+        message: err.response?.data?.detail || `No se pudo conectar a ${data.host}:${data.port} (${data.db_type.toUpperCase()}). Verifica la dirección y puerto.`,
+        latency_ms: 0
       };
     }
   }

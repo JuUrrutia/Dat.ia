@@ -1,47 +1,49 @@
-import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Users, Database, BookOpen, Plus, Sparkles, Check, Edit3, Trash2, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ShieldAlert, Users, Database, BookOpen, Plus, Edit3, Trash2, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { CorporateConnection, connectorService, ConnectionTestResult } from '../services/connector_service';
 import { ConnectorModal } from '../components/admin/ConnectorModal';
+import { AdminUsersTab } from '../components/admin/AdminUsersTab';
+import { AdminCatalogTab } from '../components/admin/AdminCatalogTab';
+
+const MOCK_USERS = [
+  { id: 1, name: 'admin', email: 'admin@empresa.com', role: 'Administrador', is_admin: true },
+  { id: 2, name: 'felipe_economista', email: 'felipe@empresa.com', role: 'Economista', is_admin: false },
+  { id: 3, name: 'juan_ti', email: 'juan@empresa.com', role: 'TI', is_admin: false },
+  { id: 4, name: 'nuevo_usuario', email: 'usuario@empresa.com', role: 'Usuario (Inicial)', is_admin: false },
+];
+
+const MOCK_CATALOG = [
+  { table: 'fact_ventas', column: 'monto_total', desc: 'Monto bruto en USD antes de impuestos', formula: 'SUM(precio_unitario * cantidad)', is_ai: true },
+  { table: 'fact_ventas', column: 'costo_total', desc: 'Costo de venta directo asociado', formula: 'SUM(costo_unitario * cantidad)', is_ai: true },
+  { table: 'dim_clientes', column: 'rut_dni_cliente', desc: 'Documento personal cliente (ENMASCARADO)', formula: 'MASKED / HASH', is_ai: false },
+  { table: 'fact_incidentes_ti', column: 'horas_resolucion', desc: 'Tiempo de resolución en horas SLA', formula: 'AVG(horas_resolucion)', is_ai: true },
+];
 
 export const AdminPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'users' | 'connectors' | 'catalog'>('connectors');
 
   // Connectors State
   const [connectors, setConnectors] = useState<CorporateConnection[]>([]);
-  const [isLoadingConnectors, setIsLoadingConnectors] = useState(false);
+  const isLoadingConnectorsRef = useRef(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingConnector, setEditingConnector] = useState<CorporateConnection | null>(null);
 
   const [testingId, setTestingId] = useState<number | null>(null);
   const [testResultsMap, setTestResultsMap] = useState<Record<number, ConnectionTestResult>>({});
 
-  const mockUsers = [
-    { id: 1, name: 'admin', email: 'admin@empresa.com', role: 'Administrador', is_admin: true },
-    { id: 2, name: 'felipe_economista', email: 'felipe@empresa.com', role: 'Economista', is_admin: false },
-    { id: 3, name: 'juan_ti', email: 'juan@empresa.com', role: 'TI', is_admin: false },
-    { id: 4, name: 'nuevo_usuario', email: 'usuario@empresa.com', role: 'Usuario (Inicial)', is_admin: false },
-  ];
-
-  const mockCatalog = [
-    { table: 'fact_ventas', column: 'monto_total', desc: 'Monto bruto en USD antes de impuestos', formula: 'SUM(precio_unitario * cantidad)', is_ai: true },
-    { table: 'fact_ventas', column: 'costo_total', desc: 'Costo de venta directo asociado', formula: 'SUM(costo_unitario * cantidad)', is_ai: true },
-    { table: 'dim_clientes', column: 'rut_dni_cliente', desc: 'Documento personal cliente (ENMASCARADO)', formula: 'MASKED / HASH', is_ai: false },
-    { table: 'fact_incidentes_ti', column: 'horas_resolucion', desc: 'Tiempo de resolución en horas SLA', formula: 'AVG(horas_resolucion)', is_ai: true },
-  ];
-
   const [aiEnriching, setAiEnriching] = useState(false);
   const [aiSuccess, setAiSuccess] = useState(false);
 
   // Load Connectors
   const fetchConnectors = async () => {
-    setIsLoadingConnectors(true);
+    isLoadingConnectorsRef.current = true;
     try {
       const data = await connectorService.getConnectors();
       setConnectors(data);
     } catch {
       // Handled in connectorService fallback
     } finally {
-      setIsLoadingConnectors(false);
+      isLoadingConnectorsRef.current = false;
     }
   };
 
@@ -110,7 +112,7 @@ export const AdminPage: React.FC = () => {
       <div className="flex items-center space-x-2 border-b border-dark-border pb-1">
         <button
           onClick={() => setActiveTab('connectors')}
-          className={`flex items-center space-x-2 px-4 py-2 text-xs font-medium border-b-2 transition-all ${
+          className={`flex items-center space-x-2 px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
             activeTab === 'connectors' ? 'border-purple-500 text-purple-400 font-semibold' : 'border-transparent text-gray-400 hover:text-white'
           }`}
         >
@@ -120,7 +122,7 @@ export const AdminPage: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('users')}
-          className={`flex items-center space-x-2 px-4 py-2 text-xs font-medium border-b-2 transition-all ${
+          className={`flex items-center space-x-2 px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
             activeTab === 'users' ? 'border-purple-500 text-purple-400 font-semibold' : 'border-transparent text-gray-400 hover:text-white'
           }`}
         >
@@ -130,7 +132,7 @@ export const AdminPage: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('catalog')}
-          className={`flex items-center space-x-2 px-4 py-2 text-xs font-medium border-b-2 transition-all ${
+          className={`flex items-center space-x-2 px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
             activeTab === 'catalog' ? 'border-purple-500 text-purple-400 font-semibold' : 'border-transparent text-gray-400 hover:text-white'
           }`}
         >
@@ -139,7 +141,7 @@ export const AdminPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Tab 1: Corporate DB Connectors (Full Functional CRUD) */}
+      {/* Tab 1: Corporate DB Connectors */}
       {activeTab === 'connectors' && (
         <div className="glass-panel rounded-2xl p-6 border border-white/10 space-y-5">
           <div className="flex items-center justify-between border-b border-dark-border pb-4">
@@ -150,7 +152,7 @@ export const AdminPage: React.FC = () => {
 
             <button
               onClick={handleOpenCreateModal}
-              className="flex items-center space-x-1.5 text-xs bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium px-4 py-2 rounded-xl shadow-lg shadow-purple-600/30 transition-all"
+              className="flex items-center space-x-1.5 text-xs bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium px-4 py-2 rounded-xl shadow-lg shadow-purple-600/30 transition-colors"
             >
               <Plus className="w-4 h-4" />
               <span>Registrar Nueva BD Corporativa</span>
@@ -162,7 +164,7 @@ export const AdminPage: React.FC = () => {
             {connectors.map((c) => {
               const testRes = testResultsMap[c.id];
               return (
-                <div key={c.id} className="glass-card p-5 rounded-2xl border border-white/10 space-y-4 hover:border-purple-500/30 transition-all">
+                <div key={c.id} className="glass-card p-5 rounded-2xl border border-white/10 space-y-4 hover:border-purple-500/30 transition-colors">
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
                       <div className="font-bold text-white text-sm flex items-center space-x-2">
@@ -182,7 +184,7 @@ export const AdminPage: React.FC = () => {
                       <button
                         onClick={() => handleOpenEditModal(c)}
                         title="Editar Conexión"
-                        className="p-2 rounded-lg text-gray-400 hover:text-brand-400 hover:bg-brand-500/10 border border-transparent hover:border-brand-500/20 transition-all"
+                        className="p-2 rounded-lg text-gray-400 hover:text-brand-400 hover:bg-brand-500/10 border border-transparent hover:border-brand-500/20 transition-colors"
                       >
                         <Edit3 className="w-3.5 h-3.5" />
                       </button>
@@ -190,7 +192,7 @@ export const AdminPage: React.FC = () => {
                       <button
                         onClick={() => handleDeleteConnector(c.id, c.name)}
                         title="Eliminar Conexión"
-                        className="p-2 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all"
+                        className="p-2 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -206,7 +208,7 @@ export const AdminPage: React.FC = () => {
                     <button
                       onClick={() => handleTestCardConnection(c)}
                       disabled={testingId === c.id}
-                      className="flex items-center space-x-1 text-xs text-brand-400 hover:text-brand-300 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/20 px-3 py-1 rounded-lg transition-all"
+                      className="flex items-center space-x-1 text-xs text-brand-400 hover:text-brand-300 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/20 px-3 py-1 rounded-lg transition-colors"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${testingId === c.id ? 'animate-spin' : ''}`} />
                       <span>{testingId === c.id ? 'Probando...' : 'Probar Red'}</span>
@@ -233,106 +235,16 @@ export const AdminPage: React.FC = () => {
       )}
 
       {/* Tab 2: Users & Roles */}
-      {activeTab === 'users' && (
-        <div className="glass-panel rounded-2xl p-6 border border-white/10 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white">Matriz de Usuarios y Asignación de Perfiles RBAC</h3>
-          </div>
+      {activeTab === 'users' && <AdminUsersTab users={MOCK_USERS} />}
 
-          <div className="overflow-x-auto rounded-xl border border-dark-border">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-dark-base border-b border-dark-border text-gray-400 uppercase">
-                <tr>
-                  <th className="px-4 py-3">Usuario</th>
-                  <th className="px-4 py-3">Correo</th>
-                  <th className="px-4 py-3">Rol RBAC Asignado</th>
-                  <th className="px-4 py-3">Es Admin</th>
-                  <th className="px-4 py-3">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-dark-border text-gray-200">
-                {mockUsers.map((u) => (
-                  <tr key={u.id} className="hover:bg-dark-card/50">
-                    <td className="px-4 py-3 font-medium">{u.name}</td>
-                    <td className="px-4 py-3 text-gray-400">{u.email}</td>
-                    <td className="px-4 py-3">
-                      <span className="bg-brand-500/10 text-brand-400 border border-brand-500/20 px-2 py-0.5 rounded">
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{u.is_admin ? 'Sí' : 'No'}</td>
-                    <td className="px-4 py-3">
-                      <button className="text-purple-400 hover:text-purple-300 font-medium">Editar Perfil</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Tab 3: Semantic Catalog & AI Auto-Enrichment */}
+      {/* Tab 3: Semantic Catalog */}
       {activeTab === 'catalog' && (
-        <div className="glass-panel rounded-2xl p-6 border border-white/10 space-y-5">
-          <div className="flex items-center justify-between border-b border-dark-border pb-4">
-            <div>
-              <h3 className="text-sm font-semibold text-white">Catálogo Semántico y Diccionario de Datos</h3>
-              <p className="text-xs text-gray-400">Enriquece tablas y columnas con descripciones en español y fórmulas</p>
-            </div>
-
-            <button
-              onClick={handleRunAiCatalog}
-              disabled={aiEnriching}
-              className="flex items-center space-x-2 text-xs bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium px-4 py-2 rounded-xl shadow-lg shadow-purple-600/30 transition-all"
-            >
-              <Sparkles className={`w-4 h-4 ${aiEnriching ? 'animate-spin' : ''}`} />
-              <span>{aiEnriching ? 'Analizando Esquema...' : 'Auto-enriquecer con IA'}</span>
-            </button>
-          </div>
-
-          {aiSuccess && (
-            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center space-x-2">
-              <Check className="w-4 h-4" />
-              <span>Catálogo semántico enriquecido automáticamente con descripciones generadas por la IA local.</span>
-            </div>
-          )}
-
-          <div className="overflow-x-auto rounded-xl border border-dark-border">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-dark-base border-b border-dark-border text-gray-400 uppercase">
-                <tr>
-                  <th className="px-4 py-3">Tabla</th>
-                  <th className="px-4 py-3">Columna</th>
-                  <th className="px-4 py-3">Descripción Semántica</th>
-                  <th className="px-4 py-3">Fórmula / Regla</th>
-                  <th className="px-4 py-3">Origen</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-dark-border text-gray-200">
-                {mockCatalog.map((cat, idx) => (
-                  <tr key={idx} className="hover:bg-dark-card/50">
-                    <td className="px-4 py-3 font-mono text-brand-400">{cat.table}</td>
-                    <td className="px-4 py-3 font-mono">{cat.column}</td>
-                    <td className="px-4 py-3">{cat.desc}</td>
-                    <td className="px-4 py-3 font-mono text-gray-400">{cat.formula}</td>
-                    <td className="px-4 py-3">
-                      {cat.is_ai ? (
-                        <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded text-[10px]">
-                          IA Auto-generado
-                        </span>
-                      ) : (
-                        <span className="bg-gray-500/10 text-gray-400 border border-gray-500/20 px-2 py-0.5 rounded text-[10px]">
-                          Manual Admin
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <AdminCatalogTab
+          catalog={MOCK_CATALOG}
+          aiEnriching={aiEnriching}
+          aiSuccess={aiSuccess}
+          onRunAiCatalog={handleRunAiCatalog}
+        />
       )}
 
       {/* Modal for Creating & Editing Connection */}

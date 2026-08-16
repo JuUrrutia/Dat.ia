@@ -1,6 +1,7 @@
 import { apiClient } from './api_client';
 import { QueryResult, AppSettings } from '../types';
 import { llmClientService } from './llm_service';
+import { DEFAULT_OLLAMA_URL, DEFAULT_LLM_MODEL, DEFAULT_LLM_PROVIDER } from '../constants';
 
 export const queryService = {
   /**
@@ -38,6 +39,8 @@ export const queryService = {
           data_rows: res.data.data_rows,
           traceability: res.data.traceability,
           pipeline_source: 'backend',
+          response_type: res.data.response_type || 'data_analysis',
+          conversational_response: res.data.conversational_response || undefined,
         };
       }
     } catch {
@@ -45,9 +48,9 @@ export const queryService = {
     }
 
     // Tier 2: Direct Local LLM query (when backend is offline but llama.cpp / Ollama is running)
-    const provider = settings?.llm_provider || 'llama_cpp';
-    const baseUrl = settings?.ollama_url || 'http://127.0.0.1:8080';
-    const modelName = settings?.ollama_model || 'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M';
+    const provider = settings?.llm_provider || DEFAULT_LLM_PROVIDER;
+    const baseUrl = settings?.ollama_url || DEFAULT_OLLAMA_URL;
+    const modelName = settings?.ollama_model || DEFAULT_LLM_MODEL;
 
     try {
       const promptLLM = `Pregunta del usuario (${userRole}): "${question}".
@@ -97,6 +100,7 @@ Entrega una respuesta ejecutiva y detallada en español para el rol ${userRole}.
             explanation: `Respuesta conceptual generada en vivo por la IA Local (${modelName}). Para ejecutar la consulta SQL sobre la BD SQLite, se requiere el backend FastAPI.`
           },
           pipeline_source: 'llm_direct',
+          response_type: 'data_analysis',
         };
       }
     } catch {
@@ -134,6 +138,7 @@ Entrega una respuesta ejecutiva y detallada en español para el rol ${userRole}.
           explanation: 'Cuenta recién registrada. Carece de dominios temáticos hasta asignación por Administrador.'
         },
         pipeline_source: 'fallback',
+        response_type: 'data_analysis',
       };
     }
 
@@ -159,6 +164,7 @@ Entrega una respuesta ejecutiva y detallada en español para el rol ${userRole}.
             explanation: 'Tu rol no tiene asignado el dominio Tecnología & TI.'
           },
           pipeline_source: 'fallback',
+        response_type: 'data_analysis',
         };
       }
 
@@ -195,6 +201,7 @@ Entrega una respuesta ejecutiva y detallada en español para el rol ${userRole}.
           explanation: 'Consulta realizada sobre el dominio Tecnología & TI. [Datos de fallback offline]'
         },
         pipeline_source: 'fallback',
+        response_type: 'data_analysis',
       };
     }
 
@@ -246,6 +253,7 @@ Entrega una respuesta ejecutiva y detallada en español para el rol ${userRole}.
         explanation: 'Consulta aggregada sobre fact_ventas con dim_categorias. [Datos de fallback offline]'
       },
       pipeline_source: 'fallback',
+      response_type: 'data_analysis',
     };
   }
 };
