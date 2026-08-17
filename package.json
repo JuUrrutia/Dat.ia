@@ -10,7 +10,8 @@
     "dev:backend": "cd backend && py main.py",
     "build": "tsc && vite build && electron-builder",
     "preview": "vite preview",
-    "backend:test": "cd backend && pytest"
+    "backend:test": "cd backend && pytest",
+    "doctor": "npx react-doctor@latest"
   },
   "dependencies": {
     "axios": "^1.7.9",

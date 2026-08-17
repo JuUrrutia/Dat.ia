@@ -41,10 +41,12 @@ class QueryResponse(BaseModel):
     executive_report: Optional[ExecutiveReport] = None
     kpis: List[KPICard] = []
     gauges: Optional[List[MetricGauge]] = []
-    chart_type: str = "bar" # bar | line | area | pie | donut | radar | gauge
+    chart_type: str = "bar" # bar | line | area | pie | donut | radar | gauge | none
     chart_option: Dict[str, Any] = {} # ECharts option JSON object
     data_columns: List[str] = []
     data_rows: List[Dict[str, Any]] = []
-    response_type: str = "data_analysis" # data_analysis | advisory | explanation | hybrid
-    conversational_response: Optional[str] = None # Respuesta conversacional rica (advisory/explanation/hybrid)
+    response_type: str = "data_analysis" # data_analysis | advisory | explanation | report | hybrid
+    conversational_response: Optional[str] = None # Respuesta conversacional estructurada (advisory/explanation/hybrid)
+    grounding_info: Optional[str] = None # Información de las tablas/registros reales de la BD consultados
     traceability: TraceabilityAudit
+

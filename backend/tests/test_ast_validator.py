@@ -1,41 +1,46 @@
-import pytest
+import unittest
 from app.services.ast_validator import ASTValidator, ASTValidationError
 
-def test_valid_select_query():
-    sql = "SELECT id, monto, fecha FROM fact_ventas WHERE fecha >= '2026-01-01'"
-    is_valid, secured_sql, meta = ASTValidator.validate_and_secure_sql(
-        sql,
-        dialect="postgres",
-        allowed_tables={"fact_ventas"}
-    )
-    assert is_valid is True
-    assert "LIMIT 1000" in secured_sql
-    assert "fact_ventas" in meta["tables_used"]
+class TestASTValidator(unittest.TestCase):
 
-def test_reject_dml_operation():
-    sql = "DELETE FROM fact_ventas WHERE id = 1"
-    with pytest.raises(ASTValidationError) as excinfo:
-        ASTValidator.validate_and_secure_sql(sql, allowed_tables={"fact_ventas"})
-    assert "Únicamente se permiten consultas SELECT" in str(excinfo.value)
-
-def test_reject_semicolon_chaining():
-    sql = "SELECT * FROM fact_ventas; DROP TABLE dim_clientes;"
-    with pytest.raises(ASTValidationError) as excinfo:
-        ASTValidator.validate_and_secure_sql(sql, allowed_tables={"fact_ventas"})
-    assert "Se prohíbe el encadenamiento" in str(excinfo.value)
-
-def test_reject_unauthorized_table():
-    sql = "SELECT * FROM dim_empleados_rrhh"
-    with pytest.raises(ASTValidationError) as excinfo:
-        ASTValidator.validate_and_secure_sql(sql, allowed_tables={"fact_ventas", "dim_productos"})
-    assert "no tiene autorización sobre la(s) tabla(s): dim_empleados_rrhh" in str(excinfo.value)
-
-def test_reject_blocked_column():
-    sql = "SELECT id, salario_base FROM fact_ventas"
-    with pytest.raises(ASTValidationError) as excinfo:
-        ASTValidator.validate_and_secure_sql(
+    def test_valid_select_query(self):
+        sql = "SELECT id, monto, fecha FROM fact_ventas WHERE fecha >= '2026-01-01'"
+        is_valid, secured_sql, meta = ASTValidator.validate_and_secure_sql(
             sql,
-            allowed_tables={"fact_ventas"},
-            blocked_columns={"salario_base"}
+            dialect="postgres",
+            allowed_tables={"fact_ventas"}
         )
-    assert "columna(s) confidencial(es) no permitidas: salario_base" in str(excinfo.value)
+        self.assertTrue(is_valid)
+        self.assertIn("LIMIT 1000", secured_sql)
+        self.assertIn("fact_ventas", meta["tables_used"])
+
+    def test_reject_dml_operation(self):
+        sql = "DELETE FROM fact_ventas WHERE id = 1"
+        with self.assertRaises(ASTValidationError) as excinfo:
+            ASTValidator.validate_and_secure_sql(sql, allowed_tables={"fact_ventas"})
+        self.assertIn("Únicamente se permiten consultas SELECT", str(excinfo.exception))
+
+    def test_reject_semicolon_chaining(self):
+        sql = "SELECT * FROM fact_ventas; DROP TABLE dim_clientes;"
+        with self.assertRaises(ASTValidationError) as excinfo:
+            ASTValidator.validate_and_secure_sql(sql, allowed_tables={"fact_ventas"})
+        self.assertIn("Se prohíbe el encadenamiento", str(excinfo.exception))
+
+    def test_reject_unauthorized_table(self):
+        sql = "SELECT * FROM dim_empleados_rrhh"
+        with self.assertRaises(ASTValidationError) as excinfo:
+            ASTValidator.validate_and_secure_sql(sql, allowed_tables={"fact_ventas", "dim_productos"})
+        self.assertIn("no tiene autorización sobre la(s) tabla(s): dim_empleados_rrhh", str(excinfo.exception))
+
+    def test_reject_blocked_column(self):
+        sql = "SELECT id, salario_base FROM fact_ventas"
+        with self.assertRaises(ASTValidationError) as excinfo:
+            ASTValidator.validate_and_secure_sql(
+                sql,
+                allowed_tables={"fact_ventas"},
+                blocked_columns={"salario_base"}
+            )
+        self.assertIn("columna(s) confidencial(es) no permitidas: salario_base", str(excinfo.exception))
+
+if __name__ == "__main__":
+    unittest.main()

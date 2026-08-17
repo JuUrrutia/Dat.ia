@@ -21,8 +21,8 @@ class DynamicSchemaPruningService:
         Returns compact prompt text containing schema definition for allowed tables/columns
         plus semantic descriptions, and sets of allowed_tables & blocked_columns for AST validation.
         """
-        # Admin gets full access if role_id is None
-        if is_admin or role_id is None:
+        # Admin gets full access to full database catalog
+        if is_admin:
             # Fetch all catalog entries for connection
             catalog_entries = db.query(SemanticCatalog).filter(
                 SemanticCatalog.connection_id == connection_id

@@ -65,9 +65,10 @@ export const ChatDashboardPage: React.FC = () => {
   const getSuggestionsForRole = () => {
     if (userRole === 'TI') {
       return [
-        'Incidentes de TI por servidor y nivel de prioridad',
-        'Métricas de consumo de CPU y RAM por servidor',
-        'Detalle de servidores e IP de infraestructura'
+        '💡 ¿Cómo reducir tiempos de resolución en incidentes críticos?',
+        '📊 Incidentes de TI por servidor y nivel de prioridad',
+        '⚡ Métricas de consumo de CPU y RAM por servidor',
+        '🛡️ Detalle de servidores e IP de infraestructura'
       ];
     }
     if (userRole === 'Usuario') {
@@ -78,9 +79,10 @@ export const ChatDashboardPage: React.FC = () => {
     }
     // Economista & Admin
     return [
-      '¿Cuáles fueron los ingresos del Q3 por categoría?',
-      'Top 5 clientes con mayor volumen de compras',
-      'Evolución mensual de ventas y costos operacionales'
+      '💡 Dame 5 ideas para mejorar la productividad',
+      '📊 Ingresos del Q3 por categoría',
+      '🏆 Top 5 productos con mayor facturación',
+      '📈 Evolución mensual de ventas y costos'
     ];
   };
 
