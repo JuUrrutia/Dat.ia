@@ -18,18 +18,6 @@ from app.schemas.query_schema import QueryResponse, KPICard, TraceabilityAudit, 
 
 DEMO_DB_PATH = settings.SQLITE_DB_PATH
 
-# Domain Table Mapping for RBAC Fallback (Offline Mode)
-DOMAIN_TABLES = {
-    "Economía & Finanzas": {"dim_categorias", "dim_productos", "dim_clientes", "fact_ventas", "fact_ingresos_costos", "dim_empleados"},
-    "Tecnología & TI": {"dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos"},
-}
-
-ALL_TABLES = {
-    "dim_categorias", "dim_productos", "dim_clientes", "fact_ventas",
-    "fact_ingresos_costos", "dim_empleados", "dim_servidores",
-    "fact_incidentes_ti", "fact_consumo_recursos"
-}
-
 # Sensitive / PII / Confidential Columns Protected by Governance
 CONFIDENTIAL_COLUMNS = {
     "tarjeta_credito_token", "api_key_servicio", "cuenta_bancaria_iban"
@@ -63,11 +51,7 @@ Tablas disponibles y sus columnas:
    - 50 incidentes operacionales clasificados (CRITICA, ALTA, MEDIA, BAJA) con horas SLA y costo.
 
 9. fact_consumo_recursos (id_consumo INTEGER PK, fecha_hora TEXT, id_servidor INTEGER FK→dim_servidores, porcentaje_cpu REAL, uso_ram_gb REAL, trafico_red_mb REAL)
-   - 100 mediciones de telemetría de CPU, memoria y tráfico de red.
-
-REGLAS DE DOMINIO RBAC:
-- Economía & Finanzas: dim_categorias, dim_productos, dim_clientes, fact_ventas, fact_ingresos_costos, dim_empleados
-- Tecnología & TI: dim_servidores, fact_incidentes_ti, fact_consumo_recursos"""
+   - 100 mediciones de telemetría de CPU, memoria y tráfico de red."""
 
 
 class QueryEngine:
@@ -92,24 +76,40 @@ class QueryEngine:
         role_id: Optional[int] = None,
         connection_id: int = 1
     ) -> Set[str]:
+        """
+        Dynamically queries RoleTablePermission and SemanticCatalog database models
+        (app/models/permission.py) to resolve authorized tables per role.
+        """
         if is_admin or user_role in ADMIN_ROLES:
-            return ALL_TABLES
-        if db is not None:
+            is_admin = True
+
+        local_db = None
+        if db is None:
+            try:
+                from app.core.database import SessionLocal
+                local_db = SessionLocal()
+                active_db = local_db
+            except Exception:
+                active_db = None
+        else:
+            active_db = db
+
+        if active_db is not None:
             try:
                 schema_info = DynamicSchemaPruningService.get_authorized_schema_prompt(
-                    db=db, role_id=role_id, connection_id=connection_id, is_admin=is_admin
+                    db=active_db,
+                    role_id=role_id,
+                    user_role=user_role,
+                    connection_id=connection_id,
+                    is_admin=is_admin
                 )
-                # Authoritative DB query (Fail-Closed)
                 return schema_info.get("allowed_tables", set())
             except Exception:
-                # Log DB error and fail closed by returning empty set
                 return set()
+            finally:
+                if local_db is not None:
+                    local_db.close()
 
-        # Standalone / Offline Demo mode fallback (only evaluated when db is None)
-        if user_role == ROLE_TI:
-            return DOMAIN_TABLES["Tecnología & TI"]
-        if user_role in (ROLE_ECONOMISTA, "Analista Financiero", "Finanzas"):
-            return DOMAIN_TABLES["Economía & Finanzas"]
         return set()
 
     @classmethod
@@ -121,23 +121,41 @@ class QueryEngine:
         role_id: Optional[int] = None,
         connection_id: int = 1
     ) -> Set[str]:
-        """Returns confidential column names blocked from querying by non-admin roles (Column-Level Security)."""
+        """
+        Dynamically queries RoleColumnPermission database models (app/models/permission.py)
+        to resolve confidential/blocked columns for non-admin roles.
+        """
         if is_admin or user_role in ADMIN_ROLES:
             return set()
-        if db is not None:
+
+        local_db = None
+        if db is None:
+            try:
+                from app.core.database import SessionLocal
+                local_db = SessionLocal()
+                active_db = local_db
+            except Exception:
+                active_db = None
+        else:
+            active_db = db
+
+        if active_db is not None:
             try:
                 schema_info = DynamicSchemaPruningService.get_authorized_schema_prompt(
-                    db=db, role_id=role_id, connection_id=connection_id, is_admin=is_admin
+                    db=active_db,
+                    role_id=role_id,
+                    user_role=user_role,
+                    connection_id=connection_id,
+                    is_admin=is_admin
                 )
                 return schema_info.get("blocked_columns", set())
             except Exception:
                 return CONFIDENTIAL_COLUMNS
+            finally:
+                if local_db is not None:
+                    local_db.close()
 
-        # Standalone / Offline Demo mode fallback (only evaluated when db is None)
-        if user_role in (ROLE_ECONOMISTA, "Analista Financiero", "Finanzas"):
-            return {"tarjeta_credito_token", "api_key_servicio", "cuenta_bancaria_iban"}
-        if user_role == ROLE_TI:
-            return {"api_key_servicio", "tarjeta_credito_token", "salario_bruto", "bono_anual", "cuenta_bancaria_iban"}
+        return CONFIDENTIAL_COLUMNS
         return CONFIDENTIAL_COLUMNS
 
     GROUNDING_QUERIES = {

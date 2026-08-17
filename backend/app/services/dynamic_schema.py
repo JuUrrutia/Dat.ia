@@ -1,6 +1,7 @@
 from typing import List, Dict, Set, Any, Optional
 from sqlalchemy.orm import Session
 from app.models.permission import RoleTablePermission, RoleColumnPermission, ColumnPermissionType
+from app.models.role import Role
 from app.models.catalog import SemanticCatalog
 
 class DynamicSchemaPruningService:
@@ -13,9 +14,10 @@ class DynamicSchemaPruningService:
     def get_authorized_schema_prompt(
         cls,
         db: Session,
-        role_id: Optional[int],
-        connection_id: int,
-        is_admin: bool = False
+        role_id: Optional[int] = None,
+        connection_id: int = 1,
+        is_admin: bool = False,
+        user_role: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Returns compact prompt text containing schema definition for allowed tables/columns
@@ -55,20 +57,27 @@ class DynamicSchemaPruningService:
                 "blocked_columns": blocked_columns
             }
 
-        # Non-admin: Query role table permissions
+        # Resolve role_id from Role model if role_id is None but user_role name is provided
+        effective_role_id = role_id
+        if effective_role_id is None and user_role:
+            role_obj = db.query(Role).filter(Role.name == user_role).first()
+            if role_obj:
+                effective_role_id = role_obj.id
+
+        # Non-admin: Query role table permissions from RoleTablePermission model
         table_perms = db.query(RoleTablePermission).filter(
-            RoleTablePermission.role_id == role_id,
+            RoleTablePermission.role_id == effective_role_id,
             RoleTablePermission.connection_id == connection_id,
             RoleTablePermission.is_allowed == True
-        ).all()
+        ).all() if effective_role_id is not None else []
 
         allowed_tables = {tp.table_name.lower() for tp in table_perms}
 
         # Query role column permissions
         col_perms = db.query(RoleColumnPermission).filter(
-            RoleColumnPermission.role_id == role_id,
+            RoleColumnPermission.role_id == effective_role_id,
             RoleColumnPermission.connection_id == connection_id
-        ).all()
+        ).all() if effective_role_id is not None else []
 
         blocked_columns: Set[str] = set()
         column_perm_map: Dict[str, str] = {} # "table.column" -> ALLOWED/BLOCKED/MASKED
