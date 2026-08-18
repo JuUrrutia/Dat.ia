@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Union, Optional
 from cryptography.fernet import Fernet
@@ -7,7 +8,9 @@ from jose import jwt
 from passlib.context import CryptContext
 from app.core.config import settings
 
-# Password hashing context (bcrypt + argon2)
+logger = logging.getLogger(__name__)
+
+# Password hashing context (Argon2 / bcrypt)
 pwd_context = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
 
 def _get_fernet_key() -> bytes:
@@ -21,7 +24,11 @@ fernet = Fernet(_get_fernet_key())
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verifies plain password against hashed password."""
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception as e:
+        logger.warning(f"Password verification error: {type(e).__name__}")
+        return False
 
 def get_password_hash(password: str) -> str:
     """Hashes a raw password securely using Argon2 / bcrypt."""
@@ -41,7 +48,8 @@ def decrypt_credential(encrypted_text: str) -> str:
     try:
         decrypted_bytes = fernet.decrypt(encrypted_text.encode())
         return decrypted_bytes.decode()
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Credential decryption error: {type(e).__name__}")
         return ""
 
 def create_access_token(subject: Union[str, Any], expires_delta: Optional[timedelta] = None) -> str:
@@ -60,5 +68,6 @@ def decode_access_token(token: str) -> Optional[str]:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload.get("sub")
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Token decoding error: {type(e).__name__}")
         return None

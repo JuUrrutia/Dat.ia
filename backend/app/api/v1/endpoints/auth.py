@@ -115,3 +115,17 @@ def list_available_roles(
     """Lists available roles for administration management."""
     roles = db.query(Role).all()
     return [{"id": r.id, "name": r.name, "description": r.description} for r in roles]
+
+@router.get("/users", response_model=List[UserOut])
+def list_all_users(
+    db: Session = Depends(get_db)
+) -> Any:
+    """Lists registered users from PostgreSQL metadata database for admin governance."""
+    users = db.query(User).all()
+    out = []
+    for u in users:
+        role_name = u.role.name if u.role else ("Administrador" if u.is_admin else "Usuario")
+        u_out = UserOut.model_validate(u)
+        u_out.role_name = role_name
+        out.append(u_out)
+    return out

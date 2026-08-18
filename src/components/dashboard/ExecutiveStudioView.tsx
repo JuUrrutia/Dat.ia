@@ -76,7 +76,7 @@ export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
       {/* Top Row: Hero Card + Radial Progress Gauges */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Widget 1: Hero Metric Card */}
-        <div className="lg:col-span-5 bg-gradient-to-br from-zinc-900/90 via-zinc-900/50 to-zinc-950/90 border border-white/10 rounded-3xl p-6 shadow-2xl relative overflow-hidden flex flex-col justify-between">
+        <div className={`${result.gauges && result.gauges.length > 0 ? 'lg:col-span-5' : 'lg:col-span-12'} bg-gradient-to-br from-zinc-900/90 via-zinc-900/50 to-zinc-950/90 border border-white/10 rounded-3xl p-6 shadow-2xl relative overflow-hidden flex flex-col justify-between`}>
           <div
             className="absolute -top-16 -right-16 w-48 h-48 rounded-full blur-3xl pointer-events-none opacity-20"
             style={{ backgroundColor: currentTheme.primary }}
@@ -126,75 +126,74 @@ export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
           </div>
         </div>
 
-        {/* Widget 2: Metric Gauges */}
-        <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-5">
-          {(result.gauges && result.gauges.length > 0 ? result.gauges : [
-            { title: 'Índice de Rendimiento', percentage: 88, value_label: '88%', target_label: 'Meta: >80%', color: '#F59E0B' },
-            { title: 'Salud Operacional', percentage: 95, value_label: '95%', target_label: 'Meta: 99%', color: '#10B981' }
-          ]).map((gauge, gIdx) => (
-            <div
-              key={gIdx}
-              className="bg-gradient-to-br from-zinc-900/80 via-zinc-900/40 to-zinc-950/80 border border-white/10 rounded-3xl p-6 shadow-2xl flex flex-col justify-between relative overflow-hidden"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                  {gauge.title}
-                </span>
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: gauge.color || '#F59E0B' }} />
-              </div>
-
-              <div className="flex items-center justify-between my-4">
-                <div>
-                  <div className="text-3xl font-extrabold text-white tracking-tight">
-                    {gauge.value_label}
-                  </div>
-                  <div className="text-xs text-zinc-400 mt-1 font-medium">
-                    {gauge.target_label}
-                  </div>
-                </div>
-
-                <div className="relative w-20 h-20 flex items-center justify-center">
-                  <svg className="w-20 h-20 transform -rotate-90">
-                    <circle
-                      cx="40"
-                      cy="40"
-                      r="32"
-                      stroke="currentColor"
-                      strokeWidth="7"
-                      className="text-zinc-800"
-                      fill="transparent"
-                    />
-                    <circle
-                      cx="40"
-                      cy="40"
-                      r="32"
-                      stroke={gauge.color || '#F59E0B'}
-                      strokeWidth="7"
-                      strokeDasharray={2 * Math.PI * 32}
-                      strokeDashoffset={2 * Math.PI * 32 * (1 - Math.min(100, Math.max(0, gauge.percentage)) / 100)}
-                      strokeLinecap="round"
-                      fill="transparent"
-                      className="transition-colors duration-1000 ease-out"
-                    />
-                  </svg>
-                  <span className="absolute text-xs font-bold text-white">
-                    {Math.round(gauge.percentage)}%
+        {/* Widget 2: Metric Gauges (Only rendered if result.gauges exists and has items) */}
+        {result.gauges && result.gauges.length > 0 && (
+          <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {result.gauges.map((gauge, gIdx) => (
+              <div
+                key={gIdx}
+                className="bg-gradient-to-br from-zinc-900/80 via-zinc-900/40 to-zinc-950/80 border border-white/10 rounded-3xl p-6 shadow-2xl flex flex-col justify-between relative overflow-hidden"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                    {gauge.title}
                   </span>
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: gauge.color || '#F59E0B' }} />
+                </div>
+
+                <div className="flex items-center justify-between my-4">
+                  <div>
+                    <div className="text-3xl font-extrabold text-white tracking-tight">
+                      {gauge.value_label}
+                    </div>
+                    <div className="text-xs text-zinc-400 mt-1 font-medium">
+                      {gauge.target_label}
+                    </div>
+                  </div>
+
+                  <div className="relative w-20 h-20 flex items-center justify-center">
+                    <svg className="w-20 h-20 transform -rotate-90">
+                      <circle
+                        cx="40"
+                        cy="40"
+                        r="32"
+                        stroke="currentColor"
+                        strokeWidth="7"
+                        className="text-zinc-800"
+                        fill="transparent"
+                      />
+                      <circle
+                        cx="40"
+                        cy="40"
+                        r="32"
+                        stroke={gauge.color || '#F59E0B'}
+                        strokeWidth="7"
+                        strokeDasharray={2 * Math.PI * 32}
+                        strokeDashoffset={2 * Math.PI * 32 * (1 - Math.min(100, Math.max(0, gauge.percentage)) / 100)}
+                        strokeLinecap="round"
+                        fill="transparent"
+                        className="transition-colors duration-1000 ease-out"
+                      />
+                    </svg>
+                    <span className="absolute text-xs font-bold text-white">
+                      {Math.round(gauge.percentage)}%
+                    </span>
+                  </div>
+                </div>
+
+                <div className="w-full bg-zinc-800/80 h-1.5 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-colors duration-1000"
+                    style={{
+                      width: `${Math.min(100, gauge.percentage)}%`,
+                      backgroundColor: gauge.color || '#F59E0B'
+                    }}
+                  />
                 </div>
               </div>
-
-              <div className="w-full bg-zinc-800/80 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-colors duration-1000"
-                  style={{
-                    width: `${Math.min(100, gauge.percentage)}%`,
-                    backgroundColor: gauge.color || '#F59E0B'
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Main Chart Card */}

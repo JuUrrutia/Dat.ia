@@ -5,11 +5,13 @@ import { ConnectorModal } from '../components/admin/ConnectorModal';
 import { AdminUsersTab } from '../components/admin/AdminUsersTab';
 import { AdminCatalogTab } from '../components/admin/AdminCatalogTab';
 
+import { authService } from '../services/auth_service';
+import { User } from '../types';
+
 const MOCK_USERS = [
   { id: 1, name: 'admin', email: 'admin@empresa.com', role: 'Administrador', is_admin: true },
-  { id: 2, name: 'felipe_economista', email: 'felipe@empresa.com', role: 'Economista', is_admin: false },
-  { id: 3, name: 'juan_ti', email: 'juan@empresa.com', role: 'TI', is_admin: false },
-  { id: 4, name: 'nuevo_usuario', email: 'usuario@empresa.com', role: 'Usuario (Inicial)', is_admin: false },
+  { id: 2, name: 'economista', email: 'economista@empresa.com', role: 'Economista', is_admin: false },
+  { id: 3, name: 'ti', email: 'ti@empresa.com', role: 'TI', is_admin: false },
 ];
 
 const MOCK_CATALOG = [
@@ -34,7 +36,29 @@ export const AdminPage: React.FC = () => {
   const [aiEnriching, setAiEnriching] = useState(false);
   const [aiSuccess, setAiSuccess] = useState(false);
 
-  // Load Connectors
+  // Users State
+  const [dbUsers, setDbUsers] = useState<Array<{ id: number; name: string; email: string; role: string; is_admin: boolean }>>([]);
+
+  const fetchUsers = async () => {
+    try {
+      const usersData: User[] = await authService.getUsers();
+      if (usersData && usersData.length > 0) {
+        setDbUsers(usersData.map((u) => ({
+          id: u.id,
+          name: u.username,
+          email: u.email || `${u.username}@empresa.com`,
+          role: u.role_name || (u.is_admin ? 'Administrador' : 'Usuario'),
+          is_admin: u.is_admin,
+        })));
+      } else {
+        setDbUsers(MOCK_USERS);
+      }
+    } catch {
+      setDbUsers(MOCK_USERS);
+    }
+  };
+
+  // Load Connectors & Users
   const fetchConnectors = async () => {
     isLoadingConnectorsRef.current = true;
     try {
@@ -49,6 +73,7 @@ export const AdminPage: React.FC = () => {
 
   useEffect(() => {
     fetchConnectors();
+    fetchUsers();
   }, []);
 
   const handleOpenCreateModal = () => {
@@ -235,7 +260,7 @@ export const AdminPage: React.FC = () => {
       )}
 
       {/* Tab 2: Users & Roles */}
-      {activeTab === 'users' && <AdminUsersTab users={MOCK_USERS} />}
+      {activeTab === 'users' && <AdminUsersTab users={dbUsers.length > 0 ? dbUsers : MOCK_USERS} />}
 
       {/* Tab 3: Semantic Catalog */}
       {activeTab === 'catalog' && (

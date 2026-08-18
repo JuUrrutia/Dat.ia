@@ -61,30 +61,19 @@ export const ChatDashboardPage: React.FC = () => {
 
   const userRole = user?.role_name || (user?.is_admin ? 'Administrador' : 'Usuario');
 
-  // Role-specific suggestion chips
-  const getSuggestionsForRole = () => {
-    if (userRole === 'TI') {
-      return [
-        'Incidentes de TI por servidor y nivel de prioridad',
-        'Métricas de consumo de CPU y RAM por servidor',
-        'Detalle de servidores e IP de infraestructura'
-      ];
-    }
-    if (userRole === 'Usuario') {
-      return [
-        '¿Qué información puedo consultar con mi perfil Usuario?',
-        '¿Cómo solicito acceso a los dominios Economía o TI?'
-      ];
-    }
-    // Economista & Admin
-    return [
-      '¿Cuáles fueron los ingresos del Q3 por categoría?',
-      'Top 5 clientes con mayor volumen de compras',
-      'Evolución mensual de ventas y costos operacionales'
-    ];
-  };
+  const [promptSuggestions, setPromptSuggestions] = useState<string[]>([]);
 
-  const promptSuggestions = getSuggestionsForRole();
+  useEffect(() => {
+    let isMounted = true;
+    queryService.getSuggestions(userRole).then((suggs) => {
+      if (isMounted) {
+        setPromptSuggestions(suggs);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [userRole]);
 
   // Full Threads state
   const [threads, setThreads] = useState<FullThread[]>([]);

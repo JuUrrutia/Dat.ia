@@ -52,3 +52,44 @@ async def process_chat_query_open(
         connection_id=query_in.connection_id or 1
     )
     return response
+
+@router.get("/suggestions")
+async def get_dynamic_suggestions(
+    user_role: Optional[str] = None,
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Returns role and table-specific question suggestions dynamically via LLM with fallback.
+    """
+    role_name = user_role or DEFAULT_DEMO_ROLE
+    is_admin = role_name in ADMIN_ROLES
+
+    allowed_tables = QueryEngine.get_allowed_tables_for_role(
+        user_role=role_name,
+        is_admin=is_admin,
+        db=db
+    )
+
+    schema_prompt = ""
+    try:
+        from app.services.dynamic_schema import DynamicSchemaPruningService
+        s_info = DynamicSchemaPruningService.get_authorized_schema_prompt(
+            db=db,
+            user_role=role_name,
+            is_admin=is_admin
+        )
+        schema_prompt = s_info.get("schema_prompt", "")
+    except Exception:
+        pass
+
+    suggestions = await QueryEngine.get_dynamic_suggestions_with_llm(
+        user_role=role_name,
+        allowed_tables=allowed_tables,
+        schema_prompt=schema_prompt
+    )
+
+    return {
+        "user_role": role_name,
+        "allowed_tables": list(allowed_tables),
+        "suggestions": suggestions
+    }

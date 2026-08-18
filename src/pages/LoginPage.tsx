@@ -3,9 +3,9 @@ import { useAuth } from '../context/AuthContext';
 import { Sparkles, ShieldCheck, Database, Lock, KeyRound, Mail, UserPlus, LogIn, ArrowRight, AlertCircle } from 'lucide-react';
 
 const PRESET_USERS = [
-  { name: 'Administrador', username: 'admin', role: 'Administrador', is_admin: true },
-  { name: 'Economista', username: 'felipe_economista', role: 'Economista', is_admin: false },
-  { name: 'Soporte TI', username: 'juan_ti', role: 'TI', is_admin: false },
+  { name: 'Administrador', username: 'admin', password: 'admin123', role: 'Administrador', is_admin: true },
+  { name: 'Economista', username: 'economista', password: 'economista123', role: 'Economista', is_admin: false },
+  { name: 'Soporte TI', username: 'ti', password: 'ti123', role: 'TI', is_admin: false },
 ];
 
 export const LoginPage: React.FC = () => {
@@ -50,11 +50,22 @@ export const LoginPage: React.FC = () => {
         await register(username, email, password);
       }
     } catch (err: any) {
-      if (mode === 'login') {
-        loginDemo(username, 'Economista', false);
-      } else {
-        setLocalError(err.message || 'Error en el registro de usuario.');
-      }
+      setLocalError(err.message || 'Credenciales inválidas. Verifica tu usuario y contraseña.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handlePresetLogin = async (u: typeof PRESET_USERS[0]) => {
+    setUsername(u.username);
+    setPassword(u.password);
+    setLocalError(null);
+    clearError();
+    setIsSubmitting(true);
+    try {
+      await login(u.username, u.password);
+    } catch (err: any) {
+      loginDemo(u.username, u.role, u.is_admin);
     } finally {
       setIsSubmitting(false);
     }
@@ -126,7 +137,7 @@ export const LoginPage: React.FC = () => {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="ej. felipe_economista"
+                  placeholder="ej. economista"
                   required
                   className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
                 />
@@ -204,7 +215,7 @@ export const LoginPage: React.FC = () => {
                 <button
                   key={u.username}
                   type="button"
-                  onClick={() => loginDemo(u.username, u.role, u.is_admin)}
+                  onClick={() => handlePresetLogin(u)}
                   className="bg-dark-base/50 hover:bg-dark-card border border-dark-border hover:border-brand-500/40 rounded-lg p-2 text-center transition-colors"
                 >
                   <div className="text-[11px] font-semibold text-gray-200 truncate">{u.name}</div>

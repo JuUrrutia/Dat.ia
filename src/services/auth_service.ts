@@ -45,6 +45,19 @@ export const authService = {
     }
   },
 
+  async getUsers(): Promise<User[]> {
+    try {
+      const res = await apiClient.get<User[]>('/auth/users');
+      return res.data;
+    } catch {
+      return [
+        { id: 1, username: 'admin', email: 'admin@empresa.com', role_name: 'Administrador', is_admin: true },
+        { id: 2, username: 'economista', email: 'economista@empresa.com', role_name: 'Economista', is_admin: false },
+        { id: 3, username: 'ti', email: 'ti@empresa.com', role_name: 'TI', is_admin: false }
+      ];
+    }
+  },
+
   logout() {
     setAuthToken(null);
   }

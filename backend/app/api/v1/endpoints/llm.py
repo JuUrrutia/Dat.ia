@@ -189,17 +189,10 @@ async def test_llm_completion(
     except Exception:
         pass
 
-    # Fallback simulated Text-to-SQL if offline
     latency = int((time.time() - start_time) * 1000)
-    simulated_sql = """SELECT c.nombre_categoria, SUM(v.monto_total) AS ingresos_totales
-FROM fact_ventas v
-JOIN dim_productos p ON v.id_producto = p.id_producto
-JOIN dim_categorias c ON p.id_categoria = c.id_categoria
-GROUP BY c.nombre_categoria
-ORDER BY ingresos_totales DESC;"""
     return LLMCompletionTestResponse(
-        success=True,
-        completion_text=f"-- [MODO SIMULADO - LLM OFFLINE EN {url}]\n{simulated_sql}",
+        success=False,
+        completion_text="",
         latency_ms=latency,
-        message=f"No se pudo conectar al puerto {url}. Verifica que llama.exe serve esté activo."
+        message=f"IA local no disponible. Conecte Ollama/llama.cpp en {url} para ejecutar consultas."
     )

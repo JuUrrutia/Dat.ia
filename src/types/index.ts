@@ -46,14 +46,15 @@ export interface QueryResult {
   executive_report?: ExecutiveReport;
   kpis: KPICard[];
   gauges?: MetricGauge[];
-  chart_type: 'bar' | 'line' | 'area' | 'pie' | 'donut' | 'radar' | 'gauge';
+  chart_type: 'bar' | 'line' | 'area' | 'pie' | 'donut' | 'radar' | 'gauge' | 'none';
   chart_option: any; // ECharts option
   data_columns: string[];
   data_rows: Record<string, any>[];
   traceability: TraceabilityAudit;
   pipeline_source?: 'backend' | 'llm_direct' | 'fallback';
-  response_type?: 'data_analysis' | 'advisory' | 'explanation' | 'hybrid';
-  conversational_response?: string; // Respuesta conversacional rica (advisory/explanation/hybrid)
+  response_type?: 'data_analysis' | 'advisory' | 'explanation' | 'report' | 'hybrid';
+  conversational_response?: string; // Respuesta conversacional estructurada (advisory/explanation/hybrid)
+  grounding_info?: string; // Información de las tablas o registros reales de la BD consultados
 }
 
 export interface AppSettings {
