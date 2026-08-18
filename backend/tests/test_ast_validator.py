@@ -30,7 +30,7 @@ class TestASTValidator(unittest.TestCase):
         sql = "SELECT * FROM dim_empleados_rrhh"
         with self.assertRaises(ASTValidationError) as excinfo:
             ASTValidator.validate_and_secure_sql(sql, allowed_tables={"fact_ventas", "dim_productos"})
-        self.assertIn("no tiene autorización sobre la(s) tabla(s): dim_empleados_rrhh", str(excinfo.exception))
+        self.assertIn("Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos.", str(excinfo.exception))
 
     def test_reject_blocked_column(self):
         sql = "SELECT id, salario_base FROM fact_ventas"
@@ -40,7 +40,7 @@ class TestASTValidator(unittest.TestCase):
                 allowed_tables={"fact_ventas"},
                 blocked_columns={"salario_base"}
             )
-        self.assertIn("columna(s) confidencial(es) no permitidas: salario_base", str(excinfo.exception))
+        self.assertIn("Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos.", str(excinfo.exception))
 
 if __name__ == "__main__":
     unittest.main()

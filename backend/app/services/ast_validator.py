@@ -1,4 +1,4 @@
-from typing import List, Set, Dict, Tuple, Optional
+from typing import List, Set, Dict, Tuple, Optional, Any
 import sqlglot
 from sqlglot import exp, parse_one, transpile
 from app.core.config import settings
@@ -85,8 +85,7 @@ class ASTValidator:
             unauthorized_tables = extracted_tables - allowed_set
             if unauthorized_tables:
                 raise ASTValidationError(
-                    f"Gobernanza RBAC: Acceso denegado. Tu rol no tiene autorización sobre la(s) tabla(s): "
-                    f"{', '.join(unauthorized_tables)}."
+                    "Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos."
                 )
 
         # Rule 5: Extract and Validate Columns against Blocked List
@@ -101,8 +100,7 @@ class ASTValidator:
             attempted_blocked = extracted_columns & blocked_set
             if attempted_blocked:
                 raise ASTValidationError(
-                    f"Gobernanza RBAC: La consulta incluye columna(s) confidencial(es) no permitidas: "
-                    f"{', '.join(attempted_blocked)}."
+                    "Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos."
                 )
 
         # Rule 6: Inject LIMIT / TOP if not present or exceeds max_limit

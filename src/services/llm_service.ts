@@ -241,9 +241,9 @@ export const llmClientService = {
   _buildErrorResult(url: string, startTime: number): LLMCompletionTestResult {
     return {
       success: false,
-      completion_text: '-- No se pudo conectar al servidor LLM. Verifica que esté activo.',
+      completion_text: '',
       latency_ms: Date.now() - startTime,
-      message: `No se pudo conectar al LLM en ${url}. Verifica que el servidor esté activo.`
+      message: `IA local no disponible. Conecte Ollama/llama.cpp en ${url} para ejecutar consultas.`
     };
   }
 };

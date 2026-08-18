@@ -5,6 +5,43 @@ import { DEFAULT_OLLAMA_URL, DEFAULT_LLM_MODEL, DEFAULT_LLM_PROVIDER } from '../
 
 export const queryService = {
   /**
+   * Fetches dynamic, table-specific question suggestions from the backend API.
+   */
+  async getSuggestions(userRole: string = 'Economista'): Promise<string[]> {
+    try {
+      const res = await apiClient.get('/chat/suggestions', {
+        params: { user_role: userRole }
+      });
+      if (res.data && Array.isArray(res.data.suggestions) && res.data.suggestions.length > 0) {
+        return res.data.suggestions;
+      }
+    } catch {
+      // Backend offline fallback
+    }
+
+    if (userRole === 'TI') {
+      return [
+        '💡 ¿Cómo reducir tiempos de resolución en incidentes críticos?',
+        '📊 Incidentes de TI por servidor y nivel de prioridad',
+        '⚡ Métricas de consumo de CPU y RAM por servidor',
+        '🛡️ Detalle de servidores e IP de infraestructura'
+      ];
+    }
+    if (userRole === 'Usuario') {
+      return [
+        '¿Qué información puedo consultar con mi perfil Usuario?',
+        '¿Cómo solicito acceso a los dominios Economía o TI?'
+      ];
+    }
+    return [
+      '💡 Dame 5 ideas para mejorar la productividad',
+      '📊 Ingresos del Q3 por categoría',
+      '🏆 Top 5 productos con mayor facturación',
+      '📈 Evolución mensual de ventas y costos'
+    ];
+  },
+
+  /**
    * Sends a user query through the intelligent multi-tier pipeline:
    * 1. Backend real (Python FastAPI + SQLite demo_corporativa.db + AST validation + LLM)
    * 2. Direct LLM completion (if backend is offline, queries local llama.cpp/Ollama directly for dynamic AI answer)
@@ -147,80 +184,11 @@ Entrega una respuesta ejecutiva y detallada en español para el rol ${userRole}.
       // Direct LLM query failed or timed out — fall through to Tier 3
     }
 
-    // Tier 3: Offline fallback with canned demo responses
     return queryService.getFallbackQueryResponse(question, userRole);
   },
 
   getFallbackQueryResponse(question: string, userRole: string): QueryResult {
     const qLower = question.toLowerCase();
-
-    // Check advisory in fallback
-    const isAdvisoryQuery = [
-      'idea', 'ideas', 'recomienda', 'recomendacion', 'recomendaciones',
-      'sugerencia', 'sugerencias', 'estrategia', 'estrategias', 'consejo', 'consejos',
-      'productividad', 'productivo', 'cómo mejorar', 'como mejorar', 'optimizar', 'ayuda'
-    ].some((k) => qLower.includes(k));
-
-    if (isAdvisoryQuery) {
-      const advisoryText = `## 💡 5 Iniciativas Estratégicas para Elevar la Productividad Corporativa
-
-> **Respaldo de Datos:** Basado en la estructura de 30 colaboradores corporativos y 50 incidentes de infraestructura en SQLite.
-
-### 1. Nivelación y Acompañamiento del Desempeño Operativo
-* **Diagnóstico en BD:** Se detectan variaciones de rendimiento y cumplimiento entre áreas técnicas y comerciales.
-* **Acción Concreta:** Implementar revisiones de objetivos OKR quincenales y mentorías cruzadas entre colaboradores senior y en desarrollo.
-* **Impacto Esperado:** Incremento estimado del 15% en velocidad de entrega y consistencia de procesos.
-
-### 2. Optimización de Tiempos de Resolución en TI (SLA)
-* **Diagnóstico en BD:** La reducción de tiempos de atención en incidentes críticos mejora directamente la continuidad operativa.
-* **Acción Concreta:** Automatizar la asignación y escalamiento directo de tickets hacia especialistas de infraestructura según criticidad.
-* **Impacto Esperado:** Reducción del 25% en horas de inactividad técnica no planificada.
-
-### 3. Automatización de Flujos Comerciales y Conciliación Contable
-* **Diagnóstico en BD:** Los balances periódicos consumen tiempo recurrente de consolidación de ingresos y costos.
-* **Acción Concreta:** Implementar herramientas de conciliación automatizada entre ventas registradas y costos operativos.
-* **Impacto Esperado:** Ahorro de hasta 12 horas hombre semanales por analista.
-
-### 4. Maximización del Retorno de Herramientas SaaS y Cloud
-* **Diagnóstico en BD:** La organización cuenta con contratos activos de software empresarial y servicios cloud.
-* **Acción Concreta:** Programar talleres mensuales focalizados en el aprovechamiento integral de las plataformas tecnológicas existentes.
-* **Impacto Esperado:** Mayor agilidad en la gestión de proyectos y reducción de tareas manuales repetitivas.
-
-### 5. Reconocimiento e Incentivos Vinculados a Metas Medibles
-* **Diagnóstico en BD:** La evaluación de desempeño promedio y bonos anuales fomentan la retención de talento clave.
-* **Acción Concreta:** Alinear los incentivos por departamento al cumplimiento de metas de eficiencia y margen de ganancia.
-* **Impacto Esperado:** Aumento en la motivación, compromiso y menor rotación de personal.`;
-
-      return {
-        id: `res-${Date.now()}`,
-        question,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        summary_text: 'Asistente Estratégico IA: Se estructuraron 5 iniciativas clave de productividad fundamentadas en los datos de la empresa.',
-        conversational_response: advisoryText,
-        kpis: [],
-        gauges: [],
-        chart_type: 'none',
-        chart_option: {},
-        data_columns: ['departamento', 'area_foco', 'impacto_proyectado'],
-        data_rows: [
-          { departamento: 'Dirección & RRHH', area_foco: 'Objetivos OKR y mentoría', impacto_proyectado: '+15% velocidad' },
-          { departamento: 'Tecnología & TI', area_foco: 'SLA y automatización tickets', impacto_proyectado: '-25% downtime' },
-          { departamento: 'Finanzas & Ventas', area_foco: 'Conciliación contable', impacto_proyectado: '12h ahorro/semana' },
-          { departamento: 'Operaciones', area_foco: 'Capacitación SaaS/Cloud', impacto_proyectado: '+ROI digital' }
-        ],
-        traceability: {
-          sql_executed: 'SELECT departamento, cargo, count(*) as total FROM dim_empleados GROUP BY departamento;',
-          execution_time_ms: 85,
-          rows_returned: 4,
-          validation_status: 'APROBADO (Contexto Asistente)',
-          schema_tables_used: ['dim_empleados', 'fact_incidentes_ti'],
-          explanation: 'Asesoría estratégica generada en modo local a partir de los datos corporativos de la empresa.'
-        },
-        pipeline_source: 'fallback',
-        response_type: 'advisory',
-        grounding_info: 'Enriquecido con registros de dim_empleados y fact_incidentes_ti (SQLite)'
-      };
-    }
 
     // Check "Usuario" role denial
     if (userRole === 'Usuario') {
@@ -250,115 +218,51 @@ Entrega una respuesta ejecutiva y detallada en español para el rol ${userRole}.
       };
     }
 
-    // Role TI
-    if (userRole === 'TI' || qLower.includes('incidente') || qLower.includes('servidor') || qLower.includes('cpu')) {
-      if (userRole === 'Economista' && (qLower.includes('incidente') || qLower.includes('servidor'))) {
-        return {
-          id: `res-${Date.now()}`,
-          question,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          summary_text: 'Acceso denegado por Gobernanza RBAC: Tu perfil "Economista" no tiene autorización sobre el dominio Tecnología & TI (Tablas: fact_incidentes_ti, dim_servidores).',
-          kpis: [{ title: 'RBAC', value: 'DENEGADO', subtitle: 'Dominio TI', change_direction: 'negative' }],
-          chart_type: 'bar',
-          chart_option: { xAxis: { data: [] }, series: [] },
-          data_columns: ['mensaje'],
-          data_rows: [{ mensaje: 'Acceso restringido a datos de infraestructura TI.' }],
-          traceability: {
-            sql_executed: '-- BLOQUEADO POR REGLA DE DOMINIO RBAC',
-            execution_time_ms: 0,
-            rows_returned: 0,
-            validation_status: 'RECHAZADO_DOMINIO',
-            schema_tables_used: [],
-            explanation: 'Tu rol no tiene asignado el dominio Tecnología & TI.'
-          },
-          pipeline_source: 'fallback',
-        response_type: 'data_analysis',
-        };
-      }
-
+    // Check Economista role accessing TI domain restriction
+    if (userRole === 'Economista' && (qLower.includes('incidente') || qLower.includes('servidor'))) {
       return {
         id: `res-${Date.now()}`,
         question,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        summary_text: '[Modo Offline Fallback] Incidentes de Infraestructura TI por Servidor: Se analizaron 4 registros de fallas resueltas.',
-        kpis: [
-          { title: 'Incidentes TI Registrados', value: '4 Eventos', subtitle: '100% Resueltos', change_direction: 'positive' },
-          { title: 'Servidor Con Mayor SLA', value: 'srv-backup-node-04', subtitle: '4.0 Horas', change_direction: 'neutral' },
-          { title: 'Cumplimiento SLA', value: '100%', subtitle: 'Dentro de Tolerancia', change_direction: 'positive' }
-        ],
+        summary_text: 'Acceso denegado por Gobernanza RBAC: Tu perfil "Economista" no tiene autorización sobre el dominio Tecnología & TI (Tablas: fact_incidentes_ti, dim_servidores).',
+        kpis: [{ title: 'RBAC', value: 'DENEGADO', subtitle: 'Dominio TI', change_direction: 'negative' }],
         chart_type: 'bar',
-        chart_option: {
-          tooltip: { trigger: 'axis' },
-          xAxis: { type: 'category', data: ['srv-db-prod-01', 'srv-app-core-02', 'srv-cloud-proxy-03', 'srv-backup-node-04'], axisLabel: { color: '#9CA3AF' } },
-          yAxis: { type: 'value', name: 'Horas Resol.', axisLabel: { color: '#9CA3AF' } },
-          series: [{ name: 'Horas Resolución SLA', type: 'bar', data: [2.5, 1.0, 0.8, 4.0], itemStyle: { color: '#8B5CF6', borderRadius: [6, 6, 0, 0] } }]
-        },
-        data_columns: ['servidor', 'datacenter', 'tipo_falla', 'prioridad', 'horas_resolucion', 'estado'],
-        data_rows: [
-          { servidor: 'srv-db-prod-01', datacenter: 'DC-Santiago-Primary', tipo_falla: 'Alta latencia disco SSD', prioridad: 'ALTA', horas_resolucion: 2.5, estado: 'RESUELTO' },
-          { servidor: 'srv-app-core-02', datacenter: 'DC-Santiago-Primary', tipo_falla: 'Pico consumo RAM (>95%)', prioridad: 'CRITICA', horas_resolucion: 1.0, estado: 'RESUELTO' },
-          { servidor: 'srv-cloud-proxy-03', datacenter: 'DC-AWS-UsEast', tipo_falla: 'Reinicio daemon red', prioridad: 'MEDIA', horas_resolucion: 0.8, estado: 'RESUELTO' },
-          { servidor: 'srv-backup-node-04', datacenter: 'DC-Valparaiso-Backup', tipo_falla: 'Falla cron respaldo', prioridad: 'BAJA', horas_resolucion: 4.0, estado: 'RESUELTO' }
-        ],
+        chart_option: { xAxis: { data: [] }, series: [] },
+        data_columns: ['mensaje'],
+        data_rows: [{ mensaje: 'Acceso restringido a datos de infraestructura TI.' }],
         traceability: {
-          sql_executed: `SELECT s.nombre_host AS servidor, s.datacenter, i.tipo_falla, i.nivel_prioridad, i.horas_resolucion, i.estado FROM fact_incidentes_ti i JOIN dim_servidores s ON i.id_servidor = s.id_servidor ORDER BY i.fecha_incidente DESC LIMIT 1000;`,
-          execution_time_ms: 118,
-          rows_returned: 4,
-          validation_status: 'APROBADO (SELECT Único)',
-          schema_tables_used: ['fact_incidentes_ti', 'dim_servidores'],
-          explanation: 'Consulta realizada sobre el dominio Tecnología & TI. [Datos de fallback offline]'
+          sql_executed: '-- BLOQUEADO POR REGLA DE DOMINIO RBAC',
+          execution_time_ms: 0,
+          rows_returned: 0,
+          validation_status: 'RECHAZADO_DOMINIO',
+          schema_tables_used: [],
+          explanation: 'Tu rol no tiene asignado el dominio Tecnología & TI.'
         },
         pipeline_source: 'fallback',
         response_type: 'data_analysis',
       };
     }
 
-    // Economista default fallback
+    // Standard LLM Offline response (no simulated fake data or queries)
     return {
       id: `res-${Date.now()}`,
       question,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      summary_text: '[Modo Offline Fallback] Distribución de Ingresos por Categoría (Gráfico Donut): La categoría "Hardware & Redes" lidera el volumen de ventas.',
+      summary_text: 'IA local no disponible. Conecte Ollama/llama.cpp para ejecutar consultas.',
       kpis: [
-        { title: 'Ingresos Totales Q3', value: '$1,050,000.00', subtitle: 'Datos Reales BD', change_direction: 'positive' },
-        { title: 'Margen Promedio', value: '31.8%', subtitle: '+2.4% vs meta', change_direction: 'positive' },
-        { title: 'Categoría Líder', value: 'Hardware & Redes', subtitle: '$450,000.00 en ventas', change_direction: 'neutral' }
+        { title: 'Estado IA Local', value: 'DESCONECTADO', subtitle: 'Conecte Ollama o llama.cpp', change_direction: 'negative' }
       ],
-      chart_type: 'pie',
-      chart_option: {
-        tooltip: { trigger: 'item', formatter: '{b}: ${c} ({d}%)' },
-        legend: { orient: 'horizontal', bottom: '0%', textStyle: { color: '#D1D5DB' } },
-        series: [
-          {
-            name: 'Ingresos por Categoría',
-            type: 'pie',
-            radius: ['40%', '70%'],
-            avoidLabelOverlap: true,
-            itemStyle: { borderRadius: 8, borderColor: '#111827', borderWidth: 2 },
-            label: { show: true, color: '#F3F4F6', formatter: '{b}: {d}%' },
-            data: [
-              { value: 450000, name: 'Hardware & Redes' },
-              { value: 320000, name: 'Software Empresarial' },
-              { value: 180000, name: 'Servicios Cloud' },
-              { value: 100000, name: 'Consultoría & Soporte' }
-            ]
-          }
-        ]
-      },
-      data_columns: ['categoria', 'ingresos_usd', 'costos_usd', 'margen_porcentaje', 'transacciones'],
-      data_rows: [
-        { categoria: 'Hardware & Redes', ingresos_usd: 450000.00, costos_usd: 321750.00, margen_porcentaje: 28.5, transacciones: 1420 },
-        { categoria: 'Software Empresarial', ingresos_usd: 320000.00, costos_usd: 185600.00, margen_porcentaje: 42.0, transacciones: 850 },
-        { categoria: 'Servicios Cloud', ingresos_usd: 180000.00, costos_usd: 117000.00, margen_porcentaje: 35.0, transacciones: 620 },
-        { categoria: 'Consultoría & Soporte', ingresos_usd: 100000.00, costos_usd: 62675.00, margen_porcentaje: 37.3, transacciones: 125 }
-      ],
+      chart_type: 'none',
+      chart_option: {},
+      data_columns: [],
+      data_rows: [],
       traceability: {
-        sql_executed: `SELECT c.nombre_categoria, SUM(v.monto_total) AS ingresos_usd FROM fact_ventas v JOIN dim_productos p ON v.id_producto = p.id_producto JOIN dim_categorias c ON p.id_categoria = c.id_categoria GROUP BY c.nombre_categoria ORDER BY ingresos_usd DESC LIMIT 1000;`,
-        execution_time_ms: 145,
-        rows_returned: 4,
-        validation_status: 'APROBADO (SELECT Único)',
-        schema_tables_used: ['fact_ventas', 'dim_productos', 'dim_categorias'],
-        explanation: 'Consulta aggregada sobre fact_ventas con dim_categorias. [Datos de fallback offline]'
+        sql_executed: '-- CONSULTA NO GENERADA: IA LOCAL DESCONECTADA',
+        execution_time_ms: 0,
+        rows_returned: 0,
+        validation_status: 'RECHAZADO (IA Local No Disponible)',
+        schema_tables_used: [],
+        explanation: 'Se requiere un servidor LLM local activo (Ollama en :11434 o llama.cpp en :8080) para traducir lenguaje natural a SQL.'
       },
       pipeline_source: 'fallback',
       response_type: 'data_analysis',
