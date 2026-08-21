@@ -2,11 +2,11 @@ import logging
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, get_current_user, get_current_user_optional
 from app.models.user import User
 from app.models.audit_log import AuditLog
 from app.models.connection import CorporateConnection
-from app.schemas.query_schema import QueryRequest, QueryResponse
+from app.schemas.query_schema import QueryRequest, QueryResponse, SuggestionsResponse
 from app.services.query_engine import QueryEngine
 from app.core.config import settings
 from app.core.constants import ADMIN_ROLES, DEFAULT_DEMO_ROLE, ROLE_USUARIO, ROLE_ADMINISTRADOR, DEFAULT_USER_ROLE
@@ -186,16 +186,33 @@ async def process_chat_query_open(
         )
         raise
 
-@router.get("/suggestions")
+@router.get("/suggestions", response_model=SuggestionsResponse)
 async def get_dynamic_suggestions(
-    user_role: Optional[str] = None,
-    db: Session = Depends(get_db)
-) -> Any:
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
+) -> SuggestionsResponse:
     """
     Returns role and table-specific question suggestions dynamically via LLM with fallback.
+    - If user is authenticated: derives role directly from JWT session and returns authorized table suggestions and allowed_tables.
+    - If user is unauthenticated: returns generic suggestions without invoking schema introspection or exposing table names (allowed_tables is None).
     """
-    role_name = user_role or DEFAULT_DEMO_ROLE
-    is_admin = role_name in ADMIN_ROLES
+    if current_user is None:
+        # Unauthenticated: return generic static suggestions without table/domain introspection
+        generic_suggestions = [
+            "📊 Resumen de registros y métricas principales",
+            "📈 Tendencias y distribución de datos acumulados",
+            "📋 Listado detallado de tablas autorizadas",
+            "💡 Consultas analíticas para toma de decisiones"
+        ]
+        return SuggestionsResponse(
+            user_role=None,
+            allowed_tables=None,
+            suggestions=generic_suggestions
+        )
+
+    # Authenticated user: derive role from JWT session
+    role_name = current_user.role.name if current_user.role else (ROLE_ADMINISTRADOR if current_user.is_admin else ROLE_USUARIO)
+    is_admin = current_user.is_admin or role_name in ADMIN_ROLES
 
     allowed_tables = QueryEngine.get_allowed_tables_for_role(
         user_role=role_name,
@@ -221,8 +238,8 @@ async def get_dynamic_suggestions(
         schema_prompt=schema_prompt
     )
 
-    return {
-        "user_role": role_name,
-        "allowed_tables": list(allowed_tables),
-        "suggestions": suggestions
-    }
+    return SuggestionsResponse(
+        user_role=role_name,
+        allowed_tables=list(allowed_tables),
+        suggestions=suggestions
+    )

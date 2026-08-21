@@ -73,6 +73,51 @@ def get_current_user(
 
 from app.core.constants import ADMIN_ROLES
 
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+def get_current_user_optional(
+    db: Session = Depends(get_db),
+    token: Optional[str] = Depends(oauth2_scheme_optional)
+) -> Optional[User]:
+    """
+    Safely retrieves authenticated user if a valid JWT token is provided.
+    Returns None if token is absent, invalid, expired or revoked, without raising HTTP 401.
+    """
+    if not token:
+        return None
+
+    payload = decode_token_payload(token)
+    if not payload:
+        return None
+
+    user_id = payload.get("sub")
+    if user_id is None:
+        return None
+
+    try:
+        user = db.query(User).filter(User.id == int(user_id)).first()
+    except Exception:
+        return None
+
+    if user is None or not user.is_active:
+        return None
+
+    jti = payload.get("jti")
+    if jti:
+        session = db.query(UserSession).filter(UserSession.jti == jti).first()
+        if session:
+            if session.is_revoked:
+                return None
+            now = datetime.datetime.utcnow()
+            if (now - session.last_seen_at).total_seconds() > (SESSION_LAST_SEEN_UPDATE_INTERVAL_MINUTES * 60):
+                session.last_seen_at = now
+                try:
+                    db.commit()
+                except Exception:
+                    db.rollback()
+
+    return user
+
 def get_current_admin(
     current_user: User = Depends(get_current_user)
 ) -> User:

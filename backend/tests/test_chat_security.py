@@ -87,3 +87,30 @@ class TestChatSecurity(unittest.TestCase):
             v_status = data.get("traceability", {}).get("validation_status", "")
             # Because role is forced to 'Usuario' (which has no domain permissions), access is rejected
             self.assertTrue("RECHAZADO" in v_status or "ERROR" in v_status)
+
+    def test_suggestions_without_auth_returns_generic_no_tables(self):
+        """Without authentication token, /chat/suggestions returns generic suggestions and NO allowed_tables."""
+        resp = self.client.get("/api/v1/chat/suggestions")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIsNone(data.get("allowed_tables"))
+        self.assertIsNone(data.get("user_role"))
+        self.assertGreaterEqual(len(data.get("suggestions", [])), 2)
+        # Ensure no specific internal table names leaked
+        suggestions_text = " ".join(data.get("suggestions", []))
+        self.assertNotIn("fact_ventas", suggestions_text)
+        self.assertNotIn("dim_servidores", suggestions_text)
+
+    def test_suggestions_with_auth_derives_tables_from_jwt_ignoring_query_param(self):
+        """
+        With authenticated JWT for Economista, /chat/suggestions ignores ?user_role=Administrador
+        and returns allowed_tables strictly matching the JWT user role.
+        """
+        resp = self.client.get("/api/v1/chat/suggestions?user_role=Administrador", headers=self.headers)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data.get("user_role"), "Economista")
+        allowed_tables = data.get("allowed_tables")
+        self.assertIsNotNone(allowed_tables)
+        self.assertGreaterEqual(len(allowed_tables), 1)
+        self.assertTrue(any(t.lower() in ["fact_ventas", "question", "survey", "answer"] for t in allowed_tables))

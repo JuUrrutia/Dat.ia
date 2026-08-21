@@ -1,8 +1,10 @@
 import socket
 import time
+from sqlalchemy.orm import Session
 from typing import List, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from app.services.health_service import HealthService
 from app.api.deps import get_db, get_current_user, get_current_admin
 from app.models.user import User
 from app.models.connection import CorporateConnection, DatabaseType
@@ -127,7 +129,6 @@ def delete_connector(
     db.commit()
     return {"message": "Conexión eliminada correctamente.", "id": conn_id}
 
-from app.services.health_service import HealthService
 
 @router.post("/test", response_model=ConnectionTestResult)
 def test_connection_connectivity(

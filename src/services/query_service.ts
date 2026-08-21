@@ -6,12 +6,11 @@ import { DEFAULT_OLLAMA_URL, DEFAULT_LLM_MODEL, DEFAULT_LLM_PROVIDER } from '../
 export const queryService = {
   /**
    * Fetches dynamic, table-specific question suggestions from the backend API.
+   * If authenticated, backend derives role from JWT. If unauthenticated or offline, falls back to role heuristics.
    */
   async getSuggestions(userRole: string = 'Economista'): Promise<string[]> {
     try {
-      const res = await apiClient.get('/chat/suggestions', {
-        params: { user_role: userRole }
-      });
+      const res = await apiClient.get('/chat/suggestions');
       if (res.data && Array.isArray(res.data.suggestions) && res.data.suggestions.length > 0) {
         return res.data.suggestions;
       }
