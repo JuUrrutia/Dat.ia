@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Sparkles, ShieldCheck, Database, Lock, KeyRound, Mail, UserPlus, LogIn, ArrowRight, AlertCircle } from 'lucide-react';
+import logoDatia2 from './Logo_datia_2.png';
 
 const PRESET_USERS = [
   { name: 'Administrador', username: 'admin', password: 'admin123', role: 'Administrador', is_admin: true },
@@ -82,11 +83,11 @@ export const LoginPage: React.FC = () => {
       <div className="w-full max-w-md space-y-6 relative z-10">
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600 to-purple-600 shadow-xl shadow-brand-600/20 mb-2">
-            <Sparkles className="w-7 h-7 text-white" />
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-dark-card/60 shadow-xl shadow-brand-600/20 mb-2 overflow-hidden border border-brand-500/20">
+            <img src={logoDatia2} alt="Logo Datia" className="w-full h-full object-contain p-1" />
           </div>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight">DATIA Enterprise</h1>
-          <p className="text-xs text-gray-400">Democratización de Datos & Analítica Text-to-SQL Segura</p>
+          <h1 className="text-2xl font-extrabold text-white tracking-tight">Dat.ia</h1>
+          <p className="text-xs text-gray-400">Transformando datos en decisiones</p>
         </div>
 
         {/* Card Panel */}

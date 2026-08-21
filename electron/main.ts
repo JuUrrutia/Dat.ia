@@ -4,13 +4,16 @@ import path from 'path';
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
+  const iconPath = path.join(__dirname, '../public/favicon.png');
+  
   mainWindow = new BrowserWindow({
     width: 1360,
     height: 860,
     minWidth: 1024,
     minHeight: 700,
-    title: 'Democratización de Datos Corporativos con IA Local',
+    title: 'Dat.ia - IA Local',
     backgroundColor: '#0B0F19',
+    icon: iconPath,
     show: false,
     webPreferences: {
       nodeIntegration: false,

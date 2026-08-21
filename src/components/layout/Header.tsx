@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Bot, Settings, ShieldAlert, LogOut, Database, WifiOff, Sparkles, LayoutDashboard } from 'lucide-react';
+import { Bot, Settings, ShieldAlert, LogOut, Database, WifiOff, LayoutDashboard } from 'lucide-react';
+import logoDatia2 from '../../pages/Logo_datia_2.png';
 
 export const Header: React.FC = () => {
   const { user, activePage, setActivePage, logout } = useAuth();
@@ -12,17 +13,19 @@ export const Header: React.FC = () => {
       {/* Brand & Offline Status Badge */}
       <div className="flex items-center space-x-4">
         <button type="button" className="flex items-center space-x-3 text-left focus:outline-none" onClick={() => setActivePage('dashboard')}>
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/20">
-            <Sparkles className="w-5 h-5 text-white" />
-          </div>
+          <img
+            src={logoDatia2}
+            alt="Logo Datia"
+            className="w-10 h-10 object-contain rounded-xl bg-dark-card/60 p-1 shadow-lg shadow-brand-500/20"
+          />
           <div>
             <h1 className="text-base font-semibold text-white tracking-tight flex items-center gap-2">
-              Democratización de Datos
+              Dat.ia
               <span className="text-xs px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20 font-normal">
                 IA Local
               </span>
             </h1>
-            <p className="text-xs text-gray-400">Soberanía de Datos Corporativos</p>
+            <p className="text-xs text-gray-400">Transformando datos en desiciones</p>
           </div>
         </button>
 
