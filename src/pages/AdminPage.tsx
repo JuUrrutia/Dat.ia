@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Users, Database, BookOpen, Server, Key } from 'lucide-react';
+import { ShieldAlert, Users, Database, BookOpen, Server, Key, FileText } from 'lucide-react';
 import { CorporateConnection, connectorService, DEFAULT_CONNECTORS } from '../services/connector_service';
 import { ConnectorModal } from '../components/admin/ConnectorModal';
 import { AdminConnectorsTab } from '../components/admin/AdminConnectorsTab';
 import { AdminUsersTab } from '../components/admin/AdminUsersTab';
 import { AdminCatalogTab } from '../components/admin/AdminCatalogTab';
+import { AdminAuditTab } from '../components/admin/AdminAuditTab';
 import { authService } from '../services/auth_service';
 import { User } from '../types';
 
-const INITIAL_USERS: Array<{ id: number; name: string; email: string; role: string; is_admin: boolean }> = [];
+const INITIAL_USERS: Array<{ id: number; name: string; username?: string; email: string; role: string; is_admin: boolean }> = [];
 
 export const AdminPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'users' | 'connectors' | 'catalog'>('connectors');
+  const [activeTab, setActiveTab] = useState<'connectors' | 'users' | 'catalog' | 'audit'>('connectors');
 
   // Connectors State
   const [connectors, setConnectors] = useState<CorporateConnection[]>(DEFAULT_CONNECTORS);
@@ -23,7 +24,7 @@ export const AdminPage: React.FC = () => {
   const [aiSuccess, setAiSuccess] = useState(false);
 
   // Users State
-  const [dbUsers, setDbUsers] = useState<Array<{ id: number; name: string; email: string; role: string; is_admin: boolean }>>(INITIAL_USERS);
+  const [dbUsers, setDbUsers] = useState<Array<{ id: number; name: string; username?: string; email: string; role: string; is_admin: boolean }>>(INITIAL_USERS);
 
   const fetchUsers = async () => {
     try {
@@ -33,6 +34,7 @@ export const AdminPage: React.FC = () => {
           usersData.map((u) => ({
             id: u.id,
             name: u.username,
+            username: u.username,
             email: u.email || `${u.username}@empresa.com`,
             role: u.role_name || (u.is_admin ? 'Administrador' : 'Usuario'),
             is_admin: u.is_admin,
@@ -115,7 +117,7 @@ export const AdminPage: React.FC = () => {
             <ShieldAlert className="w-5 h-5 text-purple-400" /> Panel de Gobernanza & Fuentes BD Corporativas
           </h1>
           <p className="text-xs text-gray-400">
-            Administración centralizada de conexiones a PostgreSQL, SQL Server, MySQL, Oracle y SQLite con cifrado AES-256
+            Administración centralizada de conexiones a PostgreSQL, SQL Server, MySQL y SQLite con cifrado AES-256
           </p>
         </div>
 
@@ -148,11 +150,11 @@ export const AdminPage: React.FC = () => {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex items-center space-x-2 border-b border-dark-border pb-1">
+      <div className="flex items-center space-x-2 border-b border-dark-border pb-1 overflow-x-auto">
         <button
           type="button"
           onClick={() => setActiveTab('connectors')}
-          className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+          className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'connectors'
               ? 'border-purple-500 text-purple-400 font-bold bg-purple-500/10 rounded-t-xl'
               : 'border-transparent text-gray-400 hover:text-white hover:bg-dark-card/50 rounded-t-xl'
@@ -165,20 +167,20 @@ export const AdminPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('users')}
-          className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+          className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'users'
               ? 'border-purple-500 text-purple-400 font-bold bg-purple-500/10 rounded-t-xl'
               : 'border-transparent text-gray-400 hover:text-white hover:bg-dark-card/50 rounded-t-xl'
           }`}
         >
           <Users className="w-4 h-4" />
-          <span>Usuarios & Asignación de Roles ({dbUsers.length})</span>
+          <span>Usuarios & Roles ({dbUsers.length})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('catalog')}
-          className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+          className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'catalog'
               ? 'border-purple-500 text-purple-400 font-bold bg-purple-500/10 rounded-t-xl'
               : 'border-transparent text-gray-400 hover:text-white hover:bg-dark-card/50 rounded-t-xl'
@@ -186,6 +188,19 @@ export const AdminPage: React.FC = () => {
         >
           <BookOpen className="w-4 h-4" />
           <span>Catálogo Semántico (IA)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('audit')}
+          className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+            activeTab === 'audit'
+              ? 'border-purple-500 text-purple-400 font-bold bg-purple-500/10 rounded-t-xl'
+              : 'border-transparent text-gray-400 hover:text-white hover:bg-dark-card/50 rounded-t-xl'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>Auditoría & Logs</span>
         </button>
       </div>
 
@@ -213,6 +228,9 @@ export const AdminPage: React.FC = () => {
           onRunAiCatalog={handleRunAiCatalog}
         />
       )}
+
+      {/* Tab 4: Audit & Compliance Logs */}
+      {activeTab === 'audit' && <AdminAuditTab />}
 
       {/* Modal for Creating & Editing Connection */}
       <ConnectorModal

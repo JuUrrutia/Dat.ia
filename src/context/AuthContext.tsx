@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useCall
 import { User, AppSettings } from '../types';
 import { authService } from '../services/auth_service';
 import { getAuthToken } from '../services/api_client';
+import { MandatoryPasswordChangeModal } from '../components/auth/MandatoryPasswordChangeModal';
 import {
   DEFAULT_LLM_PROVIDER,
   DEFAULT_OLLAMA_URL,
@@ -142,6 +143,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearError = useCallback(() => setError(null), []);
 
+  const handlePasswordChangeSuccess = useCallback(() => {
+    setUser((prev) => (prev ? { ...prev, must_change_password: false } : null));
+  }, []);
+
   const contextValue = useMemo(
     () => ({
       user,
@@ -175,6 +180,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={contextValue}>
       {children}
+      {user && user.must_change_password && (
+        <MandatoryPasswordChangeModal
+          isOpen={true}
+          onSuccess={handlePasswordChangeSuccess}
+        />
+      )}
     </AuthContext.Provider>
   );
 };

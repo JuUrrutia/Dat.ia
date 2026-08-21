@@ -1,13 +1,60 @@
+import logging
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_user
 from app.models.user import User
+from app.models.audit_log import AuditLog
+from app.models.connection import CorporateConnection
 from app.schemas.query_schema import QueryRequest, QueryResponse
 from app.services.query_engine import QueryEngine
 from app.core.constants import ADMIN_ROLES, DEFAULT_DEMO_ROLE, ROLE_USUARIO, ROLE_ADMINISTRADOR
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+def _resolve_target_database(db: Session, connection_id: int) -> str:
+    """Finds friendly target database name for audit log."""
+    try:
+        conn = db.query(CorporateConnection).filter(CorporateConnection.id == connection_id).first()
+        if conn and conn.name:
+            return conn.name
+    except Exception:
+        pass
+    return "demo_corporativa.db"
+
+def _persist_audit_log(
+    db: Session,
+    user_id: Optional[int],
+    username: str,
+    user_role: Optional[str],
+    question_prompt: str,
+    sql_generated: Optional[str],
+    validation_status: str,
+    target_database: str,
+    execution_time_ms: int = 0,
+    rows_returned: int = 0,
+    error_message: Optional[str] = None
+):
+    """Safely persists an AuditLog record in a best-effort transaction."""
+    try:
+        audit_entry = AuditLog(
+            user_id=user_id,
+            username=username,
+            user_role=user_role,
+            question_prompt=question_prompt,
+            sql_generated=sql_generated,
+            validation_status=validation_status,
+            target_database=target_database,
+            execution_time_ms=execution_time_ms,
+            rows_returned=rows_returned,
+            error_message=error_message
+        )
+        db.add(audit_entry)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.warning(f"Error registrando auditoría: {e}")
 
 @router.post("/query", response_model=QueryResponse)
 async def process_chat_query(
@@ -16,20 +63,59 @@ async def process_chat_query(
     db: Session = Depends(get_db)
 ) -> Any:
     """
-    Processes natural language or suggestion chip query against demo_corporativa.db.
-    Invokes Local LLM (llama.exe serve / Ollama), applies RBAC permissions & AST Guardrail validation.
+    Processes natural language or suggestion chip query against target database.
+    Invokes Local LLM, applies RBAC permissions & AST Guardrail validation.
+    Persists audit log of approval or rejection.
     """
     user_role_name = current_user.role.name if current_user.role else (ROLE_ADMINISTRADOR if current_user.is_admin else ROLE_USUARIO)
-    
-    response = await QueryEngine.execute_query(
-        question=query_in.question,
-        user_role=user_role_name,
-        is_admin=current_user.is_admin,
-        db=db,
-        role_id=current_user.role_id,
-        connection_id=query_in.connection_id or 1
-    )
-    return response
+    conn_id = query_in.connection_id or 1
+    target_db_name = _resolve_target_database(db, conn_id)
+
+    try:
+        response = await QueryEngine.execute_query(
+            question=query_in.question,
+            user_role=user_role_name,
+            is_admin=current_user.is_admin,
+            db=db,
+            role_id=current_user.role_id,
+            connection_id=conn_id
+        )
+
+        sql_gen = response.traceability.sql_executed if response.traceability else None
+        v_status = response.traceability.validation_status if response.traceability else "APROBADO"
+        exec_time = response.traceability.execution_time_ms if response.traceability else 0
+        rows_ret = response.traceability.rows_returned if response.traceability else len(response.data_rows)
+        err_msg = response.summary_text if (v_status.startswith("RECHAZADO") or response.response_type == "error") else None
+
+        _persist_audit_log(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=user_role_name,
+            question_prompt=query_in.question,
+            sql_generated=sql_gen,
+            validation_status=v_status,
+            target_database=target_db_name,
+            execution_time_ms=exec_time,
+            rows_returned=rows_ret,
+            error_message=err_msg
+        )
+        return response
+    except Exception as e:
+        _persist_audit_log(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=user_role_name,
+            question_prompt=query_in.question,
+            sql_generated=None,
+            validation_status="ERROR_EJECUCION",
+            target_database=target_db_name,
+            execution_time_ms=0,
+            rows_returned=0,
+            error_message=str(e)
+        )
+        raise
 
 @router.post("/query-open", response_model=QueryResponse)
 async def process_chat_query_open(
@@ -38,20 +124,57 @@ async def process_chat_query_open(
 ) -> Any:
     """
     Open endpoint (no JWT required) for demo/desktop mode.
-    Receives user_role directly from the request body.
-    Still applies RBAC rules and AST validation against demo_corporativa.db.
+    Receives user_role directly from request body and persists audit log.
     """
     user_role = query_in.user_role or DEFAULT_DEMO_ROLE
     is_admin = user_role in ADMIN_ROLES
+    conn_id = query_in.connection_id or 1
+    target_db_name = _resolve_target_database(db, conn_id)
 
-    response = await QueryEngine.execute_query(
-        question=query_in.question,
-        user_role=user_role,
-        is_admin=is_admin,
-        db=db,
-        connection_id=query_in.connection_id or 1
-    )
-    return response
+    try:
+        response = await QueryEngine.execute_query(
+            question=query_in.question,
+            user_role=user_role,
+            is_admin=is_admin,
+            db=db,
+            connection_id=conn_id
+        )
+
+        sql_gen = response.traceability.sql_executed if response.traceability else None
+        v_status = response.traceability.validation_status if response.traceability else "APROBADO"
+        exec_time = response.traceability.execution_time_ms if response.traceability else 0
+        rows_ret = response.traceability.rows_returned if response.traceability else len(response.data_rows)
+        err_msg = response.summary_text if (v_status.startswith("RECHAZADO") or response.response_type == "error") else None
+
+        _persist_audit_log(
+            db=db,
+            user_id=None,
+            username=f"demo_{user_role.lower()}",
+            user_role=user_role,
+            question_prompt=query_in.question,
+            sql_generated=sql_gen,
+            validation_status=v_status,
+            target_database=target_db_name,
+            execution_time_ms=exec_time,
+            rows_returned=rows_ret,
+            error_message=err_msg
+        )
+        return response
+    except Exception as e:
+        _persist_audit_log(
+            db=db,
+            user_id=None,
+            username=f"demo_{user_role.lower()}",
+            user_role=user_role,
+            question_prompt=query_in.question,
+            sql_generated=None,
+            validation_status="ERROR_EJECUCION",
+            target_database=target_db_name,
+            execution_time_ms=0,
+            rows_returned=0,
+            error_message=str(e)
+        )
+        raise
 
 @router.get("/suggestions")
 async def get_dynamic_suggestions(

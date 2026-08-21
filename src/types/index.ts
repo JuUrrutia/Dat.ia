@@ -4,6 +4,60 @@ export interface User {
   email?: string;
   is_admin: boolean;
   role_name?: string;
+  must_change_password?: boolean;
+  failed_login_attempts?: number;
+  locked_until?: string | null;
+}
+
+export interface UserSession {
+  id: number;
+  user_id: number;
+  username?: string;
+  jti: string;
+  created_at: string;
+  last_seen_at: string;
+  ip_address?: string;
+  user_agent?: string;
+  is_revoked: boolean;
+}
+
+export interface AuditLog {
+  id: number;
+  timestamp: string;
+  user_id?: number | null;
+  username: string;
+  user_role?: string | null;
+  question_prompt: string;
+  sql_generated?: string | null;
+  validation_status: string;
+  target_database?: string | null;
+  execution_time_ms: number;
+  rows_returned: number;
+  error_message?: string | null;
+}
+
+export interface AuditLogsPage {
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  items: AuditLog[];
+}
+
+export interface AuditFilterParams {
+  start_date?: string;
+  end_date?: string;
+  username?: string;
+  target_database?: string;
+  validation_status?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface PasswordResetResult {
+  message: string;
+  username: string;
+  temporary_password: string;
 }
 
 export interface KPICard {
