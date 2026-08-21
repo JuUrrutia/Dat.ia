@@ -3,6 +3,7 @@ import re
 from typing import Dict, Any, Optional, List
 from app.core.config import settings
 from app.core.logging import logger
+from app.core.prompts import PromptManager
 
 class LLMService:
     """
@@ -33,7 +34,7 @@ class LLMService:
     async def generate_completion(
         cls,
         prompt: str,
-        system_prompt: str = "Eres un asistente experto en análisis de datos corporativos y SQL.",
+        system_prompt: str = PromptManager.DEFAULT_SYSTEM_PROMPT,
         temperature: float = 0.1,
         max_tokens: int = 300,
         provider: Optional[str] = None,

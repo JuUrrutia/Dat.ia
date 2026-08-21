@@ -35,6 +35,14 @@ class TraceabilityAudit(BaseModel):
     schema_tables_used: List[str]
     explanation: str
 
+class PresentationHints(BaseModel):
+    show_executive_report: bool = True
+    show_kpis: bool = True
+    show_gauges: bool = True
+    show_chart: bool = True
+    preferred_view: str = "studio"  # studio | report | table | assistant
+    summary_style: str = "detailed"  # concise | detailed | executive
+
 class QueryResponse(BaseModel):
     question: str
     summary_text: str
@@ -48,5 +56,6 @@ class QueryResponse(BaseModel):
     response_type: str = "data_analysis" # data_analysis | advisory | explanation | report | hybrid
     conversational_response: Optional[str] = None # Respuesta conversacional estructurada (advisory/explanation/hybrid)
     grounding_info: Optional[str] = None # Información de las tablas/registros reales de la BD consultados
+    presentation_hints: Optional[PresentationHints] = None
     traceability: TraceabilityAudit
 

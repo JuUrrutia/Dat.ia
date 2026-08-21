@@ -5,9 +5,9 @@
   "author": "Felipe",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "concurrently -k -p \"[{name}]\" -n \"BACKEND,FRONTEND\" -c \"cyan.bold,magenta.bold\" \"cd backend && py main.py\" \"vite\"",
+    "dev": "concurrently -k -p \"[{name}]\" -n \"BACKEND,FRONTEND\" -c \"cyan.bold,magenta.bold\" \"node scripts/run-backend.js\" \"vite\"",
     "dev:frontend": "vite",
-    "dev:backend": "cd backend && py main.py",
+    "dev:backend": "node scripts/run-backend.js",
     "build": "tsc && vite build && electron-builder",
     "preview": "vite preview",
     "backend:test": "cd backend && pytest",

@@ -19,27 +19,21 @@ export const queryService = {
       // Backend offline fallback
     }
 
-    if (userRole === 'TI') {
-      return [
-        '💡 ¿Cómo reducir tiempos de resolución en incidentes críticos?',
-        '📊 Incidentes de TI por servidor y nivel de prioridad',
-        '⚡ Métricas de consumo de CPU y RAM por servidor',
-        '🛡️ Detalle de servidores e IP de infraestructura'
-      ];
-    }
     if (userRole === 'Usuario') {
       return [
         '¿Qué información puedo consultar con mi perfil Usuario?',
-        '¿Cómo solicito acceso a los dominios Economía o TI?'
+        '¿Cómo solicito acceso a tablas adicionales de la base de datos?'
       ];
     }
+
     return [
-      '💡 Dame 5 ideas para mejorar la productividad',
-      '📊 Ingresos del Q3 por categoría',
-      '🏆 Top 5 productos con mayor facturación',
-      '📈 Evolución mensual de ventas y costos'
+      '📊 Resumen de registros y métricas principales',
+      '📈 Tendencias y distribución de datos acumulados',
+      '📋 Listado detallado de tablas autorizadas',
+      '💡 Consultas analíticas para toma de decisiones'
     ];
   },
+
 
   /**
    * Sends a user query through the intelligent multi-tier pipeline:
@@ -53,7 +47,7 @@ export const queryService = {
     settings?: AppSettings
   ): Promise<QueryResult> {
 
-    // Tier 1: Try Backend FastAPI (full pipeline with SQL execution on demo_corporativa.db)
+    // Tier 1: Try Backend FastAPI (full pipeline with SQL execution on connected database)
     try {
       const res = await apiClient.post('/chat/query-open', {
         question,
@@ -79,6 +73,7 @@ export const queryService = {
           response_type: res.data.response_type || 'data_analysis',
           conversational_response: res.data.conversational_response || undefined,
           grounding_info: res.data.grounding_info || undefined,
+          presentation_hints: res.data.presentation_hints || undefined,
         };
       }
     } catch {
@@ -101,18 +96,11 @@ export const queryService = {
       const promptLLM = isAdvisoryQuery
         ? `Pregunta del usuario (${userRole}): "${question}".
 Eres un Asesor Ejecutivo Senior y Consultor Corporativo.
-Responde con 5 ideas concretas, accionables y de alto valor estratégico para la empresa.
+Responde con ideas concretas, accionables y de alto valor estratégico para la empresa.
 Usa formato Markdown elegante (## Título, ### 1. Nombre de la Idea, **Diagnóstico**, **Acción**, **Impacto Esperado**). NO generes código SQL.`
         : `Pregunta del usuario (${userRole}): "${question}".
-Base de datos corporativa disponible:
-- Ventas (fact_ventas: fecha_venta, monto_total, costo_total, margen_ganancia)
-- Productos (dim_productos: nombre_producto, precio_unitario, stock_disponible)
-- Clientes (dim_clientes: nombre_empresa, sector_industria)
-- Ingresos y Costos (fact_ingresos_costos: mes, anio, ingreso_bruto, costo_operativo, utilidad_neta)
-- Servidores TI (dim_servidores: nombre_host, ip_interna, datacenter, capacidad_ram_gb)
-- Incidentes TI (fact_incidentes_ti: fecha_incidente, tipo_falla, nivel_prioridad, horas_resolucion)
-
-Entrega una respuesta ejecutiva y detallada en español para el rol ${userRole}. Explica la respuesta y propone una consulta SQL en un bloque \`\`\`sql.`;
+Analiza la solicitud y propone una respuesta analítica conceptual en español para el rol ${userRole}.
+Si corresponde una consulta SQL, incluye la consulta propuesta en un bloque \`\`\`sql SELECT ... \`\`\`.`;
 
       const llmResult = await llmClientService.testCompletion(promptLLM, provider, baseUrl, modelName);
 
@@ -147,7 +135,15 @@ Entrega una respuesta ejecutiva y detallada en español para el rol ${userRole}.
             },
             pipeline_source: 'llm_direct',
             response_type: 'advisory',
-            grounding_info: `Generado con IA Local (${modelName})`
+            grounding_info: `Generado con IA Local (${modelName})`,
+            presentation_hints: {
+              show_executive_report: false,
+              show_kpis: false,
+              show_gauges: false,
+              show_chart: false,
+              preferred_view: 'assistant' as const,
+              summary_style: 'detailed' as const,
+            },
           };
         }
 
@@ -155,7 +151,7 @@ Entrega una respuesta ejecutiva y detallada en español para el rol ${userRole}.
           id: `res-${Date.now()}`,
           question,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          summary_text: `🤖 [IA Local ${modelName.split('/')[0] || 'Qwen'}]: ${narrativeText || 'Consulta analizada por la IA.'}\n\n⚠️ *Nota:* Para ejecutar la consulta sobre los datos reales de la base de datos y ver la tabla de productos, inicia el backend FastAPI ejecutando \`py main.py\` en la carpeta backend.`,
+          summary_text: `🤖 [IA Local ${modelName.split('/')[0] || 'Qwen'}]: ${narrativeText || 'Consulta analizada por la IA.'}\n\n⚠️ *Nota:* Para ejecutar la consulta sobre los datos reales de la base de datos y ver la tabla de resultados, inicia el backend FastAPI ejecutando \`py main.py\` en la carpeta backend.`,
           kpis: [
             { title: 'Inferencia LLM', value: `${(llmResult.latency_ms / 1000).toFixed(1)}s`, subtitle: 'Tiempo Inferencia', change_direction: 'positive' },
             { title: 'Modelo Invocado', value: modelName.split('/')[0] || 'Qwen2.5', subtitle: '100% Local / Offline', change_direction: 'positive' },
@@ -174,10 +170,18 @@ Entrega una respuesta ejecutiva y detallada en español para el rol ${userRole}.
             rows_returned: 0,
             validation_status: 'APROBADO_LLM_DIRECTO',
             schema_tables_used: ['modo_conceptual_sin_bd'],
-            explanation: `Respuesta conceptual generada en vivo por la IA Local (${modelName}). Para ejecutar la consulta SQL sobre la BD SQLite, se requiere el backend FastAPI.`
+            explanation: `Respuesta conceptual generada en vivo por la IA Local (${modelName}). Para ejecutar la consulta SQL sobre la base de datos, se requiere el backend FastAPI.`
           },
           pipeline_source: 'llm_direct',
           response_type: 'data_analysis',
+          presentation_hints: {
+            show_executive_report: false,
+            show_kpis: true,
+            show_gauges: false,
+            show_chart: false,
+            preferred_view: 'studio' as const,
+            summary_style: 'concise' as const,
+          },
         };
       }
     } catch {
@@ -188,15 +192,13 @@ Entrega una respuesta ejecutiva y detallada en español para el rol ${userRole}.
   },
 
   getFallbackQueryResponse(question: string, userRole: string): QueryResult {
-    const qLower = question.toLowerCase();
-
-    // Check "Usuario" role denial
+    // Check "Usuario" role initial state
     if (userRole === 'Usuario') {
       return {
         id: `res-${Date.now()}`,
         question,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        summary_text: 'Tu cuenta se encuentra registrada con el perfil inicial "Usuario". Un Administrador debe asignarte tu perfil definitivo (Economista o TI) para acceder a las bases de datos de la empresa.',
+        summary_text: 'Tu cuenta se encuentra registrada con el perfil inicial "Usuario". Un Administrador debe asignarte tu perfil definitivo para acceder a las bases de datos de la empresa.',
         kpis: [
           { title: 'Estado Cuenta', value: 'REGISTRADO', subtitle: 'Pendiente Rol', change_direction: 'neutral' },
           { title: 'Permisos BD', value: '0 Tablas', subtitle: 'Gobernanza RBAC', change_direction: 'negative' }
@@ -211,32 +213,7 @@ Entrega una respuesta ejecutiva y detallada en español para el rol ${userRole}.
           rows_returned: 0,
           validation_status: 'RECHAZADO_RBAC',
           schema_tables_used: [],
-          explanation: 'Cuenta recién registrada. Carece de dominios temáticos hasta asignación por Administrador.'
-        },
-        pipeline_source: 'fallback',
-        response_type: 'data_analysis',
-      };
-    }
-
-    // Check Economista role accessing TI domain restriction
-    if (userRole === 'Economista' && (qLower.includes('incidente') || qLower.includes('servidor'))) {
-      return {
-        id: `res-${Date.now()}`,
-        question,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        summary_text: 'Acceso denegado por Gobernanza RBAC: Tu perfil "Economista" no tiene autorización sobre el dominio Tecnología & TI (Tablas: fact_incidentes_ti, dim_servidores).',
-        kpis: [{ title: 'RBAC', value: 'DENEGADO', subtitle: 'Dominio TI', change_direction: 'negative' }],
-        chart_type: 'bar',
-        chart_option: { xAxis: { data: [] }, series: [] },
-        data_columns: ['mensaje'],
-        data_rows: [{ mensaje: 'Acceso restringido a datos de infraestructura TI.' }],
-        traceability: {
-          sql_executed: '-- BLOQUEADO POR REGLA DE DOMINIO RBAC',
-          execution_time_ms: 0,
-          rows_returned: 0,
-          validation_status: 'RECHAZADO_DOMINIO',
-          schema_tables_used: [],
-          explanation: 'Tu rol no tiene asignado el dominio Tecnología & TI.'
+          explanation: 'Cuenta recién registrada. Carece de permisos temáticos hasta asignación por Administrador.'
         },
         pipeline_source: 'fallback',
         response_type: 'data_analysis',

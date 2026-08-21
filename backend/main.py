@@ -28,13 +28,28 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 @app.on_event("startup")
 def on_startup():
     logger.info("Iniciando Servidor Backend FastAPI...")
+    # 1. Ensure a working SQLite database exists if needed
+    try:
+        import os
+        db_path = settings.SQLITE_DB_PATH
+        if not os.path.exists(db_path):
+            logger.info(f"No se encontró base de datos SQLite activa. Generando demo automática en {db_path}...")
+            try:
+                from setup_demo_db import setup_demo_sqlite
+                setup_demo_sqlite()
+            except Exception as e_demo:
+                logger.warning(f"No se pudo autogenerar demo SQLite: {e_demo}")
+    except Exception as e:
+        logger.warning(f"Aviso al verificar base de datos SQLite: {str(e)}")
+
+    # 2. Initialize App Metadata (Users, Roles, RBAC permissions)
     try:
         db = SessionLocal()
         init_db(db)
         db.close()
-        logger.info("Base de datos de metadatos PostgreSQL conectada e inicializada correctamente.")
+        logger.info("Base de datos de metadatos e identidades inicializada correctamente.")
     except Exception as e:
-        logger.warning(f"Aviso de inicio de base de datos PostgreSQL: {str(e)}. El sistema esperará la configuración del Wizard si es necesario.")
+        logger.warning(f"Aviso de inicio de base de datos: {str(e)}. El sistema operará en modo contingencia.")
 
 @app.get("/")
 def root():

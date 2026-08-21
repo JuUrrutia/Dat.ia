@@ -38,6 +38,15 @@ export interface TraceabilityAudit {
   explanation: string;
 }
 
+export interface PresentationHints {
+  show_executive_report: boolean;
+  show_kpis: boolean;
+  show_gauges: boolean;
+  show_chart: boolean;
+  preferred_view: 'studio' | 'report' | 'table' | 'assistant';
+  summary_style: 'concise' | 'detailed' | 'executive';
+}
+
 export interface QueryResult {
   id: string;
   question: string;
@@ -52,9 +61,10 @@ export interface QueryResult {
   data_rows: Record<string, any>[];
   traceability: TraceabilityAudit;
   pipeline_source?: 'backend' | 'llm_direct' | 'fallback';
-  response_type?: 'data_analysis' | 'advisory' | 'explanation' | 'report' | 'hybrid';
-  conversational_response?: string; // Respuesta conversacional estructurada (advisory/explanation/hybrid)
+  response_type?: 'data_analysis' | 'advisory' | 'explanation' | 'report' | 'hybrid' | 'greeting';
+  conversational_response?: string; // Respuesta conversacional estructurada
   grounding_info?: string; // Información de las tablas o registros reales de la BD consultados
+  presentation_hints?: PresentationHints;
 }
 
 export interface AppSettings {

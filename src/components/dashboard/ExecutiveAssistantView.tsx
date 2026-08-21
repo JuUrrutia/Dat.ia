@@ -101,8 +101,8 @@ const parseMarkdownContent = (text: string) => {
 };
 
 const formatInlineMarkdown = (text: string, keyPrefix: string = 'inline') => {
-  // Replace **bold** with <strong>
-  const rawParts = text.split(/(\*\*.*?\*\*)/g);
+  // Replace **bold** with <strong> and `code` with <code>
+  const rawParts = text.split(/(\*\*.*?\*\*|`.*?`)/g);
   let counter = 0;
   const parts = rawParts.map((content) => {
     counter += 1;
@@ -118,6 +118,13 @@ const formatInlineMarkdown = (text: string, keyPrefix: string = 'inline') => {
         <strong key={part.id} className="text-amber-300 font-semibold">
           {part.content.slice(2, -2)}
         </strong>
+      );
+    }
+    if (part.content.startsWith('`') && part.content.endsWith('`')) {
+      return (
+        <code key={part.id} className="bg-zinc-950 px-1.5 py-0.5 rounded text-amber-300 font-mono text-xs border border-white/10">
+          {part.content.slice(1, -1)}
+        </code>
       );
     }
     return part.content;
@@ -157,11 +164,23 @@ const ExecutiveAssistantHeader: React.FC<ExecutiveAssistantHeaderProps> = ({
           <div>
             <div className="flex items-center space-x-2.5 flex-wrap gap-y-1">
               <h2 className="text-base font-bold text-white tracking-tight">
-                Asistente Estratégico IA
+                {result.response_type === 'greeting'
+                  ? 'Asistente DATIA'
+                  : result.response_type === 'explanation'
+                  ? 'Explicación Conceptual'
+                  : result.response_type === 'data_analysis'
+                  ? 'Respuesta Analítica IA'
+                  : 'Asesoría Estratégica IA'}
               </h2>
               <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
                 <Sparkles className="w-2.5 h-2.5" />
-                {result.response_type === 'explanation' ? 'Explicación & Guía' : 'Asesoría de Negocio'}
+                {result.response_type === 'explanation'
+                  ? 'Explicación'
+                  : result.response_type === 'greeting'
+                  ? 'Conversación'
+                  : result.response_type === 'data_analysis'
+                  ? 'Interpretación de Datos'
+                  : 'Estrategia'}
               </span>
               {result.grounding_info && (
                 <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
@@ -171,7 +190,7 @@ const ExecutiveAssistantHeader: React.FC<ExecutiveAssistantHeaderProps> = ({
               )}
             </div>
             <p className="text-xs text-zinc-400 mt-1">
-              Respuesta estructurada para "{result.question}" contextualizada con información corporativa.
+              Respuesta generada para "{result.question}" a partir de la base de datos activa.
             </p>
           </div>
         </div>
@@ -328,15 +347,12 @@ export const ExecutiveAssistantView: React.FC<ExecutiveAssistantViewProps> = ({
 
               if (sec.type === 'callout') {
                 return (
-                  <div
+                  <blockquote
                     key={sec.id}
-                    className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 flex items-start space-x-3 text-xs text-amber-200/90 shadow-inner"
+                    className="border-l-2 border-amber-400/80 bg-amber-500/5 px-4 py-2.5 rounded-r-xl text-xs text-amber-200/90 leading-relaxed italic my-2"
                   >
-                    <Zap className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                    <div className="leading-relaxed">
-                      {formatInlineMarkdown(sec.content, sec.id)}
-                    </div>
-                  </div>
+                    {formatInlineMarkdown(sec.content, sec.id)}
+                  </blockquote>
                 );
               }
 
@@ -344,10 +360,10 @@ export const ExecutiveAssistantView: React.FC<ExecutiveAssistantViewProps> = ({
                 return (
                   <div
                     key={sec.id}
-                    className="bg-zinc-950/60 border border-white/5 rounded-2xl p-3.5 flex items-start space-x-3 text-xs text-zinc-200 hover:border-amber-500/20 transition-colors shadow-sm ml-2 sm:ml-4"
+                    className="flex items-start space-x-2.5 text-sm text-zinc-300 leading-relaxed pl-1 py-0.5"
                   >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                    <div className="leading-relaxed font-normal">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-2 shrink-0" />
+                    <div className="leading-relaxed font-normal flex-1">
                       {formatInlineMarkdown(sec.content, sec.id)}
                     </div>
                   </div>
@@ -355,12 +371,12 @@ export const ExecutiveAssistantView: React.FC<ExecutiveAssistantViewProps> = ({
               }
 
               return (
-                <div
+                <p
                   key={sec.id}
-                  className="text-xs sm:text-sm text-zinc-300 leading-relaxed font-normal bg-zinc-950/40 p-4 rounded-2xl border border-white/5"
+                  className="text-sm text-zinc-200 leading-relaxed font-normal my-1"
                 >
                   {formatInlineMarkdown(sec.content, sec.id)}
-                </div>
+                </p>
               );
             })}
           </div>

@@ -77,87 +77,121 @@ const ExecutiveOfflineAlertView: React.FC<{
   );
 };
 
+interface ExecutiveDashboardHeaderProps {
+  result: QueryResult;
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
+  hasConversationalResponse: boolean;
+  dataRowsCount: number;
+  onOpenTraceability?: () => void;
+}
+
 const ExecutiveDashboardHeader: React.FC<ExecutiveDashboardHeaderProps> = ({
+  result,
   viewMode,
   setViewMode,
   hasConversationalResponse,
   dataRowsCount,
   onOpenTraceability,
-}) => (
-  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-zinc-900/90 via-zinc-900/60 to-zinc-950/90 border border-white/10 rounded-3xl p-5 shadow-2xl backdrop-blur-xl">
-    <div className="flex items-center space-x-3.5">
-      <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-lg shadow-amber-500/10">
-        <Sparkles className="w-5 h-5" />
-      </div>
-      <div>
-        <div className="flex items-center space-x-2">
-          <h2 className="text-base font-bold text-white tracking-tight">Executive Analytics Studio</h2>
-          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Live Data</span>
+}) => {
+  const dynamicTitle =
+    result.response_type === 'greeting'
+      ? 'Asistente de Datos IA'
+      : result.response_type === 'report'
+      ? 'Informe Ejecutivo de Negocio'
+      : result.response_type === 'advisory' || result.response_type === 'explanation'
+      ? 'Asesoría Estratégica IA'
+      : 'Análisis Inteligente de Datos';
+
+  const dynamicSubtitle =
+    result.grounding_info || `Consulta "${result.question}" analizada en la base de datos activa`;
+
+  return (
+    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-zinc-900/90 via-zinc-900/60 to-zinc-950/90 border border-white/10 rounded-3xl p-5 shadow-2xl backdrop-blur-xl">
+      <div className="flex items-center space-x-3.5">
+        <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-lg shadow-amber-500/10">
+          <Sparkles className="w-5 h-5" />
         </div>
-        <p className="text-xs text-zinc-400 mt-0.5">Visualización analítica interactiva y reporte de gobernanza corporativa</p>
+        <div>
+          <div className="flex items-center space-x-2">
+            <h2 className="text-base font-bold text-white tracking-tight">{dynamicTitle}</h2>
+            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Live Data</span>
+          </div>
+          <p className="text-xs text-zinc-400 mt-0.5">{dynamicSubtitle}</p>
+        </div>
+      </div>
+
+      <div className="flex items-center space-x-1.5 bg-zinc-950/80 p-1.5 rounded-2xl border border-white/5 self-start md:self-auto flex-wrap gap-y-1">
+        {hasConversationalResponse && (
+          <button
+            onClick={() => setViewMode('assistant')}
+            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
+              viewMode === 'assistant'
+                ? 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-500/25 font-bold'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Respuesta IA</span>
+          </button>
+        )}
+
+        {dataRowsCount > 0 && (
+          <button
+            onClick={() => setViewMode('studio')}
+            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
+              viewMode === 'studio'
+                ? 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-500/25 font-bold'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span>Studio</span>
+          </button>
+        )}
+
+        {result.executive_report && (
+          <button
+            onClick={() => setViewMode('report')}
+            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
+              viewMode === 'report'
+                ? 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-500/25 font-bold'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Informe</span>
+          </button>
+        )}
+
+        {dataRowsCount > 0 && (
+          <button
+            onClick={() => setViewMode('table')}
+            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
+              viewMode === 'table'
+                ? 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-500/25 font-bold'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+            }`}
+          >
+            <TableIcon className="w-3.5 h-3.5" />
+            <span>Dataset ({dataRowsCount})</span>
+          </button>
+        )}
+
+        {onOpenTraceability && (
+          <button
+            onClick={onOpenTraceability}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-white/5 border-l border-white/5 ml-1 transition-colors"
+            title="Auditoría de Consulta SQL y Seguridad AST"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">SQL</span>
+          </button>
+        )}
       </div>
     </div>
-
-    <div className="flex items-center space-x-1.5 bg-zinc-950/80 p-1.5 rounded-2xl border border-white/5 self-start md:self-auto flex-wrap gap-y-1">
-      {hasConversationalResponse && (
-        <button
-          onClick={() => setViewMode('assistant')}
-          className="flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-colors"
-        >
-          <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
-          <span>Asistente</span>
-        </button>
-      )}
-
-      <button
-        onClick={() => setViewMode('studio')}
-        className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
-          viewMode === 'studio'
-            ? 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-500/25 font-bold'
-            : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
-        }`}
-      >
-        <BarChart3 className="w-3.5 h-3.5" />
-        <span>Studio</span>
-      </button>
-
-      <button
-        onClick={() => setViewMode('report')}
-        className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
-          viewMode === 'report'
-            ? 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-500/25 font-bold'
-            : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
-        }`}
-      >
-        <FileText className="w-3.5 h-3.5" />
-        <span>Informe</span>
-      </button>
-
-      <button
-        onClick={() => setViewMode('table')}
-        className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
-          viewMode === 'table'
-            ? 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-500/25 font-bold'
-            : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
-        }`}
-      >
-        <TableIcon className="w-3.5 h-3.5" />
-        <span>Dataset ({dataRowsCount})</span>
-      </button>
-
-      {onOpenTraceability && (
-        <button
-          onClick={onOpenTraceability}
-          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-white/5 border-l border-white/5 ml-1 transition-colors"
-          title="Auditoría de Consulta SQL y Seguridad AST"
-        >
-          <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-          <span className="hidden sm:inline">SQL</span>
-        </button>
-      )}
-    </div>
-  </div>
-);
+  );
+};
 
 export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
   result,
@@ -179,15 +213,21 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
     return (
       result.response_type === 'advisory' ||
       result.response_type === 'explanation' ||
+      result.response_type === 'greeting' ||
       (Boolean(result.conversational_response) && (result.chart_type === 'none' || !result.chart_option?.series?.length))
     );
   }, [result.response_type, result.conversational_response, result.chart_type, result.chart_option]);
 
   const initialMode = useMemo<ViewMode>(() => {
+    if (result.conversational_response) return 'assistant';
     if (isAdvisoryOrExplanation) return 'assistant';
+    const hint = result.presentation_hints?.preferred_view;
+    if (hint === 'report') return 'report';
+    if (hint === 'table') return 'table';
+    if (hint === 'assistant') return 'assistant';
     if (result.response_type === 'report') return 'report';
     return 'studio';
-  }, [isAdvisoryOrExplanation, result.response_type]);
+  }, [result.conversational_response, isAdvisoryOrExplanation, result.response_type, result.presentation_hints]);
 
   const [viewMode, setViewMode] = useState<ViewMode>(initialMode);
 
@@ -279,6 +319,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
       ) : (
         <>
           <ExecutiveDashboardHeader
+            result={result}
             viewMode={viewMode}
             setViewMode={setViewMode}
             hasConversationalResponse={Boolean(result.conversational_response)}

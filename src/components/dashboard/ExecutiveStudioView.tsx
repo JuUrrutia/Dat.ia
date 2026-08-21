@@ -50,9 +50,16 @@ export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
   formatNumber,
   setViewMode,
 }) => {
+  const hints = result.presentation_hints;
+  const showDiagnosis = hints?.show_executive_report !== false;
+  const showKpis = hints?.show_kpis !== false;
+  const showChart = hints?.show_chart !== false;
+  const showGauges = hints?.show_gauges !== false;
+
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Executive Diagnosis Summary Banner */}
+      {showDiagnosis && (
       <div className="bg-gradient-to-r from-zinc-900/90 via-zinc-900/60 to-zinc-950/90 border border-white/10 rounded-2xl p-4.5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center space-x-2 text-[11px] font-bold text-amber-400 uppercase tracking-wider">
@@ -72,11 +79,13 @@ export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
           <ArrowUpRight className="w-3.5 h-3.5" />
         </button>
       </div>
+      )}
 
       {/* Top Row: Hero Card + Radial Progress Gauges */}
+      {showKpis && (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Widget 1: Hero Metric Card */}
-        <div className={`${result.gauges && result.gauges.length > 0 ? 'lg:col-span-5' : 'lg:col-span-12'} bg-gradient-to-br from-zinc-900/90 via-zinc-900/50 to-zinc-950/90 border border-white/10 rounded-3xl p-6 shadow-2xl relative overflow-hidden flex flex-col justify-between`}>
+        <div className={`${result.gauges && result.gauges.length > 0 && showGauges ? 'lg:col-span-5' : 'lg:col-span-12'} bg-gradient-to-br from-zinc-900/90 via-zinc-900/50 to-zinc-950/90 border border-white/10 rounded-3xl p-6 shadow-2xl relative overflow-hidden flex flex-col justify-between`}>
           <div
             className="absolute -top-16 -right-16 w-48 h-48 rounded-full blur-3xl pointer-events-none opacity-20"
             style={{ backgroundColor: currentTheme.primary }}
@@ -195,8 +204,10 @@ export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
           </div>
         )}
       </div>
+      )}
 
       {/* Main Chart Card */}
+      {showChart && (
       <div className="bg-gradient-to-br from-zinc-900/90 via-zinc-900/50 to-zinc-950/90 border border-white/10 rounded-3xl p-6 shadow-2xl space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
           <div className="flex items-center space-x-2">
@@ -296,6 +307,7 @@ export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
           <InteractiveChart option={dynamicChartOption} height="360px" />
         </div>
       </div>
+      )}
     </div>
   );
 };
