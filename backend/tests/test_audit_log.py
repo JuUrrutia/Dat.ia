@@ -59,17 +59,24 @@ class TestAuditLog(unittest.TestCase):
         self.assertEqual(latest_log.question_prompt, "hola buenos dias")
 
     def test_rejected_rbac_query_persists_audit_log(self):
-        """Rejected query (e.g. unassigned Usuario role) records an AuditLog with RECHAZADO status."""
+        """Rejected query (e.g. forbidden SQL) records an AuditLog with RECHAZADO status via /chat/query."""
         user = self.db.query(User).filter(User.username == "felipe_economista").first()
-        # Temporarily test with query-open for non-admin role attempting forbidden action
+        jti = str(uuid.uuid4())
+        user_token = create_access_token(subject=user.id, jti=jti)
+        session = UserSession(user_id=user.id, jti=jti, is_revoked=False)
+        self.db.add(session)
+        self.db.commit()
+
+        headers = {"Authorization": f"Bearer {user_token}"}
         resp = self.client.post(
-            "/api/v1/chat/query-open",
-            json={"question": "DROP TABLE fact_ventas", "user_role": "Economista"}
+            "/api/v1/chat/query",
+            json={"question": "DROP TABLE fact_ventas", "connection_id": 1},
+            headers=headers
         )
         self.assertEqual(resp.status_code, 200)
 
         latest_log = self.db.query(AuditLog).order_by(AuditLog.id.desc()).first()
-        self.assertEqual(latest_log.username, "demo_economista")
+        self.assertEqual(latest_log.username, "felipe_economista")
         self.assertTrue("RECHAZADO" in latest_log.validation_status or "ERROR" in latest_log.validation_status)
 
     def test_audit_list_and_export_endpoints(self):

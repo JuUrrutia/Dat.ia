@@ -8,7 +8,8 @@ from app.models.audit_log import AuditLog
 from app.models.connection import CorporateConnection
 from app.schemas.query_schema import QueryRequest, QueryResponse
 from app.services.query_engine import QueryEngine
-from app.core.constants import ADMIN_ROLES, DEFAULT_DEMO_ROLE, ROLE_USUARIO, ROLE_ADMINISTRADOR
+from app.core.config import settings
+from app.core.constants import ADMIN_ROLES, DEFAULT_DEMO_ROLE, ROLE_USUARIO, ROLE_ADMINISTRADOR, DEFAULT_USER_ROLE
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -123,11 +124,20 @@ async def process_chat_query_open(
     db: Session = Depends(get_db)
 ) -> Any:
     """
-    Open endpoint (no JWT required) for demo/desktop mode.
-    Receives user_role directly from request body and persists audit log.
+    Restricted demo/desktop endpoint.
+    Disabled by default (returns 403 Forbidden).
+    If explicitly enabled via settings.ALLOW_OPEN_DEMO_ENDPOINT=True, any client-specified
+    user_role is strictly ignored to prevent RBAC bypass, and the least-privileged base role
+    (ROLE_USUARIO) is enforced unconditionally.
     """
-    user_role = query_in.user_role or DEFAULT_DEMO_ROLE
-    is_admin = user_role in ADMIN_ROLES
+    if not settings.ALLOW_OPEN_DEMO_ENDPOINT:
+        raise HTTPException(
+            status_code=403,
+            detail="Este endpoint está deshabilitado. Use /chat/query con autenticación JWT."
+        )
+
+    user_role = DEFAULT_USER_ROLE
+    is_admin = False
     conn_id = query_in.connection_id or 1
     target_db_name = _resolve_target_database(db, conn_id)
 

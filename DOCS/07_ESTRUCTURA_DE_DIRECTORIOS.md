@@ -56,9 +56,8 @@ democratizacion-de-datos/
 │   │   ├── db_connectors/         # Adaptadores y Pool de conexiones de BD corporativas
 │   │   │   ├── base.py                    # Interfaz abstracta para conectores relacionales
 │   │   │   ├── postgres_connector.py      # Conector psycopg3 (Solo Lectura)
-│   │   │   ├── mssql_connector.py         # Conector pyodbc/pymssql (Solo Lectura)
-│   │   │   ├── mysql_connector.py         # Conector pymysql (Solo Lectura)
-│   │   │   └── oracle_connector.py        # Conector python-oracledb Thin Mode (Solo Lectura)
+│   │   │   ├── mssql_connector.py         # Conector SQLAlchemy / pymssql (Solo Lectura)
+│   │   │   └── mysql_connector.py         # Conector pymysql (Solo Lectura)
 │   │   ├── models/                # Modelos de datos relacionales (SQLAlchemy / SQLModel)
 │   │   │   ├── user.py                    # Entidad Usuario
 │   │   │   ├── role.py                    # Entidades Rol y Dominio

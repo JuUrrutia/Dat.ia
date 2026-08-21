@@ -115,7 +115,7 @@ export interface QueryResult {
   data_rows: Record<string, any>[];
   traceability: TraceabilityAudit;
   pipeline_source?: 'backend' | 'llm_direct' | 'fallback';
-  response_type?: 'data_analysis' | 'advisory' | 'explanation' | 'report' | 'hybrid' | 'greeting';
+  response_type?: 'data_analysis' | 'advisory' | 'explanation' | 'report' | 'hybrid' | 'greeting' | 'error';
   conversational_response?: string; // Respuesta conversacional estructurada
   grounding_info?: string; // Información de las tablas o registros reales de la BD consultados
   presentation_hints?: PresentationHints;
