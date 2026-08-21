@@ -154,7 +154,7 @@ Contiene la lógica de negocio central del sistema:
 
 ### 3.2. `backend/app/db_connectors/`
 Pool de conectores relacionales nativos en modo **Solo Lectura**:
-- Implementa adaptadores para **PostgreSQL**, **Microsoft SQL Server**, **MySQL** y **Oracle**.
+- Implementa adaptadores para **PostgreSQL**, **Microsoft SQL Server**, **MySQL** y **SQLite**.
 - Aplica configuraciones estrictas de `READ ONLY`, límites de tiempo de respuesta (timeouts) y límites de filas devueltas.
 
 ### 3.3. `electron/`

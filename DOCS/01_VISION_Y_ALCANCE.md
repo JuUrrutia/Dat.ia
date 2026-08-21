@@ -24,7 +24,7 @@ Todo el ecosistema opera bajo una premisa inquebrantable de **soberanía de dato
 
 En el entorno corporativo tradicional se presentan los siguientes cuellos de botella:
 - **Dependencia de analistas y TI:** Los usuarios de negocio dependen de los equipos técnicos para generar reportes y consultas a bases de datos, con tiempos de espera de días o semanas.
-- **Silos de información inaccesibles:** Los datos residen en bases de datos relacionales empresariales (PostgreSQL, SQL Server, Oracle, MySQL) inaccesibles para el usuario promedio.
+- **Silos de información inaccesibles:** Los datos residen en bases de datos relacionales empresariales (PostgreSQL, SQL Server, MySQL, SQLite) inaccesibles para el usuario promedio.
 - **Falta de contexto analítico:** Un reporte crudo en hoja de cálculo muchas veces carece de interpretaciones comprensibles y visualizaciones directas.
 - **Riesgo de fuga de información confidencial:** El uso indebido de herramientas de IA en la nube públicas (ChatGPT, Claude, etc.) expone secretos comerciales, datos financieros y datos personales sensibles fuera de la red de la empresa.
 
@@ -114,11 +114,13 @@ sequenceDiagram
 
 ## 5. Fuentes de Datos Soportadas
 
-El sistema se conectará a las bases de datos relacionales corporativas más utilizadas:
-- **PostgreSQL**
-- **Microsoft SQL Server (MSSQL)**
-- **MySQL / MariaDB**
-- **Oracle Database**
+El sistema se conecta a las bases de datos relacionales corporativas más utilizadas mediante drivers nativos universales:
+- **PostgreSQL** (`psycopg` binary)
+- **SQLite 3** (nativo embebido)
+- **MySQL / MariaDB** (`pymysql`)
+- **Microsoft SQL Server (MSSQL)** (`pymssql` / `pyodbc`)
+
+*(Nota: Oracle Database fue excluida deliberadamente por razones de portabilidad y dependencias nativas complejas; consultar ADR-001 en Documento 06).*
 
 ---
 
