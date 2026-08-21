@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import { QueryResult } from '../types';
 import { SidebarChatHistory, ChatThread } from '../components/chat/SidebarChatHistory';
 import { InteractiveChart } from '../components/dashboard/InteractiveChart';
@@ -54,6 +55,7 @@ const PipelineBadge: React.FC<{ source?: string }> = ({ source }) => {
 
 export const ChatDashboardPage: React.FC = () => {
   const { user, settings } = useAuth();
+  const { notify } = useNotifications();
   const [promptInput, setPromptInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTraceability, setActiveTraceability] = useState<QueryResult['traceability'] | null>(null);
@@ -116,6 +118,15 @@ export const ChatDashboardPage: React.FC = () => {
     try {
       const newResult = await queryService.sendQuery(text, userRole, settings);
 
+      const vStatus = newResult.traceability?.validation_status;
+      if (vStatus && vStatus !== 'APROBADO') {
+        if (vStatus.includes('RECHAZADO')) {
+          notify('warning', `Consulta bloqueada por AST Guardrail (${vStatus}) según perfil ${userRole}.`);
+        } else if (vStatus.includes('ERROR')) {
+          notify('error', `Error al procesar consulta SQL (${vStatus}).`);
+        }
+      }
+
       if (activeThreadId) {
         // Append to EXISTING thread
         setThreads((prevThreads) =>
@@ -177,32 +188,30 @@ export const ChatDashboardPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* AI Response Card */}
+                  {/* System & Analytics Response Bubble */}
                   <div className="flex items-start space-x-3">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-700 flex items-center justify-center text-zinc-950 shrink-0 shadow-lg shadow-amber-500/20 font-bold">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-brand-500/20">
                       <Bot className="w-4 h-4" />
                     </div>
 
-                    <div className="flex-1 space-y-4">
-                      {/* Compact Badge Bar */}
-                      <div className="flex items-center justify-between bg-zinc-950/60 border border-white/5 rounded-2xl px-4 py-2">
-                        <div className="flex items-center space-x-2">
-                          <PipelineBadge source={result.pipeline_source} />
-                          <span className="text-[11px] text-zinc-400 font-medium">
-                            Procesado en {result.traceability?.execution_time_ms || 0} ms
+                    <div className="flex-1 space-y-4 max-w-4xl">
+                      {/* Badge / Status Bar */}
+                      <div className="flex items-center space-x-3">
+                        <PipelineBadge source={result.pipeline_source} />
+                        <span className="text-[11px] text-gray-400 font-mono">{result.timestamp}</span>
+                        {result.traceability?.validation_status && (
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md border ${
+                            result.traceability.validation_status === 'APROBADO'
+                              ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                              : 'text-rose-400 bg-rose-500/10 border-rose-500/20'
+                          }`}>
+                            <ShieldCheck className="w-3 h-3" />
+                            AST: {result.traceability.validation_status}
                           </span>
-                        </div>
-
-                        <button
-                          onClick={() => setActiveTraceability(result.traceability)}
-                          className="flex items-center space-x-1.5 text-xs text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 px-3 py-1 rounded-lg transition-colors"
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                          <span>Auditar SQL & AST</span>
-                        </button>
+                        )}
                       </div>
 
-                      {/* Executive Dashboard View (Studio, Report, Dataset) */}
+                      {/* Render Dynamic Dashboard Views (Report, KPIs, Charts, Tables) */}
                       <ExecutiveDashboardView
                         result={result}
                         onOpenTraceability={() => setActiveTraceability(result.traceability)}
@@ -211,94 +220,78 @@ export const ChatDashboardPage: React.FC = () => {
                   </div>
                 </div>
               ))}
+              <div ref={chatBottomRef} />
             </div>
           ) : (
-            /* Welcome Empty State when starting a new chat */
-            <div className="max-w-2xl mx-auto text-center py-16 space-y-6">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-500 shadow-xl shadow-brand-500/20">
+            /* Empty State / Welcome Screen */
+            <div className="h-full flex flex-col items-center justify-center max-w-2xl mx-auto text-center space-y-6 p-4">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-xl shadow-brand-500/20 animate-bounce-subtle">
                 <Sparkles className="w-8 h-8 text-white" />
               </div>
-              <h2 className="text-xl font-bold text-white tracking-tight">
-                ¿En qué puedo ayudarte hoy en el perfil {userRole}?
-              </h2>
-              <p className="text-xs text-gray-400">
-                Selecciona una de las sugerencias activas abajo o escribe una pregunta para consultar la base de datos corporativa.
-              </p>
+
+              <div className="space-y-2">
+                <h2 className="text-2xl font-bold text-white tracking-tight">
+                  ¿Qué deseas analizar de la empresa hoy?
+                </h2>
+                <p className="text-xs text-gray-400 leading-relaxed max-w-md mx-auto">
+                  Pregunta en lenguaje natural sobre finanzas, operaciones, incidentes o servidores. La IA local validará los permisos RBAC antes de consultar la BD corporativa.
+                </p>
+              </div>
+
+              {/* Dynamic Suggestions Buttons */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl text-left">
+                {promptSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => handleSendPrompt(suggestion)}
+                    className="p-3.5 rounded-xl bg-dark-surface hover:bg-dark-card border border-dark-border hover:border-brand-500/40 text-xs text-gray-300 hover:text-white transition-colors text-left group flex items-start space-x-2.5 shadow-sm"
+                  >
+                    <span className="text-brand-400 font-bold">›</span>
+                    <span className="group-hover:translate-x-0.5 transition-transform">{suggestion}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
-
-          {/* Loading Indicator */}
-          {isGenerating && (
-            <div className="max-w-5xl mx-auto flex items-start space-x-3">
-              <div className="w-8 h-8 rounded-xl bg-brand-600 flex items-center justify-center text-white shrink-0 animate-bounce">
-                <Bot className="w-4 h-4" />
-              </div>
-              <div className="glass-panel rounded-2xl p-6 border border-brand-500/30 w-full text-center space-y-3">
-                <div className="inline-flex items-center space-x-2 text-brand-400 text-xs font-semibold">
-                  <Sparkles className="w-4 h-4 animate-spin" />
-                  <span>Consultando demo_corporativa.db & Validando AST...</span>
-                </div>
-                <p className="text-xs text-gray-400">Invocando LLM Local → Recortando Esquema → Ejecutando SQL READ ONLY</p>
-              </div>
-            </div>
-          )}
-
-          <div ref={chatBottomRef} />
         </div>
 
-        {/* Bottom Fixed Chat Input Bar */}
-        <div className="p-4 border-t border-dark-border/60 bg-dark-surface/80 backdrop-blur-md space-y-3">
-          {/* Suggestion Chips */}
-          <div className="max-w-4xl mx-auto flex items-center space-x-2 overflow-x-auto">
-            <span className="text-xs text-gray-400 font-medium shrink-0 flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-brand-400" /> Sugerencias Activas:
-            </span>
-            {promptSuggestions.map((sug) => (
-              <button
-                key={sug}
-                onClick={() => handleSendPrompt(sug)}
-                className="text-xs text-gray-300 bg-dark-base hover:bg-dark-card border border-dark-border hover:border-brand-500/30 rounded-lg px-3 py-1 whitespace-nowrap transition-colors hover:text-white"
-              >
-                {sug}
-              </button>
-            ))}
-          </div>
-
-          {/* Prompt Input Form */}
-          <div className="max-w-4xl mx-auto relative flex items-center">
+        {/* Input Prompt Box at Bottom */}
+        <div className="p-4 border-t border-dark-border bg-dark-surface/90 backdrop-blur-md">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSendPrompt(promptInput);
+            }}
+            className="max-w-4xl mx-auto relative flex items-center"
+          >
             <input
               type="text"
               value={promptInput}
               onChange={(e) => setPromptInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSendPrompt(promptInput)}
-              placeholder="Haz una pregunta sobre tus datos o pulsa una sugerencia..."
-              aria-label="Pregunta sobre tus datos"
-              className="w-full bg-dark-base border border-dark-border rounded-xl pl-4 pr-12 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors shadow-inner"
+              placeholder={`Pregunta a Datia sobre los datos corporativos (${userRole})...`}
+              disabled={isGenerating}
+              aria-label="Pregunta analítica"
+              className="w-full bg-dark-base border border-dark-border rounded-2xl pl-5 pr-14 py-3.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors shadow-inner"
             />
+
             <button
-              onClick={() => handleSendPrompt(promptInput)}
-              disabled={isGenerating || !promptInput.trim()}
+              type="submit"
+              disabled={!promptInput.trim() || isGenerating}
               aria-label="Enviar consulta"
-              className="absolute right-2 p-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-40 transition-colors shadow-md shadow-brand-600/30"
+              className="absolute right-2.5 p-2 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white disabled:opacity-40 disabled:pointer-events-none transition-colors shadow-md shadow-brand-600/30"
             >
-              {isGenerating ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
+              <Send className="w-4 h-4" />
             </button>
-          </div>
+          </form>
         </div>
       </div>
 
-      {/* Traceability Modal */}
-      {activeTraceability && (
-        <TraceabilityModal
-          traceability={activeTraceability}
-          isOpen={!!activeTraceability}
-          onClose={() => setActiveTraceability(null)}
-        />
-      )}
+      {/* SQL & Governance Traceability Modal */}
+      <TraceabilityModal
+        isOpen={Boolean(activeTraceability)}
+        traceability={activeTraceability}
+        onClose={() => setActiveTraceability(null)}
+      />
     </div>
   );
 };

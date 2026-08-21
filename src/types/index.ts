@@ -130,3 +130,31 @@ export interface AppSettings {
   postgres_db: string;
   auto_detect_llm: boolean;
 }
+
+export interface ComponentHealth {
+  name: string;
+  type: 'llm' | 'metadata_db' | 'connector';
+  status: 'OPERATIVO' | 'DEGRADADO' | 'CRITICO' | 'ERROR';
+  latency_ms: number;
+  message: string;
+  details?: Record<string, any>;
+}
+
+export interface SystemHealthResponse {
+  status: 'OPERATIVO' | 'DEGRADADO' | 'CRITICO';
+  timestamp: string;
+  llm_engine: ComponentHealth;
+  metadata_db: ComponentHealth;
+  corporate_connectors: ComponentHealth[];
+  total_active_connectors: number;
+  healthy_connectors_count: number;
+}
+
+export type ToastType = 'success' | 'warning' | 'error' | 'info';
+
+export interface ToastNotification {
+  id: string;
+  type: ToastType;
+  message: string;
+  duration?: number;
+}
