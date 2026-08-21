@@ -11,6 +11,22 @@ def init_db(db: Session):
     # Create all tables defined in models
     Base.metadata.create_all(bind=engine)
 
+    # Safe schema evolution check for existing deployments
+    try:
+        from sqlalchemy import inspect, text
+        inspector = inspect(engine)
+        if "users" in inspector.get_table_names():
+            user_cols = {c["name"] for c in inspector.get_columns("users")}
+            with engine.begin() as conn:
+                if "failed_login_attempts" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER DEFAULT 0 NOT NULL"))
+                if "locked_until" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN locked_until TIMESTAMP NULL"))
+                if "must_change_password" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT 0 NOT NULL"))
+    except Exception:
+        pass
+
     # Seed Default Domains
     default_domains = [
         {"name": "Economía & Finanzas", "description": "Ingresos, costos, presupuestos, facturación y márgenes de negocio"},

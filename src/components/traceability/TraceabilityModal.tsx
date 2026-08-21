@@ -3,7 +3,7 @@ import { TraceabilityAudit } from '../../types';
 import { CheckCircle2, ShieldCheck, Clock, Database, Copy, Check, Info, Code2, Layers } from 'lucide-react';
 
 interface TraceabilityModalProps {
-  traceability: TraceabilityAudit;
+  traceability: TraceabilityAudit | null;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -11,7 +11,7 @@ interface TraceabilityModalProps {
 export const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ traceability, isOpen, onClose }) => {
   const [copied, setCopied] = useState(false);
 
-  if (!isOpen) return null;
+  if (!isOpen || !traceability) return null;
 
   const handleCopySQL = () => {
     navigator.clipboard.writeText(traceability.sql_executed);

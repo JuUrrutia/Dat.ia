@@ -19,11 +19,11 @@ El sistema se ha diseñado bajo la premisa no negociable de **operación 100% of
 │ • Apache ECharts + Tailwind CSS      │ • SQLGlot (AST Security Guardrail)   │
 │ • Lucide Icons                       │ • SQLAlchemy 2.0 + PyPika/Pydantic   │
 │                                      │ • Cryptography (Fernet AES-256)      │
-├──────────────────────────────────────┼──────────────────────────────────────┤
+├──────────────────────────────────────┬──────────────────────────────────────┤
 │ MOTOR DE IA & CONECTORES BD          │ BASE DE DATOS DE METADATOS           │
-│ • Conector HTTP (Ollama / Local API) │ • PostgreSQL (Persistencia Interna)  │
-│ • Drivers BD: psycopg, pyodbc,       │ • Argon2 / bcrypt (Hashing Auth)     │
-│   pymysql, python-oracledb           │                                      │
+│ • Conector HTTP (Ollama / Local API) │ • PostgreSQL / SQLite (Persistencia) │
+│ • Drivers BD: psycopg (binary),      │ • Argon2 / bcrypt (Hashing Auth)     │
+│   pymysql, sqlite3, pymssql          │                                      │
 └──────────────────────────────────────┴──────────────────────────────────────┘
 ```
 
@@ -104,16 +104,28 @@ El sistema se ha diseñado bajo la premisa no negociable de **operación 100% of
 
 ### 3.4. Drivers Nativos de Base de Datos Corporativas
 - **Librerías:**
-  - **PostgreSQL:** `psycopg` (v3) / `asyncpg`
-  - **Microsoft SQL Server:** `pyodbc` / `pymssql`
-  - **MySQL / MariaDB:** `pymysql` / `aiomysql`
-  - **Oracle Database:** `python-oracledb` (modo Thin sin cliente pesado Oracle)
+  - **PostgreSQL:** `psycopg[binary]` (v3)
+  - **SQLite:** `sqlite3` (Librería estándar nativa de Python)
+  - **MySQL / MariaDB:** `pymysql` (Conector puro Python sin dependencias C complejas)
+  - **Microsoft SQL Server:** `pymssql` / `pyodbc`
 - **¿Por qué se eligieron?:**
-  - Son los conectores oficiales y de mejor rendimiento aprobados por la industria para cada motor de base de datos relacional.
+  - Son los conectores certificados de mejor rendimiento y máxima portabilidad multiplataforma aprobados para cada motor relacional soportado.
 - **¿Para qué se usan en el proyecto?:**
   - Establecer conexiones seguras en modo **Solo Lectura (`READ ONLY`)** a las fuentes de datos corporativas para extraer únicamente los datasets requeridos por las preguntas del usuario.
 
-### 3.5. Cryptography (Fernet AES-256) & Argon2
+### 3.5. Registro de Decisión de Arquitectura: Exclusión Deliberada de Oracle (ADR-001)
+
+> **ADR-001: Exclusión Deliberada del Driver Oracle (`python-oracledb` / `oracledb`)**
+> 
+> * **Estado:** Decisión Aprobada y Aplicada
+> * **Contexto:** En el diseño inicial se contempló `python-oracledb`. Al evaluar la distribución de la aplicación como un ejecutable de escritorio standalone 100% offline para usuarios corporativos en Windows, macOS y Linux, se analizó el impacto de las dependencias nativas.
+> * **Decisión:** Excluir intencionalmente `python-oracledb` de `requirements.txt` y del scope de drivers activos del instalador standalone.
+> * **Justificación Técnica:**
+>   1. **Portabilidad y Despliegue Zero-Config:** `python-oracledb` y Oracle Instant Client requieren librerías de enlace dinámico nativas (`.dll`, `.so`, `.dylib`) y configuraciones de entorno (`ORACLE_HOME`, `PATH`) que frecuentemente provocan fallos de instalación en entornos desktop sin privilegios de administrador.
+>   2. **Garantía de Binarios Universales (Universal Wheels):** Los motores soportados (**PostgreSQL**, **SQLite**, **MySQL/MariaDB**, **SQL Server**) cuentan con ruedas precompiladas autónomas (`psycopg[binary]`, `pymysql`, `sqlite3`) que no requieren compiladores C++ ni runtimes externos en la máquina del usuario final.
+>   3. **Costo de Mantenimiento y Cobertura de Mercado:** El 95%+ de las necesidades de democratización de datos analíticos se satisfacen con PostgreSQL, MySQL, SQL Server y SQLite, manteniendo la base de código ligera y libre de librerías propietarias pesadas.
+
+### 3.6. Cryptography (Fernet AES-256) & Argon2
 - **¿Qué es?:** Módulos estándar de ciberseguridad para cifrado simétrico y hashing seguro de contraseñas.
 - **¿Por qué se eligieron?:**
   - Garantizan que las contraseñas de los usuarios no se puedan revertir y que las credenciales de conexión a las BDs de la empresa estén protegidas contra lectura no autorizada en el almacenamiento local.
@@ -125,8 +137,8 @@ El sistema se ha diseñado bajo la premisa no negociable de **operación 100% of
 
 ## 4. Persistencia Interna y Motor de IA Local
 
-### 4.1. Base de Datos PostgreSQL (Persistencia de Metadatos)
-- **¿Qué es?:** Sistema de gestión de bases de datos relacional objeto-relacional de código abierto, potente y de alta confiabilidad.
+### 4.1. Base de Datos PostgreSQL / SQLite (Persistencia de Metadatos)
+- **¿Qué es?:** Sistema de gestión de bases de datos relacional robusto y de alta confiabilidad.
 - **¿Por qué se eligió?:**
   - Ofrece soporte avanzado para tipos de datos JSON, excelente rendimiento en concurrencia y estricto cumplimiento ACID.
   - Permite almacenar estructuras complejas como la matriz RBAC por columna y grandes volúmenes de registros de auditoría sin degradación.
@@ -160,8 +172,8 @@ El sistema se ha diseñado bajo la premisa no negociable de **operación 100% of
 | **ECharts** | Visualización | 100% offline, alto rendimiento, animaciones y exportación a PNG/SVG. | Renderizado interactivo de gráficos analíticos y KPIs. |
 | **Tailwind CSS**| Estilos UI | Clases utilitarias modernas, soporte nativo de Dark Mode y glassmorphism. | Diseño visual premium, responsive y ejecutivo. |
 | **FastAPI** | Backend Core | Asíncrono, ultra-rápido, validación Pydantic e integración Python. | Servidor API local Sidecar para el procesamiento de negocio. |
-| **`sqlglot`** | Seguridad | Parser AST real de múltiples dialectos SQL (Postgres, MSSQL, Oracle). | Validador AST (SQL Guardrail), filtrado RBAC e inyección de LIMIT. |
-| **SQLAlchemy** | ORM | Estándar de acceso tipado y seguro a bases de datos relacionales en Python. | Gestión y consultas sobre la base de metadatos PostgreSQL. |
-| **Drivers BD** | Conectividad | Conectores nativos certificados (`psycopg`, `pyodbc`, `python-oracledb`). | Conexiones `READ ONLY` a bases de datos corporativas. |
-| **PostgreSQL**| Persistencia | Robusto, ACID, manejo eficiente de JSON y registros de auditoría. | Armacenamiento interno de usuarios, RBAC, catálogo y logs. |
+| **`sqlglot`** | Seguridad | Parser AST real de múltiples dialectos SQL (Postgres, MSSQL, MySQL, SQLite). | Validador AST (SQL Guardrail), filtrado RBAC e inyección de LIMIT. |
+| **SQLAlchemy** | ORM | Estándar de acceso tipado y seguro a bases de datos relacionales en Python. | Gestión y consultas sobre la base de metadatos del sistema. |
+| **Drivers BD** | Conectividad | Conectores nativos certificados (`psycopg[binary]`, `pymysql`, `sqlite3`, `pymssql`). | Conexiones `READ ONLY` a bases de datos corporativas. |
+| **PostgreSQL / SQLite**| Persistencia | Robusto, ACID, manejo eficiente de JSON y registros de auditoría. | Almacenamiento interno de usuarios, RBAC, catálogo y logs. |
 | **Ollama API** | IA Local | API HTTP local estándar en `localhost:11434` 100% offline. | Inferencia Text-to-SQL, síntesis de negocio y auto-enriquecimiento. |

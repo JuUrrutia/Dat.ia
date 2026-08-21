@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     # Security Defaults
     DEFAULT_ROW_LIMIT: int = 1000
     QUERY_TIMEOUT_SECONDS: int = 15
+    ALLOW_OPEN_DEMO_ENDPOINT: bool = False  # If True, enables unauthenticated /chat/query-open forced to least-privileged role
 
     SQLITE_DB_NAME: str = "mental_health.sqlite"
 

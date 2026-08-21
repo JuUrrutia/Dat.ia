@@ -58,6 +58,35 @@ export const authService = {
     }
   },
 
+  async getUserSessions(userId?: number): Promise<import('../types').UserSession[]> {
+    const params = userId ? { user_id: userId } : {};
+    const res = await apiClient.get<import('../types').UserSession[]>('/auth/sessions', { params });
+    return res.data;
+  },
+
+  async revokeSession(sessionId: number): Promise<{ message: string }> {
+    const res = await apiClient.post<{ message: string }>(`/auth/sessions/${sessionId}/revoke`);
+    return res.data;
+  },
+
+  async revokeAllUserSessions(userId: number): Promise<{ message: string }> {
+    const res = await apiClient.post<{ message: string }>(`/auth/users/${userId}/revoke-all-sessions`);
+    return res.data;
+  },
+
+  async resetUserPassword(userId: number): Promise<import('../types').PasswordResetResult> {
+    const res = await apiClient.post<import('../types').PasswordResetResult>(`/auth/users/${userId}/reset-password`);
+    return res.data;
+  },
+
+  async changePassword(oldPassword: string, newPassword: string): Promise<{ message: string }> {
+    const res = await apiClient.post<{ message: string }>('/auth/change-password', {
+      old_password: oldPassword,
+      new_password: newPassword
+    });
+    return res.data;
+  },
+
   logout() {
     setAuthToken(null);
   }

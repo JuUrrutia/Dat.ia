@@ -6,12 +6,11 @@ import { DEFAULT_OLLAMA_URL, DEFAULT_LLM_MODEL, DEFAULT_LLM_PROVIDER } from '../
 export const queryService = {
   /**
    * Fetches dynamic, table-specific question suggestions from the backend API.
+   * If authenticated, backend derives role from JWT. If unauthenticated or offline, falls back to role heuristics.
    */
   async getSuggestions(userRole: string = 'Economista'): Promise<string[]> {
     try {
-      const res = await apiClient.get('/chat/suggestions', {
-        params: { user_role: userRole }
-      });
+      const res = await apiClient.get('/chat/suggestions');
       if (res.data && Array.isArray(res.data.suggestions) && res.data.suggestions.length > 0) {
         return res.data.suggestions;
       }
@@ -47,12 +46,11 @@ export const queryService = {
     settings?: AppSettings
   ): Promise<QueryResult> {
 
-    // Tier 1: Try Backend FastAPI (full pipeline with SQL execution on connected database)
+    // Tier 1: Try Backend FastAPI (authenticated pipeline with SQL execution on connected database)
     try {
-      const res = await apiClient.post('/chat/query-open', {
+      const res = await apiClient.post('/chat/query', {
         question,
         connection_id: 1,
-        user_role: userRole,
       });
 
       if (res.data && res.data.summary_text) {
@@ -76,7 +74,30 @@ export const queryService = {
           presentation_hints: res.data.presentation_hints || undefined,
         };
       }
-    } catch {
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        return {
+          id: `res-${Date.now()}`,
+          question,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          summary_text: '⚠️ Tu sesión ha expirado o no está autorizada. Por favor, cierra sesión e inicia nuevamente para continuar consultando los datos corporativos.',
+          kpis: [],
+          chart_type: 'none',
+          chart_option: {},
+          data_columns: [],
+          data_rows: [],
+          traceability: {
+            sql_executed: '-- Solicitud no autorizada (HTTP 401)',
+            execution_time_ms: 0,
+            rows_returned: 0,
+            validation_status: 'RECHAZADO_AUTH',
+            schema_tables_used: [],
+            explanation: 'La solicitud fue rechazada por falta de autenticación o token JWT expirado.',
+          },
+          pipeline_source: 'backend',
+          response_type: 'error',
+        };
+      }
       // Backend not running/unreachable — fall through to Tier 2
     }
 

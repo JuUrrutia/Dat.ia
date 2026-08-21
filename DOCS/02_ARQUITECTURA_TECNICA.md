@@ -35,7 +35,7 @@ El sistema está concebido como una **Aplicación de Escritorio Standalone (Desk
 │    - Generador de Resumen Ejecutivo y Recomendación de Gráficos (Text-to-Viz) │
 ├───────────────────────────────────────────────────────────────────────────────┤
 │ 4. CAPA DE ACCESO A DATOS CORPORATIVOS (DB CONNECTORS POOL)                   │
-│    - Conectores Relacionales Nativos: PostgreSQL, MSSQL, MySQL, Oracle        │
+│    - Conectores Relacionales Nativos: PostgreSQL, MSSQL, MySQL, SQLite        │
 │    - Conexiones de Solo Lectura (`READ ONLY`) con Pool de Conexiones          │
 │    - Mecanismo de Límites de Filas (Row Limits) y Tiempos de Espera (Timeouts)│
 └───────────────────────────────────────────────────────────────────────────────┘
@@ -76,7 +76,7 @@ El sistema está concebido como una **Aplicación de Escritorio Standalone (Desk
   - Soporte para alternar modelos fácilmente desde la configuración (ej. `qwen2.5-coder:7b/14b/32b`, `llama3.3:70b`, `llama3.1:8b`, `deepseek-coder`).
 - **Pipeline de Inferencia:**
   1. **Schema Pruning Dinámico:** El backend filtra el catálogo semántico y genera una definición compacta en formato DDL o JSON semántico **únicamente con las tablas y columnas autorizadas para el usuario en sesión**.
-  2. **Prompt de Generación SQL:** Se envía la pregunta del usuario + esquema filtrado + reglas de dialecto SQL específico del motor (Postgres, MSSQL, MySQL, Oracle).
+  2. **Prompt de Generación SQL:** Se envía la pregunta del usuario + esquema filtrado + reglas de dialecto SQL específico del motor (Postgres, MSSQL, MySQL, SQLite).
   3. **Validación y Retry Loop:** Si el SQL falla la validación AST o la ejecución en BD, el error se realimenta localmente al LLM con un máximo de 2 reintentos para autocorrección.
   4. **Text-to-Viz & Síntesis:** Una vez obtenidos los datos tabulares, un segundo prompt ligero pide al LLM:
      - Tipo de gráfico más idóneo (barras, líneas, dona, KPI).
@@ -84,11 +84,12 @@ El sistema está concebido como una **Aplicación de Escritorio Standalone (Desk
      - Resumen ejecutivo explicando qué revelan los datos en lenguaje de negocio.
 
 ### 2.4. Capa de Conectores de Bases de Datos Corporativas
-- **Controladores Nativos:**
-  - PostgreSQL: `psycopg` / `asyncpg`
-  - Microsoft SQL Server: `pyodbc` / `pymssql`
-  - MySQL / MariaDB: `pymysql` / `aiomysql`
-  - Oracle: `python-oracledb` (modo Thin, sin cliente Oracle pesado)
+- **Controladores Nativos Soportados:**
+  - PostgreSQL: `psycopg` (v3 precompilado) / `asyncpg`
+  - SQLite: `sqlite3` (librería estándar integrada)
+  - MySQL / MariaDB: `pymysql` (conector nativo Python)
+  - Microsoft SQL Server: `pymssql` / `pyodbc`
+  *(Nota: Driver Oracle excluido intencionalmente por ADR-001 para preservar distribución standalone zero-config sin binarios nativos externos).*
 - **Seguridad en la Conexión:**
   - Usuario de base de datos configurado con privilegios estrictos de solo lectura (`GRANT SELECT`).
   - Timeout de consulta obligatorio (ej. máximo 15 segundos por query para evitar bloqueos en bases de datos productivas).

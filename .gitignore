@@ -51,7 +51,13 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# SQLite temp files
+# SQLite databases & data files
+*.sqlite
+*.sqlite3
+*.db
 *.db-journal
 *.db-wal
 *.db-shm
+backend/*.db
+backend/*.sqlite
+backend/*.sqlite3

@@ -52,22 +52,38 @@ def decrypt_credential(encrypted_text: str) -> str:
         logger.warning(f"Credential decryption error: {type(e).__name__}")
         return ""
 
-def create_access_token(subject: Union[str, Any], expires_delta: Optional[timedelta] = None) -> str:
-    """Creates a JWT access token for local user sessions."""
+import uuid
+
+def create_access_token(
+    subject: Union[str, Any],
+    expires_delta: Optional[timedelta] = None,
+    jti: Optional[str] = None
+) -> str:
+    """Creates a JWT access token with unique JTI for user session tracking."""
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     
-    to_encode = {"exp": expire, "sub": str(subject)}
+    token_jti = jti or str(uuid.uuid4())
+    to_encode = {
+        "exp": expire,
+        "sub": str(subject),
+        "jti": token_jti
+    }
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
-def decode_access_token(token: str) -> Optional[str]:
-    """Decodes JWT access token and returns user_id subject."""
+def decode_token_payload(token: str) -> Optional[dict]:
+    """Decodes JWT access token and returns full payload dictionary."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        return payload.get("sub")
+        return payload
     except Exception as e:
         logger.warning(f"Token decoding error: {type(e).__name__}")
         return None
+
+def decode_access_token(token: str) -> Optional[str]:
+    """Decodes JWT access token and returns user_id subject."""
+    payload = decode_token_payload(token)
+    return payload.get("sub") if payload else None

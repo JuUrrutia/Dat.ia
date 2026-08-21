@@ -16,7 +16,7 @@ Servir como la única fuente de verdad (Single Source of Truth) para el diseño,
    `Estado: ✅ Completado y Aprobado`
 
 2. **[02 - Arquitectura Técnica y Componentes](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/DOCS/02_ARQUITECTURA_TECNICA.md)**  
-   *Diseño de la aplicación de escritorio standalone, capas de software, pool de conectores relacionales (PostgreSQL, MSSQL, MySQL, Oracle), pipeline de procesamiento y adaptación CPU/GPU.*  
+   *Diseño de la aplicación de escritorio standalone, capas de software, pool de conectores relacionales (PostgreSQL, MSSQL, MySQL, SQLite), pipeline de procesamiento y adaptación CPU/GPU.*  
    `Estado: ✅ Completado y Aprobado`
 
 3. **[03 - Gobernanza, Seguridad y Sistema de Permisos (RBAC)](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/DOCS/03_SISTEMA_DE_PERMISOS_Y_SEGURIDAD.md)**  

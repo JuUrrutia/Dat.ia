@@ -59,3 +59,8 @@ class QueryResponse(BaseModel):
     presentation_hints: Optional[PresentationHints] = None
     traceability: TraceabilityAudit
 
+class SuggestionsResponse(BaseModel):
+    user_role: Optional[str] = None
+    allowed_tables: Optional[List[str]] = None
+    suggestions: List[str] = []
+

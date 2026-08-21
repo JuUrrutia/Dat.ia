@@ -1,8 +1,10 @@
 import socket
 import time
+from sqlalchemy.orm import Session
 from typing import List, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from app.services.health_service import HealthService
 from app.api.deps import get_db, get_current_user, get_current_admin
 from app.models.user import User
 from app.models.connection import CorporateConnection, DatabaseType
@@ -127,28 +129,25 @@ def delete_connector(
     db.commit()
     return {"message": "Conexión eliminada correctamente.", "id": conn_id}
 
+
 @router.post("/test", response_model=ConnectionTestResult)
 def test_connection_connectivity(
     test_in: ConnectionTestRequest,
     current_user: User = Depends(get_current_user)
 ) -> Any:
     """Tests real network TCP socket connectivity to target database host and port."""
-    start_time = time.time()
-    try:
-        sock = socket.create_connection((test_in.host, test_in.port), timeout=3.0)
-        sock.close()
-        latency_ms = int((time.time() - start_time) * 1000)
-        return ConnectionTestResult(
-            success=True,
-            message=f"Conexión exitosa al puerto {test_in.port} de {test_in.db_type.value.upper()} ({test_in.host}/{test_in.database_name}) en modo SOLO LECTURA.",
-            latency_ms=latency_ms
-        )
-    except Exception as e:
-        return ConnectionTestResult(
-            success=False,
-            message=f"No se pudo conectar a {test_in.host}:{test_in.port} ({test_in.db_type.value.upper()}) - {str(e)}",
-            latency_ms=0
-        )
+    result = HealthService.check_db_connectivity(
+        host=test_in.host,
+        port=test_in.port,
+        timeout=3.0,
+        db_type=test_in.db_type.value.upper(),
+        database_name=test_in.database_name
+    )
+    return ConnectionTestResult(
+        success=result["success"],
+        message=result["message"],
+        latency_ms=result["latency_ms"]
+    )
 
 @router.post("/test-metadata-db", response_model=ConnectionTestResult)
 def test_metadata_db_connectivity(
@@ -156,19 +155,20 @@ def test_metadata_db_connectivity(
     current_user: User = Depends(get_current_user)
 ) -> Any:
     """Tests real connectivity to target PostgreSQL metadata database."""
-    start_time = time.time()
-    try:
-        sock = socket.create_connection((test_in.server, test_in.port), timeout=3.0)
-        sock.close()
-        latency_ms = int((time.time() - start_time) * 1000)
-        return ConnectionTestResult(
-            success=True,
-            message=f"Servidor PostgreSQL alcanzable en {test_in.server}:{test_in.port} (Base de datos: {test_in.db_name}).",
-            latency_ms=latency_ms
-        )
-    except Exception as e:
-        return ConnectionTestResult(
-            success=False,
-            message=f"Error al conectar con PostgreSQL en {test_in.server}:{test_in.port} - {str(e)}",
-            latency_ms=0
-        )
+    result = HealthService.check_db_connectivity(
+        host=test_in.server,
+        port=test_in.port,
+        timeout=3.0,
+        db_type="PostgreSQL",
+        database_name=test_in.db_name
+    )
+    msg = (
+        f"Servidor PostgreSQL alcanzable en {test_in.server}:{test_in.port} (Base de datos: {test_in.db_name})."
+        if result["success"]
+        else f"Error al conectar con PostgreSQL en {test_in.server}:{test_in.port} - {result['message']}"
+    )
+    return ConnectionTestResult(
+        success=result["success"],
+        message=msg,
+        latency_ms=result["latency_ms"]
+    )

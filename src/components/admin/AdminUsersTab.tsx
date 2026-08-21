@@ -1,11 +1,14 @@
 import React, { useReducer, useEffect } from 'react';
-import { Users, UserPlus, Search, ShieldCheck, Edit3, Check } from 'lucide-react';
+import { Users, UserPlus, Search, ShieldCheck, Edit3, Check, Monitor, KeyRound } from 'lucide-react';
 import { UserEditModal } from './UserEditModal';
 import { UserAddModal } from './UserAddModal';
+import { UserSessionsModal } from './UserSessionsModal';
+import { UserPasswordResetModal } from './UserPasswordResetModal';
 
 export interface UserItem {
   id: number;
   name: string;
+  username?: string;
   email: string;
   role: string;
   is_admin: boolean;
@@ -20,6 +23,8 @@ interface UsersState {
   userList: UserItem[];
   searchQuery: string;
   editingUser: UserItem | null;
+  sessionsUser: UserItem | null;
+  resetPasswordUser: UserItem | null;
   isNewUserModalOpen: boolean;
   isSuccessBanner: string | null;
 }
@@ -29,6 +34,10 @@ type UsersAction =
   | { type: 'SET_SEARCH'; query: string }
   | { type: 'OPEN_EDIT'; user: UserItem }
   | { type: 'CLOSE_EDIT' }
+  | { type: 'OPEN_SESSIONS'; user: UserItem }
+  | { type: 'CLOSE_SESSIONS' }
+  | { type: 'OPEN_RESET_PASSWORD'; user: UserItem }
+  | { type: 'CLOSE_RESET_PASSWORD' }
   | { type: 'OPEN_NEW_USER' }
   | { type: 'CLOSE_NEW_USER' }
   | { type: 'SET_SUCCESS_BANNER'; message: string | null };
@@ -59,6 +68,14 @@ function usersReducer(state: UsersState, action: UsersAction): UsersState {
       return { ...state, editingUser: action.user };
     case 'CLOSE_EDIT':
       return { ...state, editingUser: null };
+    case 'OPEN_SESSIONS':
+      return { ...state, sessionsUser: action.user };
+    case 'CLOSE_SESSIONS':
+      return { ...state, sessionsUser: null };
+    case 'OPEN_RESET_PASSWORD':
+      return { ...state, resetPasswordUser: action.user };
+    case 'CLOSE_RESET_PASSWORD':
+      return { ...state, resetPasswordUser: null };
     case 'OPEN_NEW_USER':
       return { ...state, isNewUserModalOpen: true };
     case 'CLOSE_NEW_USER':
@@ -75,6 +92,8 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({ users, onRefreshUs
     userList: users,
     searchQuery: '',
     editingUser: null,
+    sessionsUser: null,
+    resetPasswordUser: null,
     isNewUserModalOpen: false,
     isSuccessBanner: null,
   });
@@ -152,7 +171,7 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({ users, onRefreshUs
             <Users className="w-4 h-4 text-purple-400" /> Matriz de Usuarios y Gobernanza RBAC
           </h3>
           <p className="text-xs text-gray-400">
-            Asignación de perfiles (Administrador, Economista, TI, Usuario) y Column-Level Security
+            Asignación de perfiles (Administrador, Economista, TI, Usuario), control de sesiones y reseteo de claves
           </p>
         </div>
 
@@ -210,7 +229,12 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({ users, onRefreshUs
                   <span className="w-7 h-7 rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-300 font-bold text-xs flex items-center justify-center">
                     {u.name.charAt(0).toUpperCase()}
                   </span>
-                  <span>{u.name}</span>
+                  <div>
+                    <span>{u.name}</span>
+                    {u.username && u.username !== u.name && (
+                      <p className="text-[10px] text-gray-500">@{u.username}</p>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-gray-400 font-mono">{u.email}</td>
                 <td className="px-4 py-3">
@@ -229,15 +253,37 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({ users, onRefreshUs
                   )}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <button
-                    type="button"
-                    onClick={() => dispatch({ type: 'OPEN_EDIT', user: u })}
-                    aria-label={`Editar rol para ${u.name}`}
-                    className="flex items-center space-x-1 text-xs text-purple-400 hover:text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 px-3 py-1 rounded-lg transition-colors ml-auto"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                    <span>Editar Rol</span>
-                  </button>
+                  <div className="flex items-center justify-end space-x-1.5">
+                    <button
+                      type="button"
+                      onClick={() => dispatch({ type: 'OPEN_SESSIONS', user: u })}
+                      aria-label={`Ver sesiones de ${u.name}`}
+                      title="Ver sesiones activas"
+                      className="flex items-center space-x-1 text-xs text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 px-2.5 py-1 rounded-lg transition-colors"
+                    >
+                      <Monitor className="w-3.5 h-3.5" />
+                      <span>Sesiones</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => dispatch({ type: 'OPEN_RESET_PASSWORD', user: u })}
+                      aria-label={`Resetear contraseña de ${u.name}`}
+                      title="Resetear contraseña"
+                      className="flex items-center space-x-1 text-xs text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 px-2.5 py-1 rounded-lg transition-colors"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>Reset Clave</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => dispatch({ type: 'OPEN_EDIT', user: u })}
+                      aria-label={`Editar rol para ${u.name}`}
+                      className="flex items-center space-x-1 text-xs text-purple-400 hover:text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 px-2.5 py-1 rounded-lg transition-colors"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Editar Rol</span>
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -251,6 +297,20 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({ users, onRefreshUs
         user={state.editingUser}
         onClose={() => dispatch({ type: 'CLOSE_EDIT' })}
         onSave={handleSaveRole}
+      />
+
+      {/* User Sessions Modal */}
+      <UserSessionsModal
+        isOpen={Boolean(state.sessionsUser)}
+        user={state.sessionsUser}
+        onClose={() => dispatch({ type: 'CLOSE_SESSIONS' })}
+      />
+
+      {/* User Password Reset Modal */}
+      <UserPasswordResetModal
+        isOpen={Boolean(state.resetPasswordUser)}
+        user={state.resetPasswordUser}
+        onClose={() => dispatch({ type: 'CLOSE_RESET_PASSWORD' })}
       />
 
       {/* New User Modal */}

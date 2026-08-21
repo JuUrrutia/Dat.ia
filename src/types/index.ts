@@ -4,6 +4,60 @@ export interface User {
   email?: string;
   is_admin: boolean;
   role_name?: string;
+  must_change_password?: boolean;
+  failed_login_attempts?: number;
+  locked_until?: string | null;
+}
+
+export interface UserSession {
+  id: number;
+  user_id: number;
+  username?: string;
+  jti: string;
+  created_at: string;
+  last_seen_at: string;
+  ip_address?: string;
+  user_agent?: string;
+  is_revoked: boolean;
+}
+
+export interface AuditLog {
+  id: number;
+  timestamp: string;
+  user_id?: number | null;
+  username: string;
+  user_role?: string | null;
+  question_prompt: string;
+  sql_generated?: string | null;
+  validation_status: string;
+  target_database?: string | null;
+  execution_time_ms: number;
+  rows_returned: number;
+  error_message?: string | null;
+}
+
+export interface AuditLogsPage {
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  items: AuditLog[];
+}
+
+export interface AuditFilterParams {
+  start_date?: string;
+  end_date?: string;
+  username?: string;
+  target_database?: string;
+  validation_status?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface PasswordResetResult {
+  message: string;
+  username: string;
+  temporary_password: string;
 }
 
 export interface KPICard {
@@ -61,7 +115,7 @@ export interface QueryResult {
   data_rows: Record<string, any>[];
   traceability: TraceabilityAudit;
   pipeline_source?: 'backend' | 'llm_direct' | 'fallback';
-  response_type?: 'data_analysis' | 'advisory' | 'explanation' | 'report' | 'hybrid' | 'greeting';
+  response_type?: 'data_analysis' | 'advisory' | 'explanation' | 'report' | 'hybrid' | 'greeting' | 'error';
   conversational_response?: string; // Respuesta conversacional estructurada
   grounding_info?: string; // Información de las tablas o registros reales de la BD consultados
   presentation_hints?: PresentationHints;
@@ -75,4 +129,32 @@ export interface AppSettings {
   postgres_port: number;
   postgres_db: string;
   auto_detect_llm: boolean;
+}
+
+export interface ComponentHealth {
+  name: string;
+  type: 'llm' | 'metadata_db' | 'connector';
+  status: 'OPERATIVO' | 'DEGRADADO' | 'CRITICO' | 'ERROR';
+  latency_ms: number;
+  message: string;
+  details?: Record<string, any>;
+}
+
+export interface SystemHealthResponse {
+  status: 'OPERATIVO' | 'DEGRADADO' | 'CRITICO';
+  timestamp: string;
+  llm_engine: ComponentHealth;
+  metadata_db: ComponentHealth;
+  corporate_connectors: ComponentHealth[];
+  total_active_connectors: number;
+  healthy_connectors_count: number;
+}
+
+export type ToastType = 'success' | 'warning' | 'error' | 'info';
+
+export interface ToastNotification {
+  id: string;
+  type: ToastType;
+  message: string;
+  duration?: number;
 }
