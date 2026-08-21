@@ -76,10 +76,12 @@ def init_db(db: Session):
 
     economista_tables = [
         "dim_categorias", "dim_productos", "dim_clientes",
-        "fact_ventas", "fact_ingresos_costos", "dim_empleados"
+        "fact_ventas", "fact_ingresos_costos", "dim_empleados",
+        "Answer", "Question", "Survey", "answer", "question", "survey"
     ]
     ti_tables = [
-        "dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos", "dim_empleados"
+        "dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos", "dim_empleados",
+        "Answer", "Question", "Survey", "answer", "question", "survey"
     ]
 
     if economista_role:
@@ -131,8 +133,19 @@ def init_db(db: Session):
         ("fact_incidentes_ti", "tipo_falla", "Tipo o clasificación de la falla de TI"),
         ("fact_incidentes_ti", "horas_resolucion", "Horas tomadas para resolver el incidente SLA"),
         ("fact_consumo_recursos", "porcentaje_cpu", "Porcentaje de uso de CPU del servidor"),
-        ("fact_consumo_recursos", "uso_ram_gb", "Memoria RAM utilizada en Gigabytes")
+        ("fact_consumo_recursos", "uso_ram_gb", "Memoria RAM utilizada en Gigabytes"),
+        
+        # Mental Health Survey Tables
+        ("Answer", "AnswerText", "Texto de la respuesta dada por el encuestado (ej. Yes, No, Male, Female, United States)"),
+        ("Answer", "SurveyID", "Año de la encuesta OSMI (2014, 2016, 2017, 2018, 2019)"),
+        ("Answer", "UserID", "ID de usuario anónimo del encuestado"),
+        ("Answer", "QuestionID", "ID numérico de la pregunta de la encuesta"),
+        ("Question", "questiontext", "Texto descriptivo de la pregunta de la encuesta de salud mental"),
+        ("Question", "questionid", "ID numérico único de la pregunta"),
+        ("Survey", "SurveyID", "Año de realización de la encuesta (2014-2019)"),
+        ("Survey", "Description", "Descripción de la edición de la encuesta")
     ]
+
 
     for tbl, col, desc in all_demo_tables:
         existing_cat = db.query(SemanticCatalog).filter(

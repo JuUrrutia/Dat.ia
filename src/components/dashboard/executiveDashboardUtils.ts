@@ -100,26 +100,60 @@ export function buildDynamicChartOption(params: {
   const xLabels = processedRows.map((r) => String(r[catCol] || ''));
   const yValues = processedRows.map((r) => Number(r[numCol]) || 0);
 
+  const formatAxisLabel = (val: string) => {
+    if (!val) return '';
+    const str = String(val).trim();
+    return str.length > 22 ? `${str.substring(0, 22)}...` : str;
+  };
+
+  const formatTooltip = (params: any) => {
+    if (!params) return '';
+    const item = Array.isArray(params) ? params[0] : params;
+    const fullText = item.name || '';
+    const val = item.value !== undefined ? item.value : '';
+    const valStr = isCurrency ? `$${Number(val).toLocaleString()}` : Number(val).toLocaleString();
+    return `<div style="max-width:340px; font-family:Inter,sans-serif; padding:2px;">
+      <div style="font-weight:600; color:#F8FAFC; font-size:11px; margin-bottom:4px; line-height:1.4; word-wrap:break-word; white-space:normal;">${fullText}</div>
+      <div style="color:${currentTheme.primary}; font-size:12px; font-weight:bold;">${numCol?.replace(/_/g, ' ')}: ${valStr}</div>
+    </div>`;
+  };
+
   const baseDark = {
     backgroundColor: 'transparent',
     textStyle: { color: '#9CA3AF', fontFamily: 'Inter, sans-serif' },
-    grid: { left: '3%', right: '4%', bottom: '8%', top: '15%', containLabel: true },
+    grid: { left: '3%', right: '4%', bottom: '15%', top: '12%', containLabel: true },
   };
 
   if (activeChartType === 'pie' || activeChartType === 'donut') {
     return {
       ...baseDark,
-      tooltip: { trigger: 'item', formatter: isCurrency ? '{b}: ${c} ({d}%)' : '{b}: {c} ({d}%)' },
-      legend: { orient: 'horizontal', bottom: '0%', textStyle: { color: '#9CA3AF', fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
+      tooltip: {
+        trigger: 'item',
+        formatter: (params: any) => {
+          const valStr = isCurrency ? `$${Number(params.value).toLocaleString()}` : Number(params.value).toLocaleString();
+          return `<div style="max-width:300px; font-family:Inter,sans-serif;">
+            <div style="font-weight:600; color:#F8FAFC; font-size:11px; margin-bottom:4px; word-wrap:break-word; white-space:normal;">${params.name}</div>
+            <div style="color:${currentTheme.primary}; font-size:12px; font-weight:bold;">${valStr} (${params.percent}%)</div>
+          </div>`;
+        },
+      },
+      legend: {
+        orient: 'horizontal',
+        bottom: '0%',
+        textStyle: { color: '#9CA3AF', fontSize: 10 },
+        itemWidth: 10,
+        itemHeight: 10,
+        formatter: (name: string) => (name.length > 20 ? `${name.substring(0, 20)}...` : name),
+      },
       series: [
         {
           name: numCol?.replace(/_/g, ' ').toUpperCase(),
           type: 'pie',
-          radius: activeChartType === 'donut' ? ['50%', '75%'] : '70%',
-          center: ['50%', '45%'],
+          radius: activeChartType === 'donut' ? ['45%', '70%'] : '65%',
+          center: ['50%', '42%'],
           avoidLabelOverlap: true,
           itemStyle: { borderRadius: 8, borderColor: '#0F172A', borderWidth: 2 },
-          label: { show: processedRows.length <= 6, color: '#E2E8F0', fontSize: 11 },
+          label: { show: false },
           data: processedRows.map((r, i) => ({
             name: String(r[catCol] || ''),
             value: Number(r[numCol]) || 0,
@@ -130,22 +164,54 @@ export function buildDynamicChartOption(params: {
     };
   }
 
+  const rotateAngle = xLabels.some((l) => l.length > 15) ? 25 : xLabels.length > 5 ? 15 : 0;
+
   if (activeChartType === 'line' || activeChartType === 'area') {
     return {
       ...baseDark,
-      tooltip: { trigger: 'axis', formatter: isCurrency ? '{b}: ${c}' : '{b}: {c}' },
-      xAxis: { type: 'category', data: xLabels, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#9CA3AF', fontSize: 11, rotate: xLabels.length > 5 ? 20 : 0 } },
-      yAxis: { type: 'value', axisLine: { lineStyle: { color: '#334155' } }, splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.05)' } }, axisLabel: { color: '#9CA3AF', fontSize: 11 } },
+      tooltip: { trigger: 'axis', formatter: formatTooltip },
+      xAxis: {
+        type: 'category',
+        data: xLabels,
+        axisLine: { lineStyle: { color: '#334155' } },
+        axisLabel: {
+          color: '#9CA3AF',
+          fontSize: 10,
+          rotate: rotateAngle,
+          formatter: formatAxisLabel,
+        },
+      },
+      yAxis: {
+        type: 'value',
+        axisLine: { lineStyle: { color: '#334155' } },
+        splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.05)' } },
+        axisLabel: { color: '#9CA3AF', fontSize: 10 },
+      },
       series: [
         {
           name: numCol?.replace(/_/g, ' '),
           type: 'line',
           smooth: true,
           showSymbol: true,
-          symbolSize: 7,
+          symbolSize: 6,
           lineStyle: { width: 3, color: currentTheme.primary },
           itemStyle: { color: currentTheme.primary },
-          areaStyle: activeChartType === 'area' ? { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: currentTheme.glow }, { offset: 1, color: 'rgba(0, 0, 0, 0)' }] } } : undefined,
+          areaStyle:
+            activeChartType === 'area'
+              ? {
+                  color: {
+                    type: 'linear',
+                    x: 0,
+                    y: 0,
+                    x2: 0,
+                    y2: 1,
+                    colorStops: [
+                      { offset: 0, color: currentTheme.glow },
+                      { offset: 1, color: 'rgba(0, 0, 0, 0)' },
+                    ],
+                  },
+                }
+              : undefined,
           data: yValues,
         },
       ],
@@ -154,6 +220,7 @@ export function buildDynamicChartOption(params: {
 
   if (activeChartType === 'gauge') {
     const topPct = totalVal > 0 ? Math.min(100, Math.round(((yValues[0] || 0) / totalVal) * 100)) : 75;
+    const gaugeName = xLabels[0] && xLabels[0].length > 20 ? `${xLabels[0].substring(0, 20)}...` : xLabels[0] || 'Líder';
     return {
       ...baseDark,
       series: [
@@ -171,9 +238,9 @@ export function buildDynamicChartOption(params: {
           axisTick: { show: false },
           splitLine: { length: 8, lineStyle: { width: 2, color: '#475569' } },
           axisLabel: { color: '#94A3B8', distance: 18, fontSize: 10 },
-          title: { show: true, offsetCenter: [0, '25%'], color: '#94A3B8', fontSize: 12 },
-          detail: { valueAnimation: true, offsetCenter: [0, '-15%'], fontSize: 28, fontWeight: 'bold', formatter: '{value}%', color: '#F8FAFC' },
-          data: [{ value: topPct, name: xLabels[0] || 'Líder' }],
+          title: { show: true, offsetCenter: [0, '25%'], color: '#94A3B8', fontSize: 11 },
+          detail: { valueAnimation: true, offsetCenter: [0, '-15%'], fontSize: 26, fontWeight: 'bold', formatter: '{value}%', color: '#F8FAFC' },
+          data: [{ value: topPct, name: gaugeName }],
         },
       ],
     };
@@ -181,9 +248,32 @@ export function buildDynamicChartOption(params: {
 
   return {
     ...baseDark,
-    tooltip: { trigger: 'axis', formatter: isCurrency ? '{b}: ${c}' : '{b}: {c}' },
-    xAxis: { type: 'category', data: xLabels, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#9CA3AF', fontSize: 11, rotate: xLabels.length > 4 ? 20 : 0 } },
-    yAxis: { type: 'value', axisLine: { lineStyle: { color: '#334155' } }, splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.05)' } }, axisLabel: { color: '#9CA3AF', fontSize: 11 } },
-    series: [{ name: numCol?.replace(/_/g, ' '), type: 'bar', data: yValues, itemStyle: { color: currentTheme.primary, borderRadius: [6, 6, 0, 0] } }],
+    tooltip: { trigger: 'axis', formatter: formatTooltip },
+    xAxis: {
+      type: 'category',
+      data: xLabels,
+      axisLine: { lineStyle: { color: '#334155' } },
+      axisLabel: {
+        color: '#9CA3AF',
+        fontSize: 10,
+        rotate: rotateAngle,
+        formatter: formatAxisLabel,
+      },
+    },
+    yAxis: {
+      type: 'value',
+      axisLine: { lineStyle: { color: '#334155' } },
+      splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.05)' } },
+      axisLabel: { color: '#9CA3AF', fontSize: 10 },
+    },
+    series: [
+      {
+        name: numCol?.replace(/_/g, ' '),
+        type: 'bar',
+        data: yValues,
+        itemStyle: { color: currentTheme.primary, borderRadius: [6, 6, 0, 0] },
+      },
+    ],
   };
 }
+

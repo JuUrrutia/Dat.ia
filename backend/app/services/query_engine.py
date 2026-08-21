@@ -9,19 +9,18 @@ from app.core.config import settings
 from app.core.constants import (
     ADMIN_ROLES, ROLE_USUARIO, ROLE_TI, ROLE_ECONOMISTA, DEFAULT_DEMO_ROLE,
     CHART_COLOR_RED, CHART_COLOR_AMBER, CHART_COLOR_EMERALD, CHART_COLOR_CYAN,
-    CHART_COLOR_BLUE, CHART_COLOR_PURPLE, CHART_COLOR_TEXT_MUTED, CHART_COLOR_TEXT_LIGHT
+    CHART_COLOR_BLUE, CHART_COLOR_PURPLE, CHART_COLOR_TEXT_MUTED, CHART_COLOR_TEXT_LIGHT,
+    DATA_REQUEST_KEYWORDS, GREETING_KEYWORDS, ADVISORY_KEYWORDS, EXPLANATION_KEYWORDS, HYBRID_KEYWORDS, REPORT_KEYWORDS,
+    LIST_KEYWORDS, COUNT_KEYWORDS, DATE_COLUMN_KEYWORDS,
+    CURRENCY_COLUMN_KEYWORDS, PERCENTAGE_COLUMN_KEYWORDS
 )
 from app.services.ast_validator import ASTValidator, ASTValidationError
 from app.services.llm_service import LLMService
 from app.services.dynamic_schema import DynamicSchemaPruningService
-from app.schemas.query_schema import QueryResponse, KPICard, TraceabilityAudit, ExecutiveReport, MetricGauge
+from app.core.prompts import PromptManager
+from app.schemas.query_schema import QueryResponse, KPICard, TraceabilityAudit, ExecutiveReport, MetricGauge, PresentationHints
 
 DEMO_DB_PATH = settings.SQLITE_DB_PATH
-
-# Sensitive / PII / Confidential Columns Protected by Governance
-CONFIDENTIAL_COLUMNS = {
-    "tarjeta_credito_token", "api_key_servicio", "cuenta_bancaria_iban"
-}
 
 class QueryEngine:
     """
@@ -113,12 +112,12 @@ class QueryEngine:
                 )
                 return schema_info.get("blocked_columns", set())
             except Exception:
-                return CONFIDENTIAL_COLUMNS
+                return set()
             finally:
                 if local_db is not None:
                     local_db.close()
 
-        return CONFIDENTIAL_COLUMNS
+        return set()
 
     @classmethod
     async def get_dynamic_suggestions_with_llm(
@@ -137,29 +136,21 @@ class QueryEngine:
                 "¿Cómo solicito acceso a tablas adicionales de la base de datos?"
             ]
 
-        # Attempt LLM generation for simple, tailored suggestions
+        # Attempt LLM generation for tailored suggestions based ONLY on active schema
         try:
-            system_prompt = (
-                "Eres un asistente de negocios y datos corporativos. "
-                "Tu objetivo es proponer 4 preguntas/ideas simples, breves y directas que un usuario en su perfil de trabajo desease consultar sobre sus datos. "
-                "REGLAS:\n"
-                "1. Escribe exactamente 4 preguntas/ideas, una por línea.\n"
-                "2. Cada pregunta debe comenzar con un emoji relevante (ej. 📊, 💡, 📈, ⚡, 🏆, 👥, 📦).\n"
-                "3. Mantén las frases muy cortas (máximo 10 palabras por pregunta).\n"
-                "4. Responde ÚNICAMENTE con la lista de 4 preguntas, sin introducción ni comentarios."
-            )
+            system_prompt = PromptManager.get_suggestions_system_prompt()
             tables_str = ", ".join(sorted(allowed_tables))
-            prompt_llm = f"""Perfil de usuario: {user_role}
-Tablas autorizadas: {tables_str}
+            prompt_llm = f"""Perfil del usuario: {user_role}
+Base de datos activa ({tables_str}):
 
 {schema_prompt}
 
-Genera 4 sugerencias simples y breves de preguntas que el usuario {user_role} pueda hacer."""
+Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos activa."""
 
             llm_text = await LLMService.generate_completion(
                 prompt_llm,
                 system_prompt=system_prompt,
-                temperature=0.4,
+                temperature=0.3,
                 max_tokens=150
             )
 
@@ -183,7 +174,8 @@ Genera 4 sugerencias simples y breves de preguntas que el usuario {user_role} pu
     @classmethod
     def get_dynamic_suggestions(cls, user_role: str, allowed_tables: Set[str]) -> List[str]:
         """
-        Generates role and table-specific question suggestions dynamically based on authorized tables.
+        Generates question suggestions dynamically based on active database tables,
+        agnostic to any specific domain or schema.
         """
         if not allowed_tables:
             return [
@@ -192,59 +184,40 @@ Genera 4 sugerencias simples y breves de preguntas que el usuario {user_role} pu
             ]
 
         suggestions = []
+        # Sort prioritizing fact tables or alphabetical
+        sorted_tables = sorted(list(allowed_tables), key=lambda t: (0 if t.lower().startswith("fact_") else 1, t.lower()))
 
-        table_templates = {
-            "fact_ventas": [
-                "📊 ¿Cuáles son las ventas acumuladas por categoría?",
-                "🏆 Top productos con mayor facturación"
-            ],
-            "fact_ingresos_costos": [
-                "📈 Evolución de ingresos y utilidad neta",
-                "💰 Balances consolidados de ingresos y costos"
-            ],
-            "dim_empleados": [
-                "👥 Promedio de salario y evaluación de desempeño por departamento",
-                "💡 ¿Cómo elevar la productividad y retención del equipo?"
-            ],
-            "fact_incidentes_ti": [
-                "🛠️ Incidentes de TI por servidor y horas de resolución SLA",
-                "⚡ ¿Cómo reducir tiempos de resolución en fallas críticas?"
-            ],
-            "dim_servidores": [
-                "🖥️ Detalle de servidores, datacenters y RAM instalada",
-                "🛡️ Estado de infraestructura y responsables de administración"
-            ],
-            "fact_consumo_recursos": [
-                "📊 Consumo promedio de CPU y RAM por servidor",
-                "⚡ Telemetría de uso de recursos y tráfico de red"
-            ],
-            "dim_productos": [
-                "📦 Productos con menor disponibilidad en stock",
-                "🏷️ Precios unitarios y margen de ganancia por producto"
-            ],
-            "dim_clientes": [
-                "🏢 Clientes por sector de industria y nivel de riesgo",
-                "📋 Distribución de clientes corporativos"
-            ],
-            "dim_categorias": [
-                "📁 Listado de categorías de servicios y software",
-                "📊 Distribución por categoría de producto"
-            ]
-        }
+        templates = [
+            "📊 Distribución y resumen de registros en {name}",
+            "📈 Métricas acumuladas y evolución en {name}",
+            "📋 Listado detallado y consulta de {name}",
+            "💡 Indicadores clave y registros principales de {name}"
+        ]
 
-        sorted_tables = sorted(list(allowed_tables), key=lambda t: (0 if t.startswith("fact_") else 1, t))
+        for i, tbl in enumerate(sorted_tables):
+            clean_name = tbl
+            for prefix in ["fact_", "dim_", "tbl_", "table_"]:
+                if clean_name.lower().startswith(prefix):
+                    clean_name = clean_name[len(prefix):]
+                    break
+            clean_spaced = clean_name.replace("_", " ").strip()
+            
+            tmpl = templates[i % len(templates)]
+            suggestions.append(tmpl.format(name=clean_spaced))
 
-        for table in sorted_tables:
-            if table in table_templates:
-                for t_sug in table_templates[table]:
-                    if t_sug not in suggestions:
-                        suggestions.append(t_sug)
+            if len(sorted_tables) == 1:
+                suggestions.append(f"🔍 Top registros con mayores valores en {clean_spaced}")
+                suggestions.append(f"⚡ Totales agregados y promedio general de {clean_spaced}")
 
-        if not suggestions:
-            for table in sorted_tables[:3]:
-                suggestions.append(f"📊 Ver resumen de {table}")
+        # Deduplicate while preserving order
+        seen = set()
+        unique = []
+        for s in suggestions:
+            if s not in seen:
+                seen.add(s)
+                unique.append(s)
 
-        return suggestions[:5]
+        return unique[:4]
 
     @classmethod
     def _get_grounding_query_for_question(
@@ -343,6 +316,46 @@ Genera 4 sugerencias simples y breves de preguntas que el usuario {user_role} pu
             setup_demo_sqlite()
 
         # =========================================================================
+        # BRANCH 0: GREETING / GENERAL CONVERSATION (Conversational Welcome)
+        # =========================================================================
+        if response_type == "greeting":
+            exec_time_ms = int((time.time() - start_time) * 1000)
+            conversational = await cls._generate_conversational_response(
+                question, user_role, "greeting", columns=list(allowed_tables), is_llm_active=True
+            )
+            summary_text = "Asistente DATIA listo para responder tus consultas sobre la base de datos activa."
+            return QueryResponse(
+                question=question,
+                summary_text=summary_text,
+                executive_report=None,
+                kpis=[],
+                gauges=[],
+                chart_type="none",
+                chart_option={},
+                data_columns=[],
+                data_rows=[],
+                response_type="greeting",
+                conversational_response=conversational or summary_text,
+                grounding_info=f"Asistente conectado al perfil {user_role} ({len(allowed_tables)} tablas autorizadas)",
+                presentation_hints=PresentationHints(
+                    show_executive_report=False,
+                    show_kpis=False,
+                    show_gauges=False,
+                    show_chart=False,
+                    preferred_view="assistant",
+                    summary_style="detailed"
+                ),
+                traceability=TraceabilityAudit(
+                    sql_executed="-- MODO ASISTENTE CONVERSACIONAL (SIN SQL REQUERIDO)",
+                    execution_time_ms=exec_time_ms,
+                    rows_returned=0,
+                    validation_status="APROBADO (Asistente)",
+                    schema_tables_used=list(allowed_tables),
+                    explanation=f"Interacción conversacional con IA Local. Tablas disponibles para el rol {user_role}: {', '.join(allowed_tables)}."
+                )
+            )
+
+        # =========================================================================
         # BRANCH A: ADVISORY / EXPLANATION (Conversational Strategic Assistant)
         # =========================================================================
         if response_type in ("advisory", "explanation"):
@@ -404,6 +417,14 @@ Genera 4 sugerencias simples y breves de preguntas que el usuario {user_role} pu
                 response_type=response_type,
                 conversational_response=conversational,
                 grounding_info=grounding_info,
+                presentation_hints=PresentationHints(
+                    show_executive_report=False,
+                    show_kpis=False,
+                    show_gauges=False,
+                    show_chart=False,
+                    preferred_view="assistant",
+                    summary_style="detailed"
+                ),
                 traceability=TraceabilityAudit(
                     sql_executed=secured_sql,
                     execution_time_ms=exec_time_ms,
@@ -434,22 +455,8 @@ Genera 4 sugerencias simples y breves de preguntas que el usuario {user_role} pu
         candidate_sql = None
         try:
             allowed_tables_str = ", ".join(sorted(allowed_tables))
-            system_prompt = (
-                f"Eres un analista de datos y experto en SQL. "
-                f"Tu única tarea es convertir la pregunta del usuario en una consulta SQL SELECT de solo lectura. "
-                f"TABLAS PERMITIDAS ({user_role}): {allowed_tables_str}. "
-                f"REGLAS CRÍTICAS:\n"
-                f"1. Responde ÚNICAMENTE con el código SQL dentro de un bloque ```sql ... ```.\n"
-                f"2. NO escribas texto introductorio, ni explicaciones, ni síntesis fuera del bloque SQL.\n"
-                f"3. Consulta únicamente las columnas autorizadas expuestas en el esquema.\n"
-                f"4. Usa únicamente SELECT. Prohibido DROP, INSERT, UPDATE, DELETE, ALTER."
-            )
-            prompt_llm = f"""Pregunta del usuario ({user_role}): "{question}"
-
-{schema_context}
-
-Genera la consulta SQL SELECT para responder la pregunta usando SOLO las tablas permitidas ({allowed_tables_str}).
-Responde ÚNICAMENTE con el bloque ```sql ... ```."""
+            system_prompt = PromptManager.get_text_to_sql_system_prompt(user_role, allowed_tables)
+            prompt_llm = PromptManager.get_text_to_sql_user_prompt(question, user_role, schema_context, allowed_tables)
 
             llm_response_text = await LLMService.generate_completion(
                 prompt_llm,
@@ -510,25 +517,53 @@ Responde ÚNICAMENTE con el bloque ```sql ... ```."""
         exec_time_ms = int((time.time() - start_time) * 1000)
         columns = list(rows[0].keys()) if rows else []
 
-        # Build dynamic visualization & contextual KPIs
+        # Classify presentation format (LLM decides what components to show)
+        pres_hints = await cls._classify_presentation_format(
+            question, response_type, rows, columns
+        )
+
+        # Build dynamic visualization & contextual KPIs (respecting hints)
         kpis, chart_type, chart_option, fallback_summary, fallback_exec_report, gauges = cls._build_dynamic_visualization(
             question, columns, rows, user_role
         )
 
-        # Deep AI-Powered Executive Report Synthesis
-        llm_exec_report = await cls._generate_deep_executive_report_with_llm(
-            question, user_role, rows, columns, secured_sql, is_llm_active
+        # Apply presentation hints to filter components
+        if not pres_hints.show_kpis:
+            kpis = []
+        if not pres_hints.show_gauges:
+            gauges = []
+        if not pres_hints.show_chart:
+            chart_type = "none"
+            chart_option = {}
+
+        # Deep AI-Powered Executive Report — only when hints say it's needed
+        final_exec_report = None
+        if pres_hints.show_executive_report:
+            llm_exec_report = await cls._generate_deep_executive_report_with_llm(
+                question, user_role, rows, columns, secured_sql, is_llm_active
+            )
+            final_exec_report = llm_exec_report or fallback_exec_report
+
+        # Generate intelligent natural conversational response interpreting data results
+        conversational = await cls._generate_conversational_response(
+            question, user_role, response_type, rows, columns, is_llm_active
         )
 
-        final_exec_report = llm_exec_report or fallback_exec_report
-        final_summary = final_exec_report.overview if final_exec_report and final_exec_report.overview else fallback_summary
-
-        # Conversational response if hybrid
-        conversational = None
-        if response_type == "hybrid":
-            conversational = await cls._generate_conversational_response(
-                question, user_role, response_type, rows, columns, is_llm_active
+        # Build summary based on style hint or conversational synthesis
+        if conversational:
+            first_block = conversational.split("\n\n")[0].replace("#", "").strip()
+            final_summary = first_block if len(first_block) > 10 else fallback_summary
+            if pres_hints.preferred_view == "table" and conversational:
+                pres_hints.preferred_view = "assistant"
+        elif pres_hints.summary_style == "executive" and final_exec_report and final_exec_report.overview:
+            final_summary = final_exec_report.overview
+        elif pres_hints.summary_style == "concise":
+            final_summary = (
+                f"Se obtuvieron {len(rows)} registros de "
+                f"{', '.join(meta.get('tables_used', []))} para la consulta '{question}'."
             )
+        else:
+            final_summary = final_exec_report.overview if final_exec_report and final_exec_report.overview else fallback_summary
 
         grounding_info = f"Consulta ejecutada sobre {len(rows)} registros en SQLite ({', '.join(meta.get('tables_used', []))})"
 
@@ -545,6 +580,7 @@ Responde ÚNICAMENTE con el bloque ```sql ... ```."""
             response_type=response_type,
             conversational_response=conversational,
             grounding_info=grounding_info,
+            presentation_hints=pres_hints,
             traceability=TraceabilityAudit(
                 sql_executed=secured_sql,
                 execution_time_ms=exec_time_ms,
@@ -559,50 +595,28 @@ Responde ÚNICAMENTE con el bloque ```sql ... ```."""
     async def _classify_intent(cls, question: str) -> str:
         q_lower = question.lower().strip()
 
-        # Rule-based heuristics for immediate high-precision detection
-        advisory_keywords = [
-            "idea", "ideas", "recomienda", "recomendacion", "recomendaciones", 
-            "sugerencia", "sugerencias", "estrategia", "estrategias", "consejo", "consejos",
-            "cómo mejorar", "como mejorar", "qué puedo hacer", "que puedo hacer", 
-            "propuesta", "propuestas", "iniciativa", "iniciativas", "mejores prácticas", "mejores practicas",
-            "opinión", "opinion", "qué opinas", "que opinas", "productividad", "productivo",
-            "optimizar", "optimización", "optimizacion", "ayuda", "solución", "solucion", "soluciones", 
-            "resolver", "pasos para", "guía para", "guia para", "tips", "consejos para", "cómo puedo"
-        ]
-        explanation_keywords = [
-            "qué es", "que es", "qué significa", "que significa", "explícame", "explicame", 
-            "explica", "cómo funciona", "como funciona", "define", "definición", "definicion", 
-            "para qué sirve", "para que sirve", "concepto", "diferencia entre"
-        ]
-        hybrid_keywords = [
-            "analiza y recomienda", "evalúa y sugiere", "evalua y sugiere", 
-            "diagnóstico y recomendaciones", "diagnostico y recomendaciones", 
-            "análisis con recomendaciones", "analisis con recomendaciones"
-        ]
-        report_keywords = [
-            "informe ejecutivo", "reporte ejecutivo", "informe formal", 
-            "balance ejecutivo", "auditoría general", "auditoria general", "diagnóstico general"
-        ]
+        # 1. Explicit data or summary requests always go to data_analysis/report
+        if any(k in q_lower for k in DATA_REQUEST_KEYWORDS):
+            if any(k in q_lower for k in REPORT_KEYWORDS) or "informe" in q_lower:
+                return "report"
+            if any(k in q_lower for k in HYBRID_KEYWORDS):
+                return "hybrid"
+            return "data_analysis"
 
-        if any(k in q_lower for k in explanation_keywords):
+        # 2. Rule-based heuristics for immediate high-precision detection
+        if any(k in q_lower for k in EXPLANATION_KEYWORDS):
             return "explanation"
-        if any(k in q_lower for k in hybrid_keywords):
+        if any(k in q_lower for k in HYBRID_KEYWORDS):
             return "hybrid"
-        if any(k in q_lower for k in report_keywords):
+        if any(k in q_lower for k in REPORT_KEYWORDS):
             return "report"
-        if any(k in q_lower for k in advisory_keywords):
+        if any(k in q_lower for k in ADVISORY_KEYWORDS):
             return "advisory"
+        if any(k == q_lower or q_lower.startswith(k + " ") or q_lower.endswith(" " + k) for k in GREETING_KEYWORDS) and len(q_lower.split()) <= 4:
+            return "greeting"
 
         # Check with local LLM if available
-        system_prompt = (
-            "Clasifica la intención de la pregunta del usuario en EXACTAMENTE una categoría.\n"
-            "Responde SOLO con una de estas palabras: data_analysis, advisory, explanation, report, hybrid\n\n"
-            "- data_analysis: Preguntas que piden datos numéricos, cifras, rankings, tablas o gráficos. Ejemplos: \"Top 10 productos\", \"Ingresos del Q3\", \"¿Cuántas ventas hubo?\", \"Gráfico de ventas\"\n"
-            "- advisory: Preguntas que piden ideas, estrategias, consejos, resolución de problemas o mejoras operacionales. Ejemplos: \"Dame 5 ideas para mejorar la productividad\", \"¿Qué estrategia recomiendas?\", \"Cómo reducir costos\"\n"
-            "- explanation: Preguntas que piden explicar un concepto o definición. Ejemplos: \"¿Qué es el margen bruto?\", \"Explícame qué es RBAC\"\n"
-            "- report: Preguntas que piden formalmente un informe ejecutivo o auditoría. Ejemplos: \"Genera un informe ejecutivo del balance\"\n"
-            "- hybrid: Preguntas que combinan análisis de datos CON recomendaciones. Ejemplos: \"Analiza las ventas y recomienda mejoras\""
-        )
+        system_prompt = PromptManager.get_intent_classification_system_prompt()
         try:
             resp = await LLMService.generate_completion(
                 question,
@@ -612,13 +626,140 @@ Responde ÚNICAMENTE con el bloque ```sql ... ```."""
             )
             if resp:
                 resp = resp.strip().lower()
-                for t in ["advisory", "explanation", "report", "hybrid", "data_analysis"]:
+                for t in ["greeting", "advisory", "explanation", "report", "hybrid", "data_analysis"]:
                     if t in resp:
                         return t
         except Exception:
             pass
 
         return "data_analysis"
+
+    @classmethod
+    async def _classify_presentation_format(
+        cls,
+        question: str,
+        response_type: str,
+        rows: List[Dict[str, Any]],
+        columns: List[str]
+    ) -> PresentationHints:
+        """
+        Uses the LLM to decide which visual components are relevant for the user's question.
+        Falls back to heuristic rules when LLM is offline.
+        """
+        # Advisory/explanation always go to assistant view
+        if response_type in ("advisory", "explanation"):
+            return PresentationHints(
+                show_executive_report=False,
+                show_kpis=False,
+                show_gauges=False,
+                show_chart=False,
+                preferred_view="assistant",
+                summary_style="detailed"
+            )
+
+        # Try LLM classification
+        try:
+            system_prompt = PromptManager.get_presentation_format_system_prompt()
+
+            data_preview = ""
+            if rows:
+                data_preview = f"\nColumnas obtenidas: {', '.join(columns)}\nFilas devueltas: {len(rows)}\nMuestra (primeras 3): {json.dumps(rows[:3], ensure_ascii=False)}"
+
+            prompt = f'Pregunta del usuario: "{question}"\nTipo de respuesta clasificado: {response_type}{data_preview}'
+
+            resp = await LLMService.generate_completion(
+                prompt,
+                system_prompt=system_prompt,
+                max_tokens=120,
+                temperature=0.01
+            )
+
+            if resp:
+                json_match = re.search(r'\{[\s\S]*\}', resp)
+                if json_match:
+                    data = json.loads(json_match.group(0))
+                    return PresentationHints(
+                        show_executive_report=bool(data.get("show_executive_report", True)),
+                        show_kpis=bool(data.get("show_kpis", True)),
+                        show_gauges=bool(data.get("show_gauges", True)),
+                        show_chart=bool(data.get("show_chart", True)),
+                        preferred_view=str(data.get("preferred_view", "studio")),
+                        summary_style=str(data.get("summary_style", "detailed"))
+                    )
+        except Exception:
+            pass
+
+        # Heuristic fallback when LLM is offline
+        return cls._heuristic_presentation_hints(question, response_type, rows, columns)
+
+    @classmethod
+    def _heuristic_presentation_hints(
+        cls,
+        question: str,
+        response_type: str,
+        rows: List[Dict[str, Any]],
+        columns: List[str]
+    ) -> PresentationHints:
+        """Rule-based fallback for presentation format when LLM is unavailable."""
+        q_lower = question.lower()
+
+        # Report type: show everything
+        if response_type == "report":
+            return PresentationHints(
+                show_executive_report=True, show_kpis=True,
+                show_gauges=True, show_chart=True,
+                preferred_view="report", summary_style="executive"
+            )
+
+        # Hybrid: show chart + report
+        if response_type == "hybrid":
+            return PresentationHints(
+                show_executive_report=True, show_kpis=True,
+                show_gauges=False, show_chart=True,
+                preferred_view="studio", summary_style="detailed"
+            )
+
+        # Simple listing/count queries
+        if any(k in q_lower for k in COUNT_KEYWORDS):
+            return PresentationHints(
+                show_executive_report=False, show_kpis=True,
+                show_gauges=False, show_chart=False,
+                preferred_view="table", summary_style="concise"
+            )
+
+        if any(k in q_lower for k in LIST_KEYWORDS):
+            return PresentationHints(
+                show_executive_report=False, show_kpis=False,
+                show_gauges=False, show_chart=False,
+                preferred_view="table", summary_style="concise"
+            )
+
+        # Check if data has numeric columns worth charting
+        has_numeric = False
+        if rows and columns:
+            for col in columns:
+                val = rows[0].get(col)
+                col_lower = col.lower()
+                if isinstance(val, (int, float)) and not col_lower.startswith("id_") and not col_lower.endswith("_id") and col_lower != "id":
+                    has_numeric = True
+                    break
+
+        if has_numeric and len(rows) > 1:
+            # Analytical query with chartable data
+            return PresentationHints(
+                show_executive_report=False, show_kpis=True,
+                show_gauges=False, show_chart=True,
+                preferred_view="studio", summary_style="detailed"
+            )
+
+        # Default: table view with concise summary
+        return PresentationHints(
+            show_executive_report=False, show_kpis=False,
+            show_gauges=False, show_chart=True if has_numeric else False,
+            preferred_view="studio" if has_numeric else "table",
+            summary_style="concise"
+        )
+
 
     @classmethod
     async def _generate_conversational_response(
@@ -632,52 +773,26 @@ Responde ÚNICAMENTE con el bloque ```sql ... ```."""
     ) -> Optional[str]:
         if not is_llm_active:
             return None
-        
-        if response_type == "advisory":
-            system_prompt = (
-                "Eres un Asesor Ejecutivo Senior y Consultor de Negocios de alto nivel.\n"
-                "Tu objetivo es responder la pregunta del usuario con IDEAS CONCRETAS, ACCIONABLES Y DE ALTO VALOR ESTRATÉGICO.\n\n"
-                "REGLAS CRÍTICAS:\n"
-                "1. Entrega respuestas RICAS, DETALLADAS y PROFESIONALES en español.\n"
-                "2. Usa los datos reales de la empresa (proporcionados abajo) para fundamentar y enriquecer tus recomendaciones.\n"
-                "3. Estructura tu respuesta con markdown limpio:\n"
-                "   - Usa ## para el título principal\n"
-                "   - Usa ### para cada idea o iniciativa numerada (ej. ### 1. Nombre de la Idea)\n"
-                "   - En cada idea incluye: **Diagnóstico en BD**, **Acción Concreta** e **Impacto Esperado**\n"
-                "   - Usa > para destacar citas clave o síntesis\n"
-                "4. Sé ESPECÍFICO: menciona áreas, cargos, números o porcentajes reales de los datos cuando sea relevante.\n"
-                "5. NO generes código SQL ni tablas de datos en el cuerpo principal. Tu rol es de ASESOR ESTRATÉGICO."
-            )
-            temp = 0.3
-        elif response_type == "explanation":
-            system_prompt = (
-                "Eres un experto en análisis de datos corporativos y gobernanza empresarial.\n"
-                "Tu objetivo es EXPLICAR de forma clara, didáctica y ejecutiva el concepto consultado.\n\n"
-                "REGLAS:\n"
-                "1. Explica el concepto de forma clara, directa y accesible.\n"
-                "2. Si hay datos de la empresa disponibles, usa ejemplos concretos de esos datos para ilustrar.\n"
-                "3. Estructura tu respuesta con markdown (## Título, **términos clave**, listas concisas).\n"
-                "4. NO generes SQL. Tu rol es EDUCATIVO."
-            )
+
+        if response_type == "data_analysis":
+            system_prompt = PromptManager.get_data_analysis_conversational_system_prompt(user_role)
             temp = 0.2
-        elif response_type == "hybrid":
-            system_prompt = (
-                "Eres un Director de Estrategia Corporativa (CSO) con expertise en análisis de datos.\n"
-                "Tu objetivo es ANALIZAR los datos reales de la empresa Y generar RECOMENDACIONES ESTRATÉGICAS basadas en ese análisis.\n\n"
-                "REGLAS:\n"
-                "1. Primero presenta un DIAGNÓSTICO basado en los datos reales (cifras, tendencias, anomalías).\n"
-                "2. Luego presenta RECOMENDACIONES ACCIONABLES fundamentadas en ese diagnóstico.\n"
-                "3. Usa markdown con secciones claras (## Diagnóstico, ## Hallazgos Clave, ## Recomendaciones Estratégicas).\n"
-                "4. Sé CUANTITATIVO: cita cifras exactas y nombres de los datos proporcionados.\n"
-                "5. NO generes SQL en la respuesta."
-            )
-            temp = 0.3
+            prompt = f"Pregunta del usuario ({user_role}): \"{question}\"\n"
+            if data_context:
+                prompt += f"\nResultados devueltos por la base de datos ({len(data_context)} registros encontrados):\n{json.dumps(data_context[:25], ensure_ascii=False, indent=2)}\n\nResponde directamente a la pregunta explicando estos datos."
+            else:
+                prompt += "\nLa base de datos ejecutó la consulta pero no se encontraron registros coincidentes. Explica cordialmente la situación."
+        elif response_type == "greeting":
+            system_prompt = PromptManager.get_general_greeting_system_prompt(user_role, set(columns or []))
+            temp = 0.4
+            prompt = f"Saludo/Mensaje del usuario ({user_role}): \"{question}\"\nSaluda cordialmente, explica tus funciones y sugiere ejemplos de preguntas para sus tablas autorizadas."
+        elif response_type in ("advisory", "explanation", "hybrid"):
+            system_prompt, temp = PromptManager.get_conversational_system_prompt(response_type)
+            prompt = f"Pregunta del usuario ({user_role}): \"{question}\"\n"
+            if data_context:
+                prompt += f"\nContexto de datos reales de la empresa (primeras 30 filas):\n{json.dumps(data_context[:30], ensure_ascii=False, indent=2)}"
         else:
             return None
-
-        prompt = f"Pregunta del usuario ({user_role}): \"{question}\"\n"
-        if data_context:
-            prompt += f"\nContexto de datos reales de la empresa (primeras 30 filas):\n{json.dumps(data_context[:30], ensure_ascii=False, indent=2)}"
 
         try:
             res = await LLMService.generate_completion(
@@ -702,49 +817,39 @@ Responde ÚNICAMENTE con el bloque ```sql ... ```."""
         is_llm_active: bool
     ) -> Optional[ExecutiveReport]:
         """
-        Uses Local LLM to synthesize rows of database records into a deeply quantitative,
-        McKinsey/C-Level style Executive Report with concrete numbers, percentages, and decisions.
+        Uses Local LLM to synthesize rows of database records into an intelligent,
+        unconstrained Executive Report tailored to the active domain (Mental Health, HR, Finance, IT, etc.).
         """
         if not rows or not is_llm_active:
             return None
 
         try:
-            system_prompt = (
-                "Eres un Director Ejecutivo de Finanzas, Operaciones y Estrategia Corporativa (CFO/COO). "
-                "Tu objetivo es transformar los datos reales de la consulta SQL en un INFORME EJECUTIVO PROFUNDO, PRECISO Y DE ALTO VALOR DIRECTIVO. "
-                "REGLAS CRÍTICAS:\n"
-                "1. PROHIBIDO usar frases vagas o genéricas como 'monitorear los indicadores', 'evaluar la asignación', 'compartir con el equipo', 'se procesaron N registros'.\n"
-                "2. Sé PRECISO, CUANTITATIVO Y DIRECTO: cita nombres exactos de productos, clientes, servidores, meses, montos en USD, variaciones porcentuales (%), márgenes y ratios calculados a partir de las filas de datos.\n"
-                "3. En 'key_findings': incluye 3 a 4 hallazgos analíticos profundos (tendencia mes a mes, meses/productos críticos, márgenes, concentración de valor o cuellos de botella).\n"
-                "4. En 'recommendations': entrega 3 decisiones estratégicas concretas con impacto medible para la dirección.\n"
-                "5. Responde ÚNICAMENTE en formato JSON válido con las claves exactas:\n"
-                "{\n"
-                '  "overview": "Diagnóstico integral y contexto de negocio en 2-3 oraciones contundentes con cifras clave.",\n'
-                '  "key_findings": ["Hallazgo 1 con números específicos", "Hallazgo 2 con porcentajes y nombres", "Hallazgo 3 con comparación"],\n'
-                '  "recommendations": ["Acción estratégica 1 con impacto medible", "Acción estratégica 2", "Acción estratégica 3"],\n'
-                '  "risk_level": "BAJO" | "MEDIO" | "ALTO" | "CRITICO",\n'
-                '  "business_impact": "Impacto financiero o de continuidad operacional en una frase contundente."\n'
-                "}"
-            )
+            system_prompt = PromptManager.get_executive_report_system_prompt()
 
-            prompt_data = f"""Pregunta del directivo ({user_role}): "{question}"
-Consulta SQL ejecutada: {secured_sql}
-Datos reales de la BD ({len(rows)} filas):
-{json.dumps(rows[:30], ensure_ascii=False, indent=2)}
+            prompt_data = f"""Pregunta realizada por el usuario ({user_role}): "{question}"
+Consulta SQL ejecutada sobre la BD activa: {secured_sql}
+Muestra de registros devueltos por la BD ({len(rows)} filas):
+{json.dumps(rows[:25], ensure_ascii=False, indent=2)}
 
-Genera el informe ejecutivo en formato JSON."""
+Analiza libremente la información devuelta y genera el informe ejecutivo en formato JSON."""
 
             resp = await LLMService.generate_completion(
                 prompt_data,
                 system_prompt=system_prompt,
-                max_tokens=650,
-                temperature=0.1
+                max_tokens=700,
+                temperature=0.3
             )
 
             if resp:
                 json_match = re.search(r'\{[\s\S]*\}', resp)
                 if json_match:
-                    data = json.loads(json_match.group(0))
+                    try:
+                        data = json.loads(json_match.group(0))
+                    except Exception:
+                        cleaned_str = json_match.group(0)
+                        cleaned_str = re.sub(r',\s*([\}\]])', r'\1', cleaned_str)
+                        data = json.loads(cleaned_str)
+
                     overview = str(data.get("overview", "")).strip()
                     findings = [str(f) for f in data.get("key_findings", []) if f]
                     recs = [str(r) for r in data.get("recommendations", []) if r]
@@ -753,17 +858,18 @@ Genera el informe ejecutivo en formato JSON."""
                         risk = "BAJO"
                     impact = str(data.get("business_impact", "")).strip() or None
 
-                    if overview and findings and recs:
+                    if overview:
                         return ExecutiveReport(
                             overview=overview,
-                            key_findings=findings,
-                            recommendations=recs,
+                            key_findings=findings if findings else ["Análisis cuantitativo de los registros devueltos."],
+                            recommendations=recs if recs else ["Continuar monitoreo del dominio analizado en la base de datos."],
                             risk_level=risk,
                             business_impact=impact
                         )
         except Exception:
             pass
         return None
+
 
     @classmethod
     def _build_dynamic_visualization(
@@ -801,8 +907,6 @@ Genera el informe ejecutivo en formato JSON."""
         date_cols = []
         cat_cols = []
 
-        date_keywords = ["fecha", "mes", "date", "time", "created_at", "updated_at", "timestamp", "anio", "year", "periodo"]
-
         for col in columns:
             col_lower = col.lower()
             val = rows[0].get(col)
@@ -811,7 +915,7 @@ Genera el informe ejecutivo en formato JSON."""
             if isinstance(val, (int, float)) and not col_lower.startswith("id_") and not col_lower.endswith("_id") and col_lower != "id":
                 num_cols.append(col)
             # Check if date/time
-            elif any(dk in col_lower for dk in date_keywords):
+            elif any(dk in col_lower for dk in DATE_COLUMN_KEYWORDS):
                 date_cols.append(col)
             # Categorical / Text
             elif not col_lower.startswith("id_") and not col_lower.endswith("_id") and col_lower != "id":
@@ -838,8 +942,8 @@ Genera el informe ejecutivo en formato JSON."""
         top_val = max_row.get(primary_num, 0) if primary_num else 0
 
         # Currency / Percentage detection
-        is_currency = primary_num and any(k in primary_num.lower() for k in ["usd", "monto", "ingreso", "costo", "precio", "utilidad", "margen", "salario", "sueldo", "ganancia", "presupuesto", "gasto"])
-        is_percentage = primary_num and any(k in primary_num.lower() for k in ["pct", "porcentaje", "porcentual", "rate", "tasa", "cumplimiento", "cpu"])
+        is_currency = primary_num and any(k in primary_num.lower() for k in CURRENCY_COLUMN_KEYWORDS)
+        is_percentage = primary_num and any(k in primary_num.lower() for k in PERCENTAGE_COLUMN_KEYWORDS)
 
         unit_str = "$" if is_currency else "%" if is_percentage else ""
         formatted_total = f"${total_val:,.2f}" if is_currency else f"{total_val:.1f}%" if is_percentage else f"{total_val:,.1f}" if isinstance(total_val, float) else f"{total_val:,}"
@@ -898,9 +1002,21 @@ Genera el informe ejecutivo en formato JSON."""
         elif chart_type in ("bar", "line") and primary_num:
             y_data = [r.get(primary_num, 0) for r in rows]
             bar_color = CHART_COLOR_PURPLE if chart_type == "bar" else CHART_COLOR_CYAN
+
+            clean_x_data = [str(x)[:22] + "..." if len(str(x)) > 22 else str(x) for x in x_data]
+
             chart_option = {
                 "tooltip": {"trigger": "axis", "formatter": f"{{b}}: {unit_str}{{c}}"},
-                "xAxis": {"type": "category", "data": x_data, "axisLabel": {"color": CHART_COLOR_TEXT_MUTED, "rotate": 20 if len(rows) > 5 else 0}},
+                "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "12%", "containLabel": True},
+                "xAxis": {
+                    "type": "category",
+                    "data": clean_x_data,
+                    "axisLabel": {
+                        "color": CHART_COLOR_TEXT_MUTED,
+                        "fontSize": 10,
+                        "rotate": 25 if any(len(str(x)) > 15 for x in x_data) else (15 if len(rows) > 5 else 0)
+                    }
+                },
                 "yAxis": {"type": "value", "name": kpi_title, "axisLabel": {"color": CHART_COLOR_TEXT_MUTED}},
                 "series": [{
                     "name": kpi_title,
@@ -909,6 +1025,7 @@ Genera el informe ejecutivo en formato JSON."""
                     "itemStyle": {"color": bar_color, "borderRadius": [6, 6, 0, 0]}
                 }]
             }
+
 
         # 6. Build Dynamic Gauges
         pct_top = round((top_val / total_val * 100), 1) if total_val > 0 else 0

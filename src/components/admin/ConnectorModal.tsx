@@ -12,7 +12,7 @@ interface ConnectorModalProps {
 
 interface State {
   name: string;
-  dbType: 'postgresql' | 'mssql' | 'mysql' | 'oracle';
+  dbType: 'postgresql' | 'mssql' | 'mysql' | 'oracle' | 'sqlite';
   host: string;
   port: number;
   databaseName: string;
@@ -28,11 +28,12 @@ interface State {
 type Action =
   | { type: 'RESET_FORM'; payload: CorporateConnection | null }
   | { type: 'SET_FIELD'; field: string; value: any }
-  | { type: 'CHANGE_DB_TYPE'; dbType: 'postgresql' | 'mssql' | 'mysql' | 'oracle' }
+  | { type: 'CHANGE_DB_TYPE'; dbType: 'postgresql' | 'mssql' | 'mysql' | 'oracle' | 'sqlite' }
   | { type: 'SET_TESTING'; testing: boolean }
   | { type: 'SET_TEST_RESULT'; result: ConnectionTestResult | null }
   | { type: 'SET_SUBMITTING'; submitting: boolean }
   | { type: 'SET_ERROR'; message: string | null };
+
 
 const initialState: State = {
   name: '',

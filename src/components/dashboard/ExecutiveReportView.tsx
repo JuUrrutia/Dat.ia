@@ -35,7 +35,7 @@ export const ExecutiveReportView: React.FC<ExecutiveReportViewProps> = ({
             </h3>
           </div>
           <p className="text-xs text-zinc-400">
-            Generado automáticamente a partir de la consulta "{result.question}" sobre la base de datos corporativa.
+            Generado automáticamente a partir de la consulta "{result.question}" sobre la base de datos activa.
           </p>
         </div>
 
@@ -97,7 +97,7 @@ export const ExecutiveReportView: React.FC<ExecutiveReportViewProps> = ({
           {(result.executive_report?.key_findings && result.executive_report.key_findings.length > 0
             ? result.executive_report.key_findings
             : [
-                `Se procesaron ${result.data_rows?.length || 0} registros de la base de datos corporativa.`,
+                `Se procesaron ${result.data_rows?.length || 0} registros de la base de datos activa.`,
                 `El valor total acumulado analizado asciende a ${formatNumber(totalVal)}.`,
                 `El registro con mayor ponderación corresponde a ${String(maxValRow?.[catCol] || 'Líder')}.`
               ]

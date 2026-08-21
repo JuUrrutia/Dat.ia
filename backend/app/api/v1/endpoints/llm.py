@@ -7,6 +7,7 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.services.llm_service import LLMService
 from app.core.config import settings
+from app.core.prompts import PromptManager
 
 router = APIRouter()
 
@@ -114,7 +115,7 @@ async def test_llm_completion(
     url = req.base_url.rstrip('/')
 
     # System prompt forcing clean SQL
-    system_prompt = "Eres un asistente experto en SQL corporativo. Genera una consulta SQL limpia en dialecto PostgreSQL para la pregunta dada."
+    system_prompt = PromptManager.SQL_TEST_SYSTEM_PROMPT
 
     # Try 1: OpenAI Compatible / Chat completions endpoint (/v1/chat/completions)
     chat_url = f"{url}/v1/chat/completions"
