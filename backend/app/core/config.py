@@ -33,14 +33,30 @@ class Settings(BaseSettings):
     # Security Defaults
     DEFAULT_ROW_LIMIT: int = 1000
     QUERY_TIMEOUT_SECONDS: int = 15
+    ALLOW_OPEN_DEMO_ENDPOINT: bool = False  # If True, enables unauthenticated /chat/query-open forced to least-privileged role
+
+    SQLITE_DB_NAME: str = "mental_health.sqlite"
 
     # Path to SQLite Demo Database (Centralized)
     @property
     def SQLITE_DB_PATH(self) -> str:
-        return os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            "demo_corporativa.db"
-        )
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        root_dir = os.path.dirname(backend_dir)
+        
+        # Check root and backend directory for target SQLITE_DB_NAME
+        for target_dir in [root_dir, backend_dir]:
+            p = os.path.join(target_dir, self.SQLITE_DB_NAME)
+            if os.path.exists(p):
+                return p
+
+        # Fallback to demo_corporativa.db
+        for target_dir in [backend_dir, root_dir]:
+            p = os.path.join(target_dir, "demo_corporativa.db")
+            if os.path.exists(p):
+                return p
+
+        return os.path.join(backend_dir, "demo_corporativa.db")
+
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env"),

@@ -56,9 +56,8 @@ democratizacion-de-datos/
 │   │   ├── db_connectors/         # Adaptadores y Pool de conexiones de BD corporativas
 │   │   │   ├── base.py                    # Interfaz abstracta para conectores relacionales
 │   │   │   ├── postgres_connector.py      # Conector psycopg3 (Solo Lectura)
-│   │   │   ├── mssql_connector.py         # Conector pyodbc/pymssql (Solo Lectura)
-│   │   │   ├── mysql_connector.py         # Conector pymysql (Solo Lectura)
-│   │   │   └── oracle_connector.py        # Conector python-oracledb Thin Mode (Solo Lectura)
+│   │   │   ├── mssql_connector.py         # Conector SQLAlchemy / pymssql (Solo Lectura)
+│   │   │   └── mysql_connector.py         # Conector pymysql (Solo Lectura)
 │   │   ├── models/                # Modelos de datos relacionales (SQLAlchemy / SQLModel)
 │   │   │   ├── user.py                    # Entidad Usuario
 │   │   │   ├── role.py                    # Entidades Rol y Dominio
@@ -154,7 +153,7 @@ Contiene la lógica de negocio central del sistema:
 
 ### 3.2. `backend/app/db_connectors/`
 Pool de conectores relacionales nativos en modo **Solo Lectura**:
-- Implementa adaptadores para **PostgreSQL**, **Microsoft SQL Server**, **MySQL** y **Oracle**.
+- Implementa adaptadores para **PostgreSQL**, **Microsoft SQL Server**, **MySQL** y **SQLite**.
 - Aplica configuraciones estrictas de `READ ONLY`, límites de tiempo de respuesta (timeouts) y límites de filas devueltas.
 
 ### 3.3. `electron/`

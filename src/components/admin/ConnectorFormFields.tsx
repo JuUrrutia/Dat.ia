@@ -3,7 +3,7 @@ import { CorporateConnection } from '../../services/connector_service';
 
 export interface FormFieldsProps {
   name: string;
-  dbType: 'postgresql' | 'mssql' | 'mysql' | 'oracle';
+  dbType: 'postgresql' | 'mssql' | 'mysql' | 'oracle' | 'sqlite';
   host: string;
   port: number;
   databaseName: string;
@@ -12,7 +12,7 @@ export interface FormFieldsProps {
   isActive: boolean;
   editingConnector: CorporateConnection | null;
   onFieldChange: (field: string, value: any) => void;
-  onDbTypeChange: (dbType: 'postgresql' | 'mssql' | 'mysql' | 'oracle') => void;
+  onDbTypeChange: (dbType: 'postgresql' | 'mssql' | 'mysql' | 'oracle' | 'sqlite') => void;
 }
 
 export const ConnectorFormFields: React.FC<FormFieldsProps> = ({
@@ -60,8 +60,10 @@ export const ConnectorFormFields: React.FC<FormFieldsProps> = ({
             <option value="mssql">Microsoft SQL Server</option>
             <option value="mysql">MySQL / MariaDB</option>
             <option value="oracle">Oracle Database</option>
+            <option value="sqlite">SQLite 3 (Archivo Local / Incrustada)</option>
           </select>
         </div>
+
 
         <div>
           <label htmlFor="conn-port" className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">

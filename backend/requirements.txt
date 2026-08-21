@@ -1,20 +1,35 @@
+# Core API Framework
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 pydantic>=2.10.0
 pydantic-settings>=2.6.0
+email-validator>=2.0.0
+python-multipart>=0.0.19
+
+# Database ORM & SQL AST Parsing
 sqlalchemy>=2.0.36
-sqlmodel>=0.0.22
-alembic>=1.14.0
 sqlglot>=25.30.0
 sqlparse>=0.5.2
+alembic>=1.14.0
+
+# Database Drivers (Pre-compiled Universal Binary Wheels)
 psycopg[binary]>=3.2.3
 pymysql>=1.1.1
-pyodbc>=5.2.0
-python-oracledb>=2.5.0
+
+# Security & Authentication
 cryptography>=44.0.0
-passlib[argon2,bcrypt]>=1.7.4
+argon2-cffi>=23.1.0
+passlib>=1.7.4
+bcrypt>=4.0.1,<4.1.0
 python-jose[cryptography]>=3.3.0
+
+# HTTP Client (Local LLM - Ollama / LM Studio)
 httpx>=0.28.0
-python-multipart>=0.0.19
+
+# Testing
 pytest>=8.3.0
 pytest-asyncio>=0.24.0
+
+# Report Generation & Data Export (PDF & Excel)
+reportlab>=4.2.0
+openpyxl>=3.1.5

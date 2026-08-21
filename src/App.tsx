@@ -1,5 +1,7 @@
 import React from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { NotificationProvider } from './context/NotificationContext';
+import { ToastContainer } from './components/shared/ToastContainer';
 import { Header } from './components/layout/Header';
 import { LoginPage } from './pages/LoginPage';
 import { ChatDashboardPage } from './pages/ChatDashboardPage';
@@ -10,7 +12,12 @@ const MainAppContent: React.FC = () => {
   const { user, activePage } = useAuth();
 
   if (!user) {
-    return <LoginPage />;
+    return (
+      <>
+        <LoginPage />
+        <ToastContainer />
+      </>
+    );
   }
 
   return (
@@ -21,15 +28,18 @@ const MainAppContent: React.FC = () => {
         {activePage === 'settings' && <SettingsPage />}
         {activePage === 'admin' && <AdminPage />}
       </main>
+      <ToastContainer />
     </div>
   );
 };
 
 export function App() {
   return (
-    <AuthProvider>
-      <MainAppContent />
-    </AuthProvider>
+    <NotificationProvider>
+      <AuthProvider>
+        <MainAppContent />
+      </AuthProvider>
+    </NotificationProvider>
   );
 }
 

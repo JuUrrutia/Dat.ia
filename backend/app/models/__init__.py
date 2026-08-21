@@ -4,6 +4,7 @@ from app.models.permission import RoleDomainLink, RoleTablePermission, RoleColum
 from app.models.connection import CorporateConnection
 from app.models.catalog import SemanticCatalog
 from app.models.audit_log import AuditLog
+from app.models.session import UserSession
 
 __all__ = [
     "User",
@@ -14,5 +15,6 @@ __all__ = [
     "RoleColumnPermission",
     "CorporateConnection",
     "SemanticCatalog",
-    "AuditLog"
+    "AuditLog",
+    "UserSession"
 ]

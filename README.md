@@ -21,6 +21,7 @@ Plataforma empresarial de analítica conversacional y **Executive Analytics Stud
 | :--- | :--- |
 | **Frontend** | React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons, Framer Motion, Apache ECharts (`echarts-for-react`) |
 | **Backend** | Python 3.10+, FastAPI, Uvicorn, SQLAlchemy, Pydantic v2, sqlglot (AST Security), SQLite3 |
+| **Bases de Datos** | PostgreSQL (`psycopg[binary]`), SQLite3, MySQL/MariaDB (`pymysql`), Microsoft SQL Server *(ver ADR-001 en DOCS 06)* |
 | **IA Local** | llama.cpp / Ollama, `Qwen2.5-Coder-7B-Instruct-GGUF` |
 | **Escritorio** | Electron 33 (Empaquetado Standalone Offline) |
 
@@ -33,35 +34,42 @@ Plataforma empresarial de analítica conversacional y **Executive Analytics Stud
 * Python 3.10+
 * (Opcional para IA Local) `llama.cpp` o `Ollama` con el modelo `Qwen2.5-Coder-7B-Instruct`
 
-### 2. Instalación de Dependencias
+### 2. Instalación de Dependencias en 2 Pasos
 
 ```bash
-# Instalar dependencias del frontend
+# 1. Instalar dependencias del Frontend
 npm install
 
-# Instalar dependencias del backend
+# 2. Configurar entorno virtual e instalar Backend
 cd backend
+python -m venv venv
+# Windows: venv\Scripts\activate | Linux/macOS: source venv/bin/activate
 pip install -r requirements.txt
 cd ..
 ```
 
-### 3. Poblar Base de Datos de Demostración (550+ Registros Corporativos)
-
-```bash
-cd backend
-py setup_demo_db.py
-cd ..
-```
-
-### 4. Iniciar en Modo Desarrollo (Frontend + Backend Concurrente)
+### 3. Iniciar la Aplicación (Frontend + Backend Concurrente)
 
 ```bash
 npm run dev
 ```
 
-La aplicación estará disponible en:
+> [!NOTE]
+> **Generación Local de Base de Datos Demo:**
+> Las bases de datos SQLite (`demo_corporativa.db` y `mental_health.sqlite`) **no vienen incluidas en el repositorio** para mantener el control de versiones limpio y ligero. Al ejecutar `npm run dev` por primera vez (o manualmente con `python backend/setup_demo_db.py`), el sistema las genera e inicializa automáticamente con el esquema corporativo, tablas de hechos/dimensiones, catálogo semántico y perfiles RBAC.
+
 * **Frontend:** `http://localhost:5173/`
 * **Backend API Docs:** `http://localhost:8000/docs`
+
+---
+
+## 🔑 Credenciales de Acceso Demo
+
+| Rol | Usuario | Contraseña | Acceso de Datos |
+| :--- | :--- | :--- | :--- |
+| **Administrador** | `admin` | `admin123` | Control total RBAC, conexiones y auditoría |
+| **Economista** | `economista` | `economista123` | Finanzas, ventas, clientes, facturación y encuestas |
+| **TI** | `ti` | `ti123` | Infraestructura, servidores, incidentes y encuestas |
 
 ---
 

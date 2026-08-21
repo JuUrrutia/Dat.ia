@@ -44,7 +44,7 @@ Todo usuario recién registrado recibe automáticamente el perfil inicial **Usua
 - **Alcance de Dominio:** Acceso total a todas las herramientas administrativas del sistema.
 - **Capacidades Exclusivas:**
   1. Asignar y modificar roles a usuarios registrados.
-  2. Registrar, editar y probar conexiones a fuentes de datos corporativas relacionales (PostgreSQL, MSSQL, MySQL, Oracle).
+  2. Registrar, editar y probar conexiones a fuentes de datos corporativas relacionales (PostgreSQL, MSSQL, MySQL, SQLite).
   3. Configurar llaves de cifrado Fernet AES-256 para cadenas de conexión.
   4. Ejecutar la función de **Auto-enriquecimiento con IA** sobre el Catálogo Semántico.
   5. Consultar los registros de auditoría global y trazabilidad de todas las consultas realizadas por los colaboradores.
