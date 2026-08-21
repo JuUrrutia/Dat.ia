@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
-import { Search, ArrowUpDown, Download, ChevronLeft, ChevronRight, Table } from 'lucide-react';
+import { Search, ArrowUpDown, Download, ChevronLeft, ChevronRight, Table, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { reportService } from '../../services/report_service';
 
 interface DataGridTableProps {
   columns: string[];
   rows: Record<string, any>[];
+  question?: string;
 }
 
-export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows }) => {
+export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, question }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const pageSize = 5;
 
   // Filter rows
@@ -66,6 +69,28 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows }) =
     URL.revokeObjectURL(url);
   };
 
+  const handleExportExcel = async () => {
+    if (!rows.length) return;
+    setIsExportingExcel(true);
+    try {
+      await reportService.exportExecutiveReportExcel({
+        question: question || 'Exportación de datos de tabla',
+        data_columns: columns,
+        data_rows: rows,
+        traceability: {
+          validation_status: 'APROBADO',
+          execution_time_ms: 0,
+          rows_returned: rows.length,
+          schema_tables_used: [],
+        },
+      } as any);
+    } catch {
+      alert('Error al exportar tabla de datos a Excel.');
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
   return (
     <div className="glass-card rounded-2xl p-5 border border-white/10 space-y-4">
       {/* Controls Bar */}
@@ -78,7 +103,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows }) =
           </span>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2.5">
           {/* Search Box */}
           <div className="relative">
             <input
@@ -90,18 +115,36 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows }) =
               }}
               placeholder="Buscar en la tabla..."
               aria-label="Buscar en la tabla"
-              className="bg-dark-base border border-dark-border text-xs text-white placeholder-gray-500 rounded-lg pl-8 pr-3 py-1.5 focus:outline-none focus:border-brand-500 transition-colors w-48"
+              className="bg-dark-base border border-dark-border text-xs text-white placeholder-gray-500 rounded-lg pl-8 pr-3 py-1.5 focus:outline-none focus:border-brand-500 transition-colors w-44"
             />
             <Search className="w-3.5 h-3.5 text-gray-500 absolute left-2.5 top-2" />
           </div>
 
           {/* Export CSV Button */}
           <button
+            type="button"
             onClick={handleExportCSV}
-            className="flex items-center space-x-1.5 text-xs bg-dark-base hover:bg-dark-border text-gray-300 border border-dark-border px-3 py-1.5 rounded-lg transition-colors"
+            aria-label="Exportar datos a CSV"
+            className="flex items-center space-x-1 text-xs bg-dark-base hover:bg-dark-border text-gray-300 border border-dark-border px-2.5 py-1.5 rounded-lg transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
             <span>CSV</span>
+          </button>
+
+          {/* Export Excel Button */}
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            disabled={isExportingExcel || rows.length === 0}
+            aria-label="Exportar datos a Excel"
+            className="flex items-center space-x-1 text-xs bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 px-2.5 py-1.5 rounded-lg transition-colors font-medium disabled:opacity-50"
+          >
+            {isExportingExcel ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+            )}
+            <span>Excel (.xlsx)</span>
           </button>
         </div>
       </div>
@@ -173,6 +216,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows }) =
 
         <div className="flex items-center space-x-2">
           <button
+            type="button"
             onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
             disabled={currentPage === 1}
             aria-label="Página anterior"
@@ -182,6 +226,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows }) =
           </button>
 
           <button
+            type="button"
             onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
             disabled={currentPage === totalPages}
             aria-label="Página siguiente"
