@@ -94,14 +94,14 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
             </select>
           </div>
 
-          {/* Import SQLite / SQL File Button */}
+          {/* Import SQLite / Excel / CSV File Button */}
           <button
             type="button"
             onClick={() => setIsUploadModalOpen(true)}
             className="flex items-center space-x-1.5 text-xs bg-dark-base hover:bg-dark-border text-gray-200 border border-dark-border hover:border-purple-500/40 px-3.5 py-2 rounded-xl transition-colors font-medium"
           >
             <UploadCloud className="w-4 h-4 text-purple-400" />
-            <span>Importar BD (SQLite / SQL)</span>
+            <span>Importar BD (SQLite / Excel / CSV)</span>
           </button>
 
           {/* Register Remote DB Connection Button */}
@@ -125,7 +125,7 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
           <div className="space-y-1">
             <h4 className="text-sm font-semibold text-white">No hay fuentes de datos registradas para este filtro</h4>
             <p className="text-xs text-gray-400 max-w-sm mx-auto">
-              Importa un archivo SQLite o registra una conexión remota a PostgreSQL, SQL Server o MySQL.
+              Importa un archivo SQLite, Excel (.xlsx) o CSV (.csv), o registra una conexión remota a PostgreSQL, SQL Server o MySQL.
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
@@ -143,7 +143,7 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
               className="flex items-center space-x-1.5 text-xs bg-purple-600 hover:bg-purple-500 text-white font-semibold px-4 py-2 rounded-xl transition-colors"
             >
               <UploadCloud className="w-3.5 h-3.5" />
-              <span>Importar Archivo SQLite</span>
+              <span>Importar SQLite / Excel / CSV</span>
             </button>
           </div>
         </div>

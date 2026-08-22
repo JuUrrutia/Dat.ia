@@ -147,3 +147,102 @@ class TestCatalogAndConnectors(unittest.TestCase):
                     os.remove(tmp_path)
                 except Exception:
                     pass
+
+    def test_upload_csv_file(self):
+        csv_content = (
+            "id,producto,precio,categoria\n"
+            "1,Laptop Dell,1200.50,Hardware\n"
+            "2,Monitor 4K,450.00,Hardware\n"
+            "3,Licencia Office,150.00,Software\n"
+        ).encode("utf-8")
+
+        file_obj = io.BytesIO(csv_content)
+        conn_id = None
+
+        try:
+            res_upload = self.client.post(
+                "/api/v1/connectors/upload",
+                files={"file": ("ventas_importadas.csv", file_obj, "text/csv")},
+                data={"name": "Ventas CSV Importadas"},
+                headers=self.headers
+            )
+            self.assertEqual(res_upload.status_code, 201, res_upload.text)
+            upload_data = res_upload.json()
+            conn_id = upload_data["id"]
+            self.assertTrue(upload_data["is_uploaded"])
+
+            # Verify tables in SQLite
+            conn_record = self.db.query(CorporateConnection).filter(CorporateConnection.id == conn_id).first()
+            self.assertIsNotNone(conn_record)
+            sqlite_file = conn_record.host
+            self.assertTrue(os.path.exists(sqlite_file))
+
+            sq_conn = sqlite3.connect(sqlite_file)
+            cur = sq_conn.cursor()
+            rows = cur.execute("SELECT * FROM ventas_importadas;").fetchall()
+            self.assertEqual(len(rows), 3)
+            sq_conn.close()
+        finally:
+            if conn_id:
+                self.client.delete(f"/api/v1/connectors/{conn_id}", headers=self.headers)
+
+    def test_upload_excel_file(self):
+        import openpyxl
+
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            excel_path = tmp.name
+
+        try:
+            wb = openpyxl.Workbook()
+            # Sheet 1: Facturas
+            ws1 = wb.active
+            ws1.title = "Facturas"
+            ws1.append(["id", "cliente", "monto", "fecha"])
+            ws1.append([101, "Acme Corp", 5500.0, "2024-03-01"])
+            ws1.append([102, "Beta LLC", 2300.0, "2024-03-02"])
+
+            # Sheet 2: Clientes
+            ws2 = wb.create_sheet(title="Clientes")
+            ws2.append(["id", "razon_social", "ciudad"])
+            ws2.append([1, "Acme Corp", "Santiago"])
+            ws2.append([2, "Beta LLC", "Valparaíso"])
+
+            wb.save(excel_path)
+            wb.close()
+
+            with open(excel_path, "rb") as f:
+                excel_bytes = f.read()
+
+            file_obj = io.BytesIO(excel_bytes)
+
+            res_upload = self.client.post(
+                "/api/v1/connectors/upload",
+                files={"file": ("erp_reportes.xlsx", file_obj, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+                data={"name": "ERP Financiero Excel"},
+                headers=self.headers
+            )
+            self.assertEqual(res_upload.status_code, 201, res_upload.text)
+            upload_data = res_upload.json()
+            conn_id = upload_data["id"]
+
+            conn_record = self.db.query(CorporateConnection).filter(CorporateConnection.id == conn_id).first()
+            self.assertIsNotNone(conn_record)
+            sqlite_file = conn_record.host
+            self.assertTrue(os.path.exists(sqlite_file))
+
+            sq_conn = sqlite3.connect(sqlite_file)
+            cur = sq_conn.cursor()
+            fact_rows = cur.execute("SELECT * FROM facturas;").fetchall()
+            client_rows = cur.execute("SELECT * FROM clientes;").fetchall()
+            self.assertEqual(len(fact_rows), 2)
+            self.assertEqual(len(client_rows), 2)
+            sq_conn.close()
+        finally:
+            if conn_id:
+                self.client.delete(f"/api/v1/connectors/{conn_id}", headers=self.headers)
+            if os.path.exists(excel_path):
+                try:
+                    os.remove(excel_path)
+                except Exception:
+                    pass
+

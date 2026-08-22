@@ -40,7 +40,7 @@ class TestSystemHealth(unittest.TestCase):
 
         # Clean up any leftover test connector records with missing files
         from app.models.connection import CorporateConnection
-        self.db.query(CorporateConnection).filter(CorporateConnection.name.like("Test Uploaded Database%")).delete()
+        self.db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == True).delete()
         self.db.commit()
 
         self.headers = {"Authorization": f"Bearer {self.token}"}

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.services.health_service import HealthService
+from app.services.tabular_importer import convert_uploaded_file_to_sqlite
 from app.api.deps import get_db, get_current_user, get_current_admin
 from app.models.user import User
 from app.models.connection import CorporateConnection, DatabaseType
@@ -91,26 +92,28 @@ async def upload_database_file(
     current_admin: User = Depends(get_current_admin)
 ) -> Any:
     """
-    Uploads a SQLite (.db, .sqlite) or SQL dump (.sql) file, saves it persistently in the backend data_sources
-    directory, auto-registers it in the database with permissions and initializes its semantic catalog (Admin only).
+    Uploads a SQLite (.db, .sqlite), Excel (.xlsx, .xls), CSV (.csv) or SQL dump (.sql) file,
+    converts it to a structured SQLite database in data_sources/, registers it with full RBAC permissions
+    and initializes its semantic catalog (Admin only).
     """
     _ensure_data_sources_dir()
     original_filename = file.filename or "uploaded_database.sqlite"
     clean_filename = "".join(c for c in original_filename if c.isalnum() or c in (".", "_", "-"))
     ext = os.path.splitext(clean_filename)[1].lower()
 
-    if ext not in [".sqlite", ".db", ".sqlite3", ".sql"]:
+    allowed_exts = [".sqlite", ".db", ".sqlite3", ".sql", ".csv", ".xlsx", ".xls", ".tsv", ".txt"]
+    if ext not in allowed_exts:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Formato no soportado. Debe ser un archivo SQLite (.sqlite, .db, .sqlite3) o un volcado SQL (.sql)."
+            detail="Formato no soportado. Debe ser un archivo SQLite (.sqlite, .db, .sqlite3), Excel (.xlsx, .xls), CSV (.csv) o volcado SQL (.sql)."
         )
 
-    unique_name = f"{int(time.time())}_{clean_filename}"
-    target_path = os.path.join(DATA_SOURCES_DIR, unique_name)
+    unique_raw_name = f"raw_{int(time.time())}_{clean_filename}"
+    raw_target_path = os.path.join(DATA_SOURCES_DIR, unique_raw_name)
 
     # Save uploaded file
     try:
-        with open(target_path, "wb") as buffer:
+        with open(raw_target_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
     except Exception as e:
         raise HTTPException(
@@ -118,45 +121,29 @@ async def upload_database_file(
             detail=f"Error al guardar el archivo en el servidor: {str(e)}"
         )
 
-    # If it is a .sql file, execute it in a new SQLite database
-    if ext == ".sql":
-        sqlite_db_name = f"{int(time.time())}_{os.path.splitext(clean_filename)[0]}.sqlite"
-        sqlite_db_path = os.path.join(DATA_SOURCES_DIR, sqlite_db_name)
-        try:
-            with open(target_path, "r", encoding="utf-8", errors="ignore") as sql_file:
-                sql_script = sql_file.read()
-            sqlite_conn = sqlite3.connect(sqlite_db_path)
-            sqlite_conn.executescript(sql_script)
-            sqlite_conn.close()
-            # Remove original .sql or keep as source
-            target_path = sqlite_db_path
-            original_filename = sqlite_db_name
-        except Exception as err:
-            if os.path.exists(target_path):
-                os.remove(target_path)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Error al ejecutar el volcado SQL en SQLite: {str(err)}"
-            )
+    # Target SQLite database path
+    sqlite_db_name = f"{int(time.time())}_{os.path.splitext(clean_filename)[0]}.sqlite"
+    target_path = os.path.join(DATA_SOURCES_DIR, sqlite_db_name)
 
-    # Inspect tables in the newly uploaded database
+    if ext in [".sqlite", ".db", ".sqlite3"]:
+        # Direct SQLite database
+        target_path = os.path.join(DATA_SOURCES_DIR, f"{int(time.time())}_{clean_filename}")
+        shutil.move(raw_target_path, target_path)
+
+    # Convert or inspect tables
     detected_tables = []
-    conn_test = None
     try:
-        conn_test = sqlite3.connect(target_path)
-        cur = conn_test.cursor()
-        detected_tables = [
-            r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()
-            if not r[0].startswith("sqlite_")
-        ]
-        cur.close()
+        detected_tables = convert_uploaded_file_to_sqlite(
+            source_path=target_path if ext in [".sqlite", ".db", ".sqlite3"] else raw_target_path,
+            ext=ext,
+            target_sqlite_path=target_path
+        )
     except Exception as err:
-        if conn_test:
+        if os.path.exists(raw_target_path):
             try:
-                conn_test.close()
+                os.remove(raw_target_path)
             except Exception:
                 pass
-            conn_test = None
         if os.path.exists(target_path):
             try:
                 os.remove(target_path)
@@ -164,12 +151,13 @@ async def upload_database_file(
                 pass
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"El archivo subido no es una base de datos SQLite válida: {str(err)}"
+            detail=f"Error al procesar e importar archivo '{original_filename}': {str(err)}"
         )
     finally:
-        if conn_test:
+        # Clean up temporary raw file if different from target SQLite
+        if raw_target_path != target_path and os.path.exists(raw_target_path):
             try:
-                conn_test.close()
+                os.remove(raw_target_path)
             except Exception:
                 pass
 
