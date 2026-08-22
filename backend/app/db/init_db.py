@@ -30,6 +30,12 @@ def init_db(db: Session):
             with engine.begin() as conn:
                 if "is_uploaded" not in conn_cols:
                     conn.execute(text("ALTER TABLE corporate_connections ADD COLUMN is_uploaded BOOLEAN DEFAULT 0 NOT NULL"))
+
+        if "audit_logs" in inspector.get_table_names():
+            audit_cols = {c["name"] for c in inspector.get_columns("audit_logs")}
+            with engine.begin() as conn:
+                if "result_snapshot" not in audit_cols:
+                    conn.execute(text("ALTER TABLE audit_logs ADD COLUMN result_snapshot TEXT NULL"))
     except Exception:
         pass
 

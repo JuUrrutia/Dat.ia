@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     PORT: int = 8000
     CORS_ORIGINS: List[str] = ["*"]
     
+    ENVIRONMENT: str = "development" # development | production
+    DEFAULT_SECRET_KEY: str = "democratizacion_datos_super_secret_key_local_2026_aes256_change_in_prod"
+
     # Secret Key for JWT Tokens and AES Encryption
     SECRET_KEY: str = "democratizacion_datos_super_secret_key_local_2026_aes256_change_in_prod"
     FERNET_KEY: Optional[str] = None # Auto-generated if not set

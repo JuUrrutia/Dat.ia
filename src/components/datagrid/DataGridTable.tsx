@@ -6,9 +6,10 @@ interface DataGridTableProps {
   columns: string[];
   rows: Record<string, any>[];
   question?: string;
+  auditLogId?: number;
 }
 
-export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, question }) => {
+export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, question, auditLogId }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -71,23 +72,17 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
 
   const handleExportExcel = async () => {
     if (!rows.length) return;
-    setIsExportingExcel(true);
-    try {
-      await reportService.exportExecutiveReportExcel({
-        question: question || 'Exportación de datos de tabla',
-        data_columns: columns,
-        data_rows: rows,
-        traceability: {
-          validation_status: 'APROBADO',
-          execution_time_ms: 0,
-          rows_returned: rows.length,
-          schema_tables_used: [],
-        },
-      } as any);
-    } catch {
-      alert('Error al exportar tabla de datos a Excel.');
-    } finally {
-      setIsExportingExcel(false);
+    if (auditLogId) {
+      setIsExportingExcel(true);
+      try {
+        await reportService.exportExecutiveReportExcel({ audit_log_id: auditLogId });
+      } catch {
+        handleExportCSV();
+      } finally {
+        setIsExportingExcel(false);
+      }
+    } else {
+      handleExportCSV();
     }
   };
 

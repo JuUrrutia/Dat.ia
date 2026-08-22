@@ -30,6 +30,11 @@ class TraceabilityAuditData(BaseModel):
     explanation: Optional[str] = None
 
 class ReportExportRequest(BaseModel):
+    audit_log_id: int
+    chart_image_base64: Optional[str] = None
+    custom_notes: Optional[str] = None
+
+class ReportExportData(BaseModel):
     question: str
     summary_text: Optional[str] = None
     executive_report: Optional[ExecutiveReportData] = None

@@ -34,6 +34,7 @@ class TraceabilityAudit(BaseModel):
     validation_status: str
     schema_tables_used: List[str]
     explanation: str
+    audit_log_id: Optional[int] = None
 
 class PresentationHints(BaseModel):
     show_executive_report: bool = True
@@ -58,6 +59,7 @@ class QueryResponse(BaseModel):
     grounding_info: Optional[str] = None # Información de las tablas/registros reales de la BD consultados
     presentation_hints: Optional[PresentationHints] = None
     traceability: TraceabilityAudit
+    audit_log_id: Optional[int] = None
 
 class SuggestionsResponse(BaseModel):
     user_role: Optional[str] = None

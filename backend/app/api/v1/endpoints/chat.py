@@ -35,9 +35,10 @@ def _persist_audit_log(
     target_database: str,
     execution_time_ms: int = 0,
     rows_returned: int = 0,
-    error_message: Optional[str] = None
-):
-    """Safely persists an AuditLog record in a best-effort transaction."""
+    error_message: Optional[str] = None,
+    result_snapshot: Optional[str] = None
+) -> Optional[int]:
+    """Safely persists an AuditLog record in a best-effort transaction and returns its ID."""
     try:
         audit_entry = AuditLog(
             user_id=user_id,
@@ -49,13 +50,17 @@ def _persist_audit_log(
             target_database=target_database,
             execution_time_ms=execution_time_ms,
             rows_returned=rows_returned,
-            error_message=error_message
+            error_message=error_message,
+            result_snapshot=result_snapshot
         )
         db.add(audit_entry)
         db.commit()
+        db.refresh(audit_entry)
+        return audit_entry.id
     except Exception as e:
         db.rollback()
         logger.warning(f"Error registrando auditoría: {e}")
+        return None
 
 @router.post("/query", response_model=QueryResponse)
 async def process_chat_query(
@@ -66,7 +71,7 @@ async def process_chat_query(
     """
     Processes natural language or suggestion chip query against target database.
     Invokes Local LLM, applies RBAC permissions & AST Guardrail validation.
-    Persists audit log of approval or rejection.
+    Persists audit log of approval or rejection with result snapshot.
     """
     user_role_name = current_user.role.name if current_user.role else (ROLE_ADMINISTRADOR if current_user.is_admin else ROLE_USUARIO)
     conn_id = query_in.connection_id or 1
@@ -88,7 +93,13 @@ async def process_chat_query(
         rows_ret = response.traceability.rows_returned if response.traceability else len(response.data_rows)
         err_msg = response.summary_text if (v_status.startswith("RECHAZADO") or response.response_type == "error") else None
 
-        _persist_audit_log(
+        # Serialize complete response as server-side result snapshot
+        try:
+            snapshot_json = response.model_dump_json()
+        except Exception:
+            snapshot_json = None
+
+        audit_id = _persist_audit_log(
             db=db,
             user_id=current_user.id,
             username=current_user.username,
@@ -99,8 +110,15 @@ async def process_chat_query(
             target_database=target_db_name,
             execution_time_ms=exec_time,
             rows_returned=rows_ret,
-            error_message=err_msg
+            error_message=err_msg,
+            result_snapshot=snapshot_json
         )
+
+        if audit_id:
+            if response.traceability:
+                response.traceability.audit_log_id = audit_id
+            response.audit_log_id = audit_id
+
         return response
     except Exception as e:
         _persist_audit_log(
@@ -114,7 +132,8 @@ async def process_chat_query(
             target_database=target_db_name,
             execution_time_ms=0,
             rows_returned=0,
-            error_message=str(e)
+            error_message=str(e),
+            result_snapshot=None
         )
         raise
 

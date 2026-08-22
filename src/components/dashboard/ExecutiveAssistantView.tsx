@@ -305,7 +305,12 @@ export const ExecutiveAssistantView: React.FC<ExecutiveAssistantViewProps> = ({
               {result.traceability?.schema_tables_used?.join(', ') || 'SQLite'}
             </span>
           </div>
-          <DataGridTable columns={result.data_columns} rows={result.data_rows} />
+          <DataGridTable
+            columns={result.data_columns}
+            rows={result.data_rows}
+            question={result.question}
+            auditLogId={result.traceability?.audit_log_id || result.audit_log_id}
+          />
         </div>
       )}
 

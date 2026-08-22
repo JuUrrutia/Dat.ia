@@ -456,7 +456,12 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
                   100% Sanitizado & Auditado
                 </span>
               </div>
-              <DataGridTable columns={result.data_columns} rows={result.data_rows} />
+              <DataGridTable
+                columns={result.data_columns}
+                rows={result.data_rows}
+                question={result.question}
+                auditLogId={result.traceability?.audit_log_id || result.audit_log_id}
+              />
             </div>
           )}
         </>

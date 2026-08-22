@@ -1,7 +1,7 @@
 import io
 import base64
 import datetime
-from typing import Optional, List
+from typing import Optional, List, Union
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -13,7 +13,7 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, KeepTogether, HRFlowable
 )
 
-from app.schemas.report_schema import ReportExportRequest
+from app.schemas.report_schema import ReportExportData, ReportExportRequest
 
 class NumberedCanvas:
     """Helper for page numbering on footer."""
@@ -26,7 +26,7 @@ class ReportGeneratorService:
     """
 
     @classmethod
-    def generate_pdf(cls, data: ReportExportRequest) -> bytes:
+    def generate_pdf(cls, data: Union[ReportExportData, ReportExportRequest]) -> bytes:
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
             buffer,
@@ -300,7 +300,7 @@ class ReportGeneratorService:
         return pdf_bytes
 
     @classmethod
-    def generate_excel(cls, data: ReportExportRequest) -> bytes:
+    def generate_excel(cls, data: Union[ReportExportData, ReportExportRequest]) -> bytes:
         wb = Workbook()
 
         # Sheet 1: Resumen Ejecutivo

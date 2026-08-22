@@ -20,3 +20,4 @@ class AuditLog(Base):
     execution_time_ms = Column(Integer, default=0)
     rows_returned = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
+    result_snapshot = Column(Text, nullable=True)

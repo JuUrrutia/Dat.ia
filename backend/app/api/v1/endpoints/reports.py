@@ -1,7 +1,8 @@
 import io
+import json
 import datetime
 import logging
-from typing import Any
+from typing import Any, Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_user
 from app.models.user import User
 from app.models.audit_log import AuditLog
-from app.schemas.report_schema import ReportExportRequest
+from app.schemas.report_schema import ReportExportRequest, ReportExportData
 from app.services.report_generator import ReportGeneratorService
 
 router = APIRouter()
@@ -43,6 +44,55 @@ def _record_export_audit(
         db.rollback()
         logger.warning(f"No se pudo registrar la auditoría de exportación: {e}")
 
+def _resolve_report_data(
+    audit_log_id: int,
+    current_user: User,
+    chart_image_base64: Optional[str],
+    db: Session
+) -> Tuple[ReportExportData, AuditLog]:
+    audit_log = db.query(AuditLog).filter(AuditLog.id == audit_log_id).first()
+    if not audit_log:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Registro de auditoría no encontrado."
+        )
+
+    # Ownership validation: only the creator or platform admin can export results
+    if audit_log.user_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado: No tienes permisos para exportar consultas de otro usuario."
+        )
+
+    if not audit_log.result_snapshot:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El registro de auditoría no contiene snapshot de resultados para exportar."
+        )
+
+    try:
+        raw_data = json.loads(audit_log.result_snapshot)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al deserializar snapshot de resultados: {str(e)}"
+        )
+
+    report_data = ReportExportData(
+        question=raw_data.get("question", audit_log.question_prompt),
+        summary_text=raw_data.get("summary_text"),
+        executive_report=raw_data.get("executive_report"),
+        kpis=raw_data.get("kpis", []),
+        gauges=raw_data.get("gauges", []),
+        data_columns=raw_data.get("data_columns", []),
+        data_rows=raw_data.get("data_rows", []),
+        traceability=raw_data.get("traceability"),
+        chart_image_base64=chart_image_base64,
+        target_database=audit_log.target_database or "demo_corporativa.db"
+    )
+
+    return report_data, audit_log
+
 @router.post("/export/pdf")
 def export_pdf_report(
     report_in: ReportExportRequest,
@@ -50,11 +100,18 @@ def export_pdf_report(
     db: Session = Depends(get_db)
 ) -> StreamingResponse:
     """
-    Generates and streams a professional executive PDF document based on pre-computed query results.
-    Available to any authenticated user for their active results.
+    Generates and streams a professional executive PDF document based on server-persisted audit snapshot.
+    Available to the user who executed the query (or Admin).
     """
+    report_data, audit_log = _resolve_report_data(
+        audit_log_id=report_in.audit_log_id,
+        current_user=current_user,
+        chart_image_base64=report_in.chart_image_base64,
+        db=db
+    )
+
     try:
-        pdf_bytes = ReportGeneratorService.generate_pdf(report_in)
+        pdf_bytes = ReportGeneratorService.generate_pdf(report_data)
     except Exception as e:
         logger.error(f"Error generando PDF: {e}", exc_info=True)
         raise HTTPException(
@@ -65,10 +122,10 @@ def export_pdf_report(
     _record_export_audit(
         db=db,
         user=current_user,
-        question=report_in.question,
+        question=report_data.question,
         export_format="PDF",
-        target_database=report_in.target_database or "demo_corporativa.db",
-        rows_count=len(report_in.data_rows)
+        target_database=report_data.target_database or "demo_corporativa.db",
+        rows_count=len(report_data.data_rows)
     )
 
     filename = f"informe_ejecutivo_datia_{datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -89,11 +146,18 @@ def export_excel_report(
     db: Session = Depends(get_db)
 ) -> StreamingResponse:
     """
-    Generates and streams a multi-sheet structured Excel workbook (Executive Summary + Data Table).
-    Available to any authenticated user.
+    Generates and streams a multi-sheet structured Excel workbook based on server-persisted audit snapshot.
+    Available to the user who executed the query (or Admin).
     """
+    report_data, audit_log = _resolve_report_data(
+        audit_log_id=report_in.audit_log_id,
+        current_user=current_user,
+        chart_image_base64=None,
+        db=db
+    )
+
     try:
-        excel_bytes = ReportGeneratorService.generate_excel(report_in)
+        excel_bytes = ReportGeneratorService.generate_excel(report_data)
     except Exception as e:
         logger.error(f"Error generando Excel: {e}", exc_info=True)
         raise HTTPException(
@@ -104,10 +168,10 @@ def export_excel_report(
     _record_export_audit(
         db=db,
         user=current_user,
-        question=report_in.question,
+        question=report_data.question,
         export_format="EXCEL",
-        target_database=report_in.target_database or "demo_corporativa.db",
-        rows_count=len(report_in.data_rows)
+        target_database=report_data.target_database or "demo_corporativa.db",
+        rows_count=len(report_data.data_rows)
     )
 
     filename = f"datos_datia_{datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
