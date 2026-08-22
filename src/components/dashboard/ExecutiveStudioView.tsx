@@ -54,6 +54,20 @@ interface ExecutiveStudioViewProps {
   setViewMode: (mode: 'studio' | 'report' | 'table') => void;
 }
 
+const CHART_TYPES: { type: ChartType; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { type: 'bar', label: 'Barras', icon: BarChart3 },
+  { type: 'horizontal_bar', label: 'Ranking (H)', icon: AlignLeft },
+  { type: 'line', label: 'Línea', icon: LineChart },
+  { type: 'area', label: 'Área Glow', icon: Activity },
+  { type: 'donut', label: 'Donut', icon: CircleDot },
+  { type: 'pie', label: 'Torta', icon: PieChart },
+  { type: 'radar', label: 'Radar', icon: Radio },
+  { type: 'scatter', label: 'Dispersión', icon: ScatterChart },
+  { type: 'funnel', label: 'Embudo', icon: Filter },
+  { type: 'gauge', label: 'Velocímetro', icon: Gauge },
+  { type: 'treemap', label: 'Treemap', icon: LayoutGrid },
+];
+
 export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
   result,
   totalVal,
@@ -84,20 +98,6 @@ export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
   const showChart = hints?.show_chart !== false;
 
   const stats = computeChartStats(result.data_rows || [], catCol, numCol);
-
-  const chartTypes: { type: ChartType; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { type: 'bar', label: 'Barras', icon: BarChart3 },
-    { type: 'horizontal_bar', label: 'Ranking (H)', icon: AlignLeft },
-    { type: 'line', label: 'Línea', icon: LineChart },
-    { type: 'area', label: 'Área Glow', icon: Activity },
-    { type: 'donut', label: 'Donut', icon: CircleDot },
-    { type: 'pie', label: 'Torta', icon: PieChart },
-    { type: 'radar', label: 'Radar', icon: Radio },
-    { type: 'scatter', label: 'Dispersión', icon: ScatterChart },
-    { type: 'funnel', label: 'Embudo', icon: Filter },
-    { type: 'gauge', label: 'Velocímetro', icon: Gauge },
-    { type: 'treemap', label: 'Treemap', icon: LayoutGrid },
-  ];
 
   const handleDownloadPng = () => {
     const filename = `grafico_datia_${numCol || 'analitica'}_${Date.now()}.png`;
@@ -244,7 +244,7 @@ export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
 
             {/* Scrollable / Responsive Chart Type Selector Pills */}
             <div className="flex items-center gap-1.5 bg-zinc-950/90 p-1.5 rounded-2xl border border-white/5 overflow-x-auto custom-scrollbar">
-              {chartTypes.map((item) => {
+              {CHART_TYPES.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeChartType === item.type;
                 return (

@@ -141,8 +141,10 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
       {isOpenMobile && (
         <div className="fixed inset-0 z-40 md:hidden flex">
           {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-xs transition-opacity animate-fadeIn"
+          <button
+            type="button"
+            aria-label="Cerrar barra lateral"
+            className="fixed inset-0 w-full h-full bg-black/70 backdrop-blur-xs transition-opacity animate-fadeIn cursor-default focus:outline-none"
             onClick={onCloseMobile}
           />
           {/* Drawer content */}

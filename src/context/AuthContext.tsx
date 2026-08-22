@@ -209,15 +209,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearError = useCallback(() => setError(null), []);
 
   const handlePasswordChangeSuccess = useCallback(() => {
-    setUser((prev) => {
-      const next = prev ? { ...prev, must_change_password: false } : null;
-      if (next) {
-        try {
-          localStorage.setItem(USER_KEY, JSON.stringify(next));
-        } catch { /* ignore */ }
+    setUser((prev) => (prev ? { ...prev, must_change_password: false } : null));
+    try {
+      const saved = loadPersistedUser();
+      if (saved) {
+        localStorage.setItem(USER_KEY, JSON.stringify({ ...saved, must_change_password: false }));
       }
-      return next;
-    });
+    } catch { /* ignore storage errors */ }
   }, []);
 
   const contextValue = useMemo(

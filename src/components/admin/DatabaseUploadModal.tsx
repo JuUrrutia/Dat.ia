@@ -151,10 +151,19 @@ export const DatabaseUploadModal: React.FC<DatabaseUploadModalProps> = ({
 
           {/* Drag & Drop Area */}
           <div
+            role="button"
+            tabIndex={0}
+            aria-label="Seleccionar o arrastrar archivo de base de datos"
             onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
             className={`border-2 border-dashed rounded-2xl p-4 sm:p-5 text-center cursor-pointer transition-all ${
               isDragging
                 ? 'border-purple-500 bg-purple-500/10 scale-[1.01]'
