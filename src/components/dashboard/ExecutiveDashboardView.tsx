@@ -2,9 +2,16 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { QueryResult } from '../../types';
 import { DataGridTable } from '../datagrid/DataGridTable';
 import { ExecutiveReportView } from './ExecutiveReportView';
-import { ExecutiveStudioView, ChartType } from './ExecutiveStudioView';
+import { ExecutiveStudioView } from './ExecutiveStudioView';
 import { ExecutiveAssistantView } from './ExecutiveAssistantView';
-import { THEME_COLORS, deriveProcessedRows, formatMetricNumber, buildDynamicChartOption } from './executiveDashboardUtils';
+import {
+  THEME_COLORS,
+  ChartType,
+  ColorTheme,
+  deriveProcessedRows,
+  formatMetricNumber,
+  buildDynamicChartOption
+} from './executiveDashboardUtils';
 import { BarChart3, FileText, Table as TableIcon, ShieldCheck, Sparkles, Lightbulb, AlertTriangle, ShieldAlert, Database } from 'lucide-react';
 
 interface ExecutiveDashboardViewProps {
@@ -13,7 +20,6 @@ interface ExecutiveDashboardViewProps {
 }
 
 type ViewMode = 'assistant' | 'studio' | 'report' | 'table';
-type ColorTheme = 'amber' | 'cyan' | 'emerald' | 'indigo';
 
 interface ExecutiveDashboardHeaderProps {
   viewMode: ViewMode;
@@ -293,9 +299,12 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
   );
   const [colorTheme, setColorTheme] = useState<ColorTheme>('amber');
   const [sortOrder, setSortOrder] = useState<'default' | 'desc' | 'asc'>('default');
+  const [showDataLabels, setShowDataLabels] = useState<boolean>(false);
+  const [showAverageLine, setShowAverageLine] = useState<boolean>(true);
+  const [showDataZoom, setShowDataZoom] = useState<boolean>(false);
   const [copiedReport, setCopiedReport] = useState(false);
 
-  const currentTheme = THEME_COLORS[colorTheme];
+  const currentTheme = THEME_COLORS[colorTheme] || THEME_COLORS.amber;
 
   const { catCol, numCol, processedRows } = useMemo(
     () => deriveProcessedRows(result, sortOrder),
@@ -340,9 +349,24 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
       currentTheme,
       isCurrency,
       totalVal,
+      showDataLabels,
+      showAverageLine,
+      showDataZoom,
       fallbackChartOption: result.chart_option,
     });
-  }, [processedRows, catCol, numCol, activeChartType, currentTheme, isCurrency, totalVal, result.chart_option]);
+  }, [
+    processedRows,
+    catCol,
+    numCol,
+    activeChartType,
+    currentTheme,
+    isCurrency,
+    totalVal,
+    showDataLabels,
+    showAverageLine,
+    showDataZoom,
+    result.chart_option,
+  ]);
 
   const handleCopyReport = () => {
     const reportText = `INFORME EJECUTIVO DE NEGOCIO\nConsulta: "${result.question}"\nFecha: ${result.timestamp}\n\n1. RESUMEN EJECUTIVO:\n${result.executive_report?.overview || result.summary_text}\n\n2. HALLAZGOS CLAVE:\n${result.executive_report?.key_findings.map((f) => `  - ${f}`).join('\n') || '  - Registros procesados exitosamente.'}\n\n3. RECOMENDACIONES ESTRATÉGICAS:\n${result.executive_report?.recommendations.map((r) => `  - ${r}`).join('\n') || '  - Mantener monitoreo periódico.'}\n\n4. AUDITORÍA:\n  - SQL: ${result.traceability.sql_executed}\n  - Filas: ${result.traceability.rows_returned}\n  - Latencia: ${result.traceability.execution_time_ms} ms\n`;
@@ -394,6 +418,12 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
               setSortOrder={setSortOrder}
               colorTheme={colorTheme}
               setColorTheme={setColorTheme}
+              showDataLabels={showDataLabels}
+              setShowDataLabels={setShowDataLabels}
+              showAverageLine={showAverageLine}
+              setShowAverageLine={setShowAverageLine}
+              showDataZoom={showDataZoom}
+              setShowDataZoom={setShowDataZoom}
               dynamicChartOption={dynamicChartOption}
               formatNumber={formatNumber}
               setViewMode={setViewMode}
