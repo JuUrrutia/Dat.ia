@@ -29,7 +29,7 @@ try:
     with engine.connect() as conn:
         pass
 except Exception:
-    db_path = settings.SQLITE_DB_PATH
+    db_path = settings.METADATA_DB_PATH
     DATABASE_URL = f"sqlite:///{db_path}"
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 

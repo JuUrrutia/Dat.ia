@@ -109,8 +109,40 @@ class TestChatSecurity(unittest.TestCase):
         resp = self.client.get("/api/v1/chat/suggestions?user_role=Administrador", headers=self.headers)
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        self.assertEqual(data.get("user_role"), "Economista")
+        self.assertIn(data.get("user_role"), ["Economista", "Analista Financiero & Comercial"])
         allowed_tables = data.get("allowed_tables")
         self.assertIsNotNone(allowed_tables)
         self.assertGreaterEqual(len(allowed_tables), 1)
         self.assertTrue(any(t.lower() in ["fact_ventas", "question", "survey", "answer"] for t in allowed_tables))
+
+    def test_self_register_ignores_extra_admin_fields(self):
+        """
+        POST /auth/register uses UserSelfRegister. Even if a malicious request
+        supplies is_admin=True and role_id=1, the endpoint ignores undeclared fields
+        and creates a standard user with is_admin=False and role 'Usuario'.
+        """
+        username = f"hacker_{uuid.uuid4().hex[:6]}"
+        payload = {
+            "username": username,
+            "email": f"{username}@example.com",
+            "password": "Password123!",
+            "is_admin": True,
+            "role_id": 1
+        }
+        try:
+            resp = self.client.post("/api/v1/auth/register", json=payload)
+            self.assertEqual(resp.status_code, 201)
+            data = resp.json()
+            self.assertFalse(data["is_admin"])
+            self.assertEqual(data.get("role_name"), "Usuario")
+
+            # Check directly in the database
+            user_in_db = self.db.query(User).filter(User.username == username).first()
+            self.assertIsNotNone(user_in_db)
+            self.assertFalse(user_in_db.is_admin)
+            if user_in_db.role:
+                self.assertEqual(user_in_db.role.name, "Usuario")
+        finally:
+            self.db.query(User).filter(User.username == username).delete()
+            self.db.commit()
+

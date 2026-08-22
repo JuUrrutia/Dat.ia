@@ -1,8 +1,8 @@
 import time
 import os
 import datetime
-from typing import List
-from fastapi import APIRouter, Depends
+from typing import List, Optional, Dict, Any
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
@@ -22,33 +22,45 @@ router = APIRouter()
 
 @router.get("/health", response_model=SystemHealthResponse)
 async def get_system_health(
+    provider: Optional[str] = Query(None),
+    base_url: Optional[str] = Query(None),
+    model_name: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> SystemHealthResponse:
     """
     Returns unified health & operational status of core system components:
-    - Active local LLM engine (Ollama / llama.cpp)
+    - Active local LLM engine (Ollama / llama.cpp / LM Studio)
     - Metadata database
     - Active registered corporate database connectors
     """
     # 1. Check LLM Engine
+    effective_provider = provider or settings.LLM_PROVIDER
+    effective_base_url = base_url or settings.OLLAMA_BASE_URL
+    effective_model = model_name or settings.OLLAMA_MODEL
+
     llm_res = await HealthService.check_llm_connectivity(
-        provider=settings.LLM_PROVIDER,
-        base_url=settings.OLLAMA_BASE_URL,
-        model_name=settings.OLLAMA_MODEL,
-        timeout=2.5
+        provider=effective_provider,
+        base_url=effective_base_url,
+        model_name=effective_model,
+        timeout=2.0
     )
     llm_ok = llm_res["success"]
+    detected_models = llm_res.get("available_models", [])
+    display_model = detected_models[0] if detected_models else effective_model
+    detected_prov = llm_res.get("provider", effective_provider)
+    prov_title = "llama.cpp" if detected_prov == "llama_cpp" else ("Ollama" if detected_prov == "ollama" else "IA Local")
+
     llm_comp = ComponentHealth(
-        name=f"Motor LLM ({settings.OLLAMA_MODEL})",
+        name=f"Motor LLM {prov_title} ({display_model})",
         type="llm",
         status=SYSTEM_STATUS_OPERATIONAL if llm_ok else SYSTEM_STATUS_CRITICAL,
         latency_ms=llm_res.get("latency_ms", 0),
         message=llm_res.get("message", ""),
         details={
-            "provider": settings.LLM_PROVIDER,
-            "base_url": settings.OLLAMA_BASE_URL,
-            "available_models": llm_res.get("available_models", [])
+            "provider": detected_prov,
+            "base_url": llm_res.get("active_url", effective_base_url),
+            "available_models": detected_models
         }
     )
 

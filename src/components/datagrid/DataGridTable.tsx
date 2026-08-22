@@ -6,9 +6,10 @@ interface DataGridTableProps {
   columns: string[];
   rows: Record<string, any>[];
   question?: string;
+  auditLogId?: number;
 }
 
-export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, question }) => {
+export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, question, auditLogId }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -71,23 +72,17 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
 
   const handleExportExcel = async () => {
     if (!rows.length) return;
-    setIsExportingExcel(true);
-    try {
-      await reportService.exportExecutiveReportExcel({
-        question: question || 'Exportación de datos de tabla',
-        data_columns: columns,
-        data_rows: rows,
-        traceability: {
-          validation_status: 'APROBADO',
-          execution_time_ms: 0,
-          rows_returned: rows.length,
-          schema_tables_used: [],
-        },
-      } as any);
-    } catch {
-      alert('Error al exportar tabla de datos a Excel.');
-    } finally {
-      setIsExportingExcel(false);
+    if (auditLogId) {
+      setIsExportingExcel(true);
+      try {
+        await reportService.exportExecutiveReportExcel({ audit_log_id: auditLogId });
+      } catch {
+        handleExportCSV();
+      } finally {
+        setIsExportingExcel(false);
+      }
+    } else {
+      handleExportCSV();
     }
   };
 
@@ -96,16 +91,16 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
       {/* Controls Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center space-x-2">
-          <Table className="w-4 h-4 text-brand-400" />
-          <h3 className="text-sm font-semibold text-white">Tabla de Datos Subyacente</h3>
-          <span className="text-xs text-gray-400 bg-dark-base px-2 py-0.5 rounded border border-dark-border">
+          <Table className="w-4 h-4 text-brand-400 shrink-0" />
+          <h3 className="text-sm font-semibold text-white truncate">Tabla de Datos Subyacente</h3>
+          <span className="text-[11px] text-gray-400 bg-dark-base px-2 py-0.5 rounded border border-dark-border shrink-0">
             {filteredRows.length} registros
           </span>
         </div>
 
-        <div className="flex items-center space-x-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Search Box */}
-          <div className="relative">
+          <div className="relative flex-1 sm:flex-none">
             <input
               type="text"
               value={searchTerm}
@@ -115,7 +110,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
               }}
               placeholder="Buscar en la tabla..."
               aria-label="Buscar en la tabla"
-              className="bg-dark-base border border-dark-border text-xs text-white placeholder-gray-500 rounded-lg pl-8 pr-3 py-1.5 focus:outline-none focus:border-brand-500 transition-colors w-44"
+              className="w-full sm:w-44 bg-dark-base border border-dark-border text-xs text-white placeholder-gray-500 rounded-lg pl-8 pr-3 py-1.5 focus:outline-none focus:border-brand-500 transition-colors"
             />
             <Search className="w-3.5 h-3.5 text-gray-500 absolute left-2.5 top-2" />
           </div>
@@ -144,7 +139,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
             ) : (
               <FileSpreadsheet className="w-3.5 h-3.5" />
             )}
-            <span>Excel (.xlsx)</span>
+            <span>Excel</span>
           </button>
         </div>
       </div>

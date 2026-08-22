@@ -238,8 +238,79 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         # Check if question mentions any authorized table name
         matching_table = next((t for t in sorted_tables if t.lower() in q_lower), None)
         target_table = matching_table if matching_table else sorted_tables[0]
-
         return f"SELECT * FROM {target_table} LIMIT 20;"
+
+    @classmethod
+    def _retrieve_few_shot_memories(cls, db: Optional[Session], question: str, connection_id: int) -> str:
+        """
+        Retrieves matching verified SQL memories to feed as dynamic Few-Shot In-Context examples.
+        """
+        if not db:
+            return ""
+        try:
+            from app.models.learning import QueryLearningMemory
+            memories = db.query(QueryLearningMemory).filter(
+                QueryLearningMemory.connection_id == connection_id
+            ).order_by(QueryLearningMemory.execution_count.desc(), QueryLearningMemory.id.desc()).limit(3).all()
+
+            if not memories:
+                return ""
+
+            examples = []
+            for m in memories:
+                examples.append(f"- Pregunta similar: \"{m.question_pattern}\" -> SQL: {m.successful_sql}")
+            return "Ejemplos de consultas previamente aprendidas y verificadas:\n" + "\n".join(examples)
+        except Exception:
+            return ""
+
+    @classmethod
+    def _persist_learning_memory(
+        cls,
+        db: Optional[Session],
+        question: str,
+        sql: str,
+        connection_id: int,
+        user_role: str,
+        tables_used: List[str],
+        was_healed: bool = False
+    ):
+        """
+        Persists or updates an approved SQL pattern for autonomous continuous self-learning.
+        """
+        if not db or not sql or not question:
+            return
+        try:
+            from app.models.learning import QueryLearningMemory
+            clean_q = question.strip().lower()
+            if len(clean_q) < 4:
+                return
+
+            existing = db.query(QueryLearningMemory).filter(
+                QueryLearningMemory.connection_id == connection_id,
+                QueryLearningMemory.question_pattern == clean_q
+            ).first()
+
+            if existing:
+                existing.execution_count = (existing.execution_count or 1) + 1
+                existing.successful_sql = sql
+                existing.was_self_healed = existing.was_self_healed or was_healed
+            else:
+                new_mem = QueryLearningMemory(
+                    question_pattern=clean_q,
+                    connection_id=connection_id,
+                    user_role=user_role,
+                    successful_sql=sql,
+                    tables_used=json.dumps(tables_used),
+                    execution_count=1,
+                    was_self_healed=was_healed
+                )
+                db.add(new_mem)
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
 
     @classmethod
     def _build_llm_offline_response(cls, question: str, exec_time_ms: int = 0) -> QueryResponse:
@@ -315,6 +386,16 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             from setup_demo_db import setup_demo_sqlite
             setup_demo_sqlite()
 
+        target_db_path = DynamicSchemaPruningService.resolve_db_path(db, connection_id)
+
+        # Build physical table columns map for CLS Star Expansion
+        table_columns_map: Dict[str, List[str]] = {}
+        for tbl in allowed_tables:
+            phys_cols_info = DynamicSchemaPruningService.get_physical_table_columns(
+                tbl, db_path=target_db_path, include_samples=False
+            )
+            table_columns_map[tbl.lower()] = [c["name"] for c in phys_cols_info if "name" in c]
+
         # =========================================================================
         # BRANCH 0: GREETING / GENERAL CONVERSATION (Conversational Welcome)
         # =========================================================================
@@ -367,13 +448,14 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                     grounding_sql,
                     dialect="sqlite",
                     allowed_tables=allowed_tables,
-                    blocked_columns=blocked_columns
+                    blocked_columns=blocked_columns,
+                    table_columns=table_columns_map
                 )
             except Exception:
                 secured_sql = grounding_sql
                 meta = {"tables_used": list(allowed_tables)}
 
-            conn = sqlite3.connect(DEMO_DB_PATH)
+            conn = sqlite3.connect(target_db_path)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             try:
@@ -438,25 +520,45 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         # =========================================================================
         # BRANCH B: DATA ANALYSIS / REPORT / HYBRID (Visual Analytics & Studio)
         # =========================================================================
-        # Retrieve dynamic schema prompt for LLM context
-        schema_context = ""
-        try:
-            s_info = DynamicSchemaPruningService.get_authorized_schema_prompt(
-                db=db,
-                role_id=role_id,
-                user_role=user_role,
-                connection_id=connection_id,
-                is_admin=is_admin
-            )
-            schema_context = s_info.get("schema_prompt", "")
-        except Exception:
-            pass
+        # Check if question is direct raw SQL (e.g. direct SELECT or forbidden DROP/DELETE/INSERT/UNAUTHORIZED TABLE)
+        q_strip = question.strip().rstrip(';')
+        if q_strip.upper().startswith(("SELECT", "WITH", "DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "TRUNCATE", "CREATE")):
+            try:
+                _, secured_sql, meta = ASTValidator.validate_and_secure_sql(
+                    q_strip,
+                    dialect="sqlite",
+                    allowed_tables=allowed_tables,
+                    blocked_columns=blocked_columns,
+                    table_columns=table_columns_map
+                )
+                candidate_sql = secured_sql
+                is_llm_active = True
+            except ASTValidationError as e:
+                return cls._build_rbac_denied_response(question, str(e))
+        else:
+            candidate_sql = None
 
-        candidate_sql = None
+        if not candidate_sql:
+            # Retrieve dynamic schema prompt for LLM context
+            schema_context = ""
+            try:
+                s_info = DynamicSchemaPruningService.get_authorized_schema_prompt(
+                    db=db,
+                    role_id=role_id,
+                    user_role=user_role,
+                    connection_id=connection_id,
+                    is_admin=is_admin
+                )
+                schema_context = s_info.get("schema_prompt", "")
+            except Exception:
+                pass
+        few_shots = cls._retrieve_few_shot_memories(db, question, connection_id)
         try:
             allowed_tables_str = ", ".join(sorted(allowed_tables))
             system_prompt = PromptManager.get_text_to_sql_system_prompt(user_role, allowed_tables)
-            prompt_llm = PromptManager.get_text_to_sql_user_prompt(question, user_role, schema_context, allowed_tables)
+            prompt_llm = PromptManager.get_text_to_sql_user_prompt(
+                question, user_role, schema_context, allowed_tables, few_shots
+            )
 
             llm_response_text = await LLMService.generate_completion(
                 prompt_llm,
@@ -490,12 +592,16 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 candidate_sql,
                 dialect="sqlite",
                 allowed_tables=allowed_tables,
-                blocked_columns=blocked_columns
+                blocked_columns=blocked_columns,
+                table_columns=table_columns_map
             )
         except ASTValidationError as e:
             return cls._build_rbac_denied_response(question, str(e))
 
-        conn = sqlite3.connect(DEMO_DB_PATH)
+        was_self_healed = False
+        validation_label = "APROBADO"
+
+        conn = sqlite3.connect(target_db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -503,17 +609,95 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             cursor.execute(secured_sql)
             rows = [dict(r) for r in cursor.fetchall()]
         except Exception as err:
-            first_table = sorted(list(allowed_tables))[0] if allowed_tables else "dual"
-            fb_sql = f"SELECT * FROM {first_table} LIMIT 20;"
-            try:
-                cursor.execute(fb_sql)
-                rows = [dict(r) for r in cursor.fetchall()]
-                secured_sql = fb_sql
-            except Exception:
-                conn.close()
-                return cls._build_rbac_denied_response(question, f"Error al ejecutar consulta en la BD: {str(err)}")
+            # Self-Healing SQL Loop: Prompt LLM with dialect error and valid schema
+            healed_sql = None
+            if is_llm_active:
+                try:
+                    healing_system_prompt = (
+                        "Eres un asistente experto en corregir consultas SQL para SQLite. "
+                        "El motor relacional arrojó un error con la consulta previa. "
+                        "Corrige el SQL usando exclusivamente las columnas y tablas existentes en el esquema provisto. "
+                        "Responde ÚNICAMENTE con el código SQL corregido dentro del bloque ```sql ... ```."
+                    )
+                    healing_user_prompt = f"""Pregunta original del usuario: "{question}"
+Consulta SQL errónea: {secured_sql}
+Error devuelto por SQLite: {str(err)}
+
+Esquema de tablas y columnas válidas disponibles:
+{schema_context}
+
+Genera la consulta SQL corregida y funcional para SQLite:"""
+
+                    healing_res = await LLMService.generate_completion(
+                        healing_user_prompt,
+                        system_prompt=healing_system_prompt,
+                        temperature=0.05,
+                        max_tokens=200
+                    )
+                    if healing_res:
+                        match = re.search(r'```sql\s*(.*?)\s*```', healing_res, re.DOTALL | re.IGNORECASE)
+                        if match:
+                            healed_sql = match.group(1).strip()
+                        elif "SELECT" in healing_res.upper():
+                            m_sel = re.search(r'(SELECT\s+.*?(?:;|$))', healing_res, re.DOTALL | re.IGNORECASE)
+                            if m_sel:
+                                healed_sql = m_sel.group(1).strip().rstrip(';')
+                except Exception:
+                    healed_sql = None
+
+            rows = None
+            if healed_sql:
+                try:
+                    _, healed_secured_sql, healed_meta = ASTValidator.validate_and_secure_sql(
+                        healed_sql,
+                        dialect="sqlite",
+                        allowed_tables=allowed_tables,
+                        blocked_columns=blocked_columns,
+                        table_columns=table_columns_map
+                    )
+                    cursor.execute(healed_secured_sql)
+                    rows = [dict(r) for r in cursor.fetchall()]
+                    secured_sql = healed_secured_sql
+                    meta = healed_meta
+                    was_self_healed = True
+                    validation_label = "APROBADO (Auto-Corregido)"
+                except Exception:
+                    rows = None
+
+            if rows is None:
+                first_table = sorted(list(allowed_tables))[0] if allowed_tables else "dual"
+                raw_fb_sql = f"SELECT * FROM {first_table} LIMIT 20"
+                try:
+                    _, secured_fb_sql, fb_meta = ASTValidator.validate_and_secure_sql(
+                        raw_fb_sql,
+                        dialect="sqlite",
+                        allowed_tables=allowed_tables,
+                        blocked_columns=blocked_columns,
+                        table_columns=table_columns_map,
+                        max_limit=20
+                    )
+                    cursor.execute(secured_fb_sql)
+                    rows = [dict(r) for r in cursor.fetchall()]
+                    secured_sql = secured_fb_sql
+                    meta = fb_meta
+                    validation_label = "APROBADO (Fallback de Emergencia)"
+                except Exception:
+                    conn.close()
+                    return cls._build_rbac_denied_response(question, f"Error al ejecutar consulta en la BD: {str(err)}")
 
         conn.close()
+
+        # Record successful learning in persistent memory
+        cls._persist_learning_memory(
+            db=db,
+            question=question,
+            sql=secured_sql,
+            connection_id=connection_id,
+            user_role=user_role,
+            tables_used=meta.get("tables_used", list(allowed_tables)),
+            was_healed=was_self_healed
+        )
+
         exec_time_ms = int((time.time() - start_time) * 1000)
         columns = list(rows[0].keys()) if rows else []
 
@@ -585,7 +769,7 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 sql_executed=secured_sql,
                 execution_time_ms=exec_time_ms,
                 rows_returned=len(rows),
-                validation_status="APROBADO (SELECT Único)",
+                validation_status=validation_label,
                 schema_tables_used=list(meta.get("tables_used", list(allowed_tables))),
                 explanation=f"Consulta generada y validada con IA Local ({'Qwen2.5-Coder' if is_llm_active else 'Modo Determinístico'}). Tablas autorizadas: {', '.join(allowed_tables)}."
             )

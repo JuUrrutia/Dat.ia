@@ -34,6 +34,7 @@ export interface AuditLog {
   execution_time_ms: number;
   rows_returned: number;
   error_message?: string | null;
+  result_snapshot?: string | null;
 }
 
 export interface AuditLogsPage {
@@ -90,6 +91,7 @@ export interface TraceabilityAudit {
   validation_status: string;
   schema_tables_used: string[];
   explanation: string;
+  audit_log_id?: number;
 }
 
 export interface PresentationHints {
@@ -119,6 +121,7 @@ export interface QueryResult {
   conversational_response?: string; // Respuesta conversacional estructurada
   grounding_info?: string; // Información de las tablas o registros reales de la BD consultados
   presentation_hints?: PresentationHints;
+  audit_log_id?: number;
 }
 
 export interface AppSettings {

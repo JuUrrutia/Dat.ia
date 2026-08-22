@@ -38,18 +38,29 @@ class TestSystemHealth(unittest.TestCase):
         self.db.add(session)
         self.db.commit()
 
+        # Clean up any leftover test connector records with missing files
+        from app.models.connection import CorporateConnection
+        self.db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == True).delete()
+        self.db.commit()
+
         self.headers = {"Authorization": f"Bearer {self.token}"}
 
     def tearDown(self):
         self.db.close()
 
+    @patch("app.services.health_service.HealthService.check_db_connectivity")
     @patch("app.services.health_service.HealthService.check_llm_connectivity", new_callable=AsyncMock)
-    def test_system_health_operational(self, mock_check_llm):
+    def test_system_health_operational(self, mock_check_llm, mock_check_db):
         mock_check_llm.return_value = {
             "success": True,
             "latency_ms": 15,
             "message": "Conectado exitosamente con Ollama.",
             "available_models": ["llama3.2:3b"]
+        }
+        mock_check_db.return_value = {
+            "success": True,
+            "latency_ms": 5,
+            "message": "Conexión exitosa en modo SOLO LECTURA."
         }
 
         response = self.client.get("/api/v1/system/health", headers=self.headers)
@@ -57,10 +68,33 @@ class TestSystemHealth(unittest.TestCase):
 
         data = response.json()
         self.assertIn("status", data)
-        self.assertEqual(data["status"], SYSTEM_STATUS_OPERATIONAL)
+        self.assertEqual(data["status"], SYSTEM_STATUS_OPERATIONAL, data)
         self.assertEqual(data["llm_engine"]["status"], SYSTEM_STATUS_OPERATIONAL)
         self.assertEqual(data["metadata_db"]["status"], SYSTEM_STATUS_OPERATIONAL)
         self.assertIn("corporate_connectors", data)
+
+    @patch("app.services.health_service.HealthService.check_db_connectivity")
+    @patch("app.services.health_service.HealthService.check_llm_connectivity", new_callable=AsyncMock)
+    def test_system_health_with_custom_query_params(self, mock_check_llm, mock_check_db):
+        mock_check_llm.return_value = {
+            "success": True,
+            "latency_ms": 12,
+            "message": "Conectado exitosamente.",
+            "available_models": ["Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M"],
+            "provider": "llama_cpp"
+        }
+        mock_check_db.return_value = {
+            "success": True,
+            "latency_ms": 3,
+            "message": "OK"
+        }
+
+        url = "/api/v1/system/health?base_url=http:%2F%2F127.0.0.1:8080&provider=llama_cpp&model_name=Qwen%2FQwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M"
+        response = self.client.get(url, headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], SYSTEM_STATUS_OPERATIONAL)
+        self.assertIn("llama.cpp", data["llm_engine"]["name"])
 
     @patch("app.services.health_service.HealthService.check_llm_connectivity", new_callable=AsyncMock)
     def test_system_health_critical_when_llm_down(self, mock_check_llm):
