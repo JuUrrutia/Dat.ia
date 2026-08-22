@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save } from 'lucide-react';
 import { UserItem } from './AdminUsersTab';
+import { CORPORATE_ROLES } from '../../constants';
 
 interface UserEditModalProps {
   isOpen: boolean;
@@ -15,7 +16,7 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
   onClose,
   onSave,
 }) => {
-  const [selectedRole, setSelectedRole] = useState('Economista');
+  const [selectedRole, setSelectedRole] = useState('Analista Financiero & Comercial');
   const [isAdminCheck, setIsAdminCheck] = useState(false);
 
   useEffect(() => {
@@ -59,12 +60,13 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
               aria-label="Seleccionar Perfil RBAC"
               value={selectedRole}
               onChange={(e) => setSelectedRole(e.target.value)}
-              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500 text-xs"
             >
-              <option value="Economista">Economista (Finanzas, Ventas, Costos, Márgenes)</option>
-              <option value="TI">TI (Servidores, Incidentes, Telemetría CPU/RAM)</option>
-              <option value="Administrador">Administrador (Acceso Total + Auditoría)</option>
-              <option value="Usuario">Usuario (Sin asignación - Bloqueado)</option>
+              {CORPORATE_ROLES.map((r) => (
+                <option key={r.name} value={r.name}>
+                  {r.label} — {r.description}
+                </option>
+              ))}
             </select>
           </div>
 

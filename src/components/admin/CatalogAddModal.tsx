@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, BookOpen } from 'lucide-react';
-import { CatalogItem } from './AdminCatalogTab';
+import { CatalogItem } from './CatalogEditModal';
 
 interface CatalogAddModalProps {
   isOpen: boolean;

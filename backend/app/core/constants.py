@@ -3,16 +3,30 @@ Centralized System Constants for Roles, Domains, LLMs, and UI Charts.
 """
 from app.core.config import settings
 
-# Role Names
-ADMIN_ROLES = {"Administrador", "Super Administrador", "Admin"}
+# Corporate Enterprise Roles
+ROLE_ADMINISTRADOR = "Administrador de Plataforma"
+ROLE_DIRECTOR_EJECUTIVO = "Director Ejecutivo (C-Level)"
+ROLE_ANALISTA_FINANCIERO = "Analista Financiero & Comercial"
+ROLE_GERENTE_TALENTO = "Gerente de Talento & Operaciones"
+ROLE_ANALISTA_BI = "Analista de Datos & BI"
+ROLE_INGENIERO_TI = "Ingeniero de Infraestructura & TI"
+ROLE_OFICIAL_SEGURIDAD = "Oficial de Cumplimiento & Seguridad"
+ROLE_USUARIO = "Usuario Consultor"
 
-ROLE_ADMINISTRADOR = "Administrador"
+# Backward compatibility aliases
 ROLE_ECONOMISTA = "Economista"
 ROLE_TI = "TI"
-ROLE_USUARIO = "Usuario"
+
+ADMIN_ROLES = {
+    ROLE_ADMINISTRADOR,
+    "Administrador",
+    "Super Administrador",
+    "Admin",
+    "Data Platform Admin"
+}
 
 DEFAULT_USER_ROLE = ROLE_USUARIO
-DEFAULT_DEMO_ROLE = ROLE_ECONOMISTA
+DEFAULT_DEMO_ROLE = ROLE_ANALISTA_FINANCIERO
 
 # Security & Authentication Policies
 MAX_FAILED_LOGIN_ATTEMPTS = 5

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, UserPlus } from 'lucide-react';
 import { UserItem } from './AdminUsersTab';
 import { authService } from '../../services/auth_service';
+import { CORPORATE_ROLES } from '../../constants';
 
 interface UserAddModalProps {
   isOpen: boolean;
@@ -17,7 +18,7 @@ export const UserAddModal: React.FC<UserAddModalProps> = ({
   const [newUsername, setNewUsername] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState('Economista');
+  const [newRole, setNewRole] = useState('Analista Financiero & Comercial');
   const [newIsAdmin, setNewIsAdmin] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -143,12 +144,13 @@ export const UserAddModal: React.FC<UserAddModalProps> = ({
               aria-label="Perfil Rol RBAC"
               value={newRole}
               onChange={(e) => setNewRole(e.target.value)}
-              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500 text-xs"
             >
-              <option value="Economista">Economista</option>
-              <option value="TI">TI</option>
-              <option value="Administrador">Administrador</option>
-              <option value="Usuario">Usuario (Pendiente asignación)</option>
+              {CORPORATE_ROLES.map((r) => (
+                <option key={r.name} value={r.name}>
+                  {r.label} — {r.description}
+                </option>
+              ))}
             </select>
           </div>
 

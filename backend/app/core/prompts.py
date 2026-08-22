@@ -36,14 +36,23 @@ class PromptManager:
         )
 
     @staticmethod
-    def get_text_to_sql_user_prompt(question: str, user_role: str, schema_context: str, allowed_tables: Set[str]) -> str:
+    def get_text_to_sql_user_prompt(
+        question: str,
+        user_role: str,
+        schema_context: str,
+        allowed_tables: Set[str],
+        few_shot_examples: str = ""
+    ) -> str:
         tables_str = ", ".join(sorted(allowed_tables)) if allowed_tables else "Ninguna"
-        return f"""Pregunta del usuario ({user_role}): "{question}"
+        prompt = f"""Pregunta del usuario ({user_role}): "{question}"
 
-{schema_context}
+{schema_context}"""
+        if few_shot_examples:
+            prompt += f"\n\n{few_shot_examples}"
 
-Genera la consulta SQL SELECT para responder la pregunta usando SOLO las tablas permitidas ({tables_str}).
+        prompt += f"""\n\nGenera la consulta SQL SELECT para responder la pregunta usando SOLO las tablas permitidas ({tables_str}).
 Responde ÚNICAMENTE con el bloque ```sql ... ```."""
+        return prompt
 
     # 2. Intent Classification Prompt
     @staticmethod

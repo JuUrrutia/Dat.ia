@@ -5,7 +5,7 @@ import { ExecutiveReportView } from './ExecutiveReportView';
 import { ExecutiveStudioView, ChartType } from './ExecutiveStudioView';
 import { ExecutiveAssistantView } from './ExecutiveAssistantView';
 import { THEME_COLORS, deriveProcessedRows, formatMetricNumber, buildDynamicChartOption } from './executiveDashboardUtils';
-import { BarChart3, FileText, Table as TableIcon, ShieldCheck, Sparkles, Lightbulb, AlertTriangle } from 'lucide-react';
+import { BarChart3, FileText, Table as TableIcon, ShieldCheck, Sparkles, Lightbulb, AlertTriangle, ShieldAlert, Database } from 'lucide-react';
 
 interface ExecutiveDashboardViewProps {
   result: QueryResult;
@@ -27,22 +27,62 @@ const ExecutiveOfflineAlertView: React.FC<{
   result: QueryResult;
   onOpenTraceability?: () => void;
 }> = ({ result, onOpenTraceability }) => {
+  const vStatus = result.traceability?.validation_status || '';
+  const isSecurityRejection = vStatus.includes('RECHAZADO') || vStatus.includes('BLOQUEADO') || vStatus.includes('AUTH');
+  const isTrueOffline = result.summary_text?.includes('IA local no disponible') || vStatus.includes('DESCONECTADO');
+
+  const alertTitle = isSecurityRejection
+    ? 'Consulta Bloqueada por Gobernanza AST / RBAC'
+    : isTrueOffline
+    ? 'Motor LLM Local No Disponible'
+    : 'Sin Registros Encontrados';
+
+  const alertBadgeColor = isSecurityRejection
+    ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+    : isTrueOffline
+    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+    : 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+
+  const borderTheme = isSecurityRejection
+    ? 'border-rose-500/30'
+    : isTrueOffline
+    ? 'border-amber-500/30'
+    : 'border-blue-500/30';
+
+  const iconBg = isSecurityRejection
+    ? 'bg-rose-500/10 border-rose-500/30 text-rose-400 shadow-rose-500/10'
+    : isTrueOffline
+    ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 shadow-amber-500/10'
+    : 'bg-blue-500/10 border-blue-500/30 text-blue-400 shadow-blue-500/10';
+
   return (
-    <div className="w-full bg-gradient-to-br from-zinc-900/95 via-zinc-900/70 to-zinc-950/95 border border-amber-500/30 rounded-3xl p-7 shadow-2xl space-y-6 animate-fadeIn">
+    <div className={`w-full bg-gradient-to-br from-zinc-900/95 via-zinc-900/70 to-zinc-950/95 border ${borderTheme} rounded-3xl p-7 shadow-2xl space-y-6 animate-fadeIn`}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-5">
         <div className="flex items-start sm:items-center space-x-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-lg shadow-amber-500/10 shrink-0">
-            <AlertTriangle className="w-6 h-6 text-amber-400" />
+          <div className={`w-12 h-12 rounded-2xl border flex items-center justify-center shadow-lg shrink-0 ${iconBg}`}>
+            {isSecurityRejection ? (
+              <ShieldAlert className="w-6 h-6 text-rose-400" />
+            ) : isTrueOffline ? (
+              <AlertTriangle className="w-6 h-6 text-amber-400" />
+            ) : (
+              <Database className="w-6 h-6 text-blue-400" />
+            )}
           </div>
           <div>
             <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-              <h3 className="text-base font-bold text-white tracking-tight">IA Local No Disponible</h3>
-              <span className="text-[10px] uppercase font-extrabold tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                {result.traceability?.validation_status || 'RECHAZADO'}
+              <h3 className="text-base font-bold text-white tracking-tight">{alertTitle}</h3>
+              <span className={`text-[10px] uppercase font-extrabold tracking-wider px-2.5 py-0.5 rounded-full border ${alertBadgeColor}`}>
+                {vStatus || (isTrueOffline ? 'DESCONECTADO' : 'SIN_DATOS')}
               </span>
             </div>
             <p className="text-xs text-zinc-400 mt-1">
-              {result.traceability?.explanation || 'Se requiere un servidor de Inferencia IA activo para interpretar lenguaje natural'}
+              {result.traceability?.explanation || (
+                isSecurityRejection
+                  ? 'El sistema de validación AST determinó que esta consulta infringe las directivas de seguridad o permisos de tu rol.'
+                  : isTrueOffline
+                  ? 'Se requiere un servidor de Inferencia IA activo para interpretar lenguaje natural.'
+                  : 'La consulta SQL fue ejecutada sobre la base de datos pero no arrojó registros coincidentes.'
+              )}
             </p>
           </div>
         </div>
@@ -50,7 +90,11 @@ const ExecutiveOfflineAlertView: React.FC<{
         {onOpenTraceability && (
           <button
             onClick={onOpenTraceability}
-            className="flex items-center space-x-1.5 text-xs text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-3.5 py-2 rounded-xl transition-colors shadow-sm font-semibold shrink-0"
+            className={`flex items-center space-x-1.5 text-xs px-3.5 py-2 rounded-xl transition-colors shadow-sm font-semibold shrink-0 border ${
+              isSecurityRejection
+                ? 'text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30'
+                : 'text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30'
+            }`}
           >
             <ShieldCheck className="w-4 h-4" />
             <span>Auditar SQL & AST</span>
@@ -59,10 +103,19 @@ const ExecutiveOfflineAlertView: React.FC<{
       </div>
 
       <div className="bg-zinc-950/80 border border-white/10 rounded-2xl p-5 text-sm text-zinc-200 leading-relaxed font-medium space-y-3 shadow-inner">
-        <p className="text-amber-300 font-semibold">{result.summary_text}</p>
-        <p className="text-xs text-zinc-400">
-          Para ejecutar consultas sobre la base de datos corporativa y generar visualizaciones analíticas en vivo, asegúrate de tener activo tu motor LLM local (Ollama en <code className="text-amber-400 font-mono">http://localhost:11434</code> o llama.cpp en <code className="text-amber-400 font-mono">http://127.0.0.1:8080</code>).
+        <p className={isSecurityRejection ? 'text-rose-300 font-semibold' : isTrueOffline ? 'text-amber-300 font-semibold' : 'text-blue-300 font-semibold'}>
+          {result.summary_text}
         </p>
+        {isTrueOffline && (
+          <p className="text-xs text-zinc-400">
+            Para ejecutar consultas sobre la base de datos corporativa y generar visualizaciones analíticas en vivo, asegúrate de tener activo tu motor LLM local (Ollama en <code className="text-amber-400 font-mono">http://localhost:11434</code> o llama.cpp en <code className="text-amber-400 font-mono">http://127.0.0.1:8080</code>).
+          </p>
+        )}
+        {isSecurityRejection && (
+          <p className="text-xs text-zinc-400">
+            El motor de Gobernanza Datia aplica el principio de mínimo privilegio. Para consultar tablas restringidas, contacta a un Administrador del sistema para otorgar los permisos necesarios en el Panel RBAC.
+          </p>
+        )}
       </div>
 
       <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-zinc-400 border-t border-white/5">

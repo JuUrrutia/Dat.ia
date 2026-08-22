@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save } from 'lucide-react';
-import { CatalogItem } from './AdminCatalogTab';
+
+export interface CatalogItem {
+  id?: number;
+  table: string;
+  column: string;
+  desc: string;
+  formula: string;
+  is_ai: boolean;
+}
 
 interface CatalogEditModalProps {
   isOpen: boolean;

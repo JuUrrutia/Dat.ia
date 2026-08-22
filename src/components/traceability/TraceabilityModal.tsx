@@ -20,61 +20,61 @@ export const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ traceabili
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-      <div className="glass-panel w-full max-w-3xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+      <div className="glass-panel w-full max-w-3xl rounded-2xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-dark-border flex items-center justify-between bg-dark-surface/80">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-dark-border flex items-center justify-between bg-dark-surface/80">
           <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-xl bg-brand-500/10 text-brand-400 border border-brand-500/20">
+            <div className="p-2 rounded-xl bg-brand-500/10 text-brand-400 border border-brand-500/20 shrink-0">
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-white">Panel de Trazabilidad & Auditoría</h3>
-              <p className="text-xs text-gray-400">Inspección de consulta, AST Guardrail y diccionario semántico</p>
+              <h3 className="text-sm sm:text-base font-semibold text-white">Panel de Trazabilidad & Auditoría</h3>
+              <p className="text-[11px] text-gray-400">Inspección de consulta, AST Guardrail y diccionario semántico</p>
             </div>
           </div>
           <button
             onClick={onClose}
             aria-label="Cerrar modal de trazabilidad"
-            className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-dark-card transition-colors"
+            className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-dark-card transition-colors"
           >
             ✕
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto space-y-6">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 sm:space-y-6">
           {/* Status Bar Badges */}
-          <div className="grid grid-cols-4 gap-3">
-            <div className="bg-dark-base/60 p-3 rounded-xl border border-dark-border flex items-center space-x-3">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-              <div>
-                <div className="text-[10px] text-gray-400 uppercase">Validación AST</div>
-                <div className="text-xs font-semibold text-emerald-400">{traceability.validation_status}</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+            <div className="bg-dark-base/60 p-2.5 sm:p-3 rounded-xl border border-dark-border flex items-center space-x-2.5 sm:space-x-3">
+              <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 shrink-0" />
+              <div className="truncate">
+                <div className="text-[9px] sm:text-[10px] text-gray-400 uppercase">Validación AST</div>
+                <div className="text-xs font-semibold text-emerald-400 truncate">{traceability.validation_status}</div>
               </div>
             </div>
 
-            <div className="bg-dark-base/60 p-3 rounded-xl border border-dark-border flex items-center space-x-3">
-              <Clock className="w-5 h-5 text-brand-400" />
-              <div>
-                <div className="text-[10px] text-gray-400 uppercase">Latencia BD</div>
-                <div className="text-xs font-semibold text-white">{traceability.execution_time_ms} ms</div>
+            <div className="bg-dark-base/60 p-2.5 sm:p-3 rounded-xl border border-dark-border flex items-center space-x-2.5 sm:space-x-3">
+              <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-brand-400 shrink-0" />
+              <div className="truncate">
+                <div className="text-[9px] sm:text-[10px] text-gray-400 uppercase">Latencia BD</div>
+                <div className="text-xs font-semibold text-white truncate">{traceability.execution_time_ms} ms</div>
               </div>
             </div>
 
-            <div className="bg-dark-base/60 p-3 rounded-xl border border-dark-border flex items-center space-x-3">
-              <Database className="w-5 h-5 text-indigo-400" />
-              <div>
-                <div className="text-[10px] text-gray-400 uppercase">Filas Devueltas</div>
-                <div className="text-xs font-semibold text-white">{traceability.rows_returned} registros</div>
+            <div className="bg-dark-base/60 p-2.5 sm:p-3 rounded-xl border border-dark-border flex items-center space-x-2.5 sm:space-x-3">
+              <Database className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400 shrink-0" />
+              <div className="truncate">
+                <div className="text-[9px] sm:text-[10px] text-gray-400 uppercase">Filas Devueltas</div>
+                <div className="text-xs font-semibold text-white truncate">{traceability.rows_returned} filas</div>
               </div>
             </div>
 
-            <div className="bg-dark-base/60 p-3 rounded-xl border border-dark-border flex items-center space-x-3">
-              <Layers className="w-5 h-5 text-purple-400" />
-              <div>
-                <div className="text-[10px] text-gray-400 uppercase">Tablas Usadas</div>
-                <div className="text-xs font-semibold text-white">{traceability.schema_tables_used.length} tablas</div>
+            <div className="bg-dark-base/60 p-2.5 sm:p-3 rounded-xl border border-dark-border flex items-center space-x-2.5 sm:space-x-3">
+              <Layers className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400 shrink-0" />
+              <div className="truncate">
+                <div className="text-[9px] sm:text-[10px] text-gray-400 uppercase">Tablas Usadas</div>
+                <div className="text-xs font-semibold text-white truncate">{traceability.schema_tables_used.length} tablas</div>
               </div>
             </div>
           </div>

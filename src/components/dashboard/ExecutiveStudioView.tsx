@@ -83,9 +83,9 @@ export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
 
       {/* Top Row: Hero Card + Radial Progress Gauges */}
       {showKpis && (
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
         {/* Widget 1: Hero Metric Card */}
-        <div className={`${result.gauges && result.gauges.length > 0 && showGauges ? 'lg:col-span-5' : 'lg:col-span-12'} bg-gradient-to-br from-zinc-900/90 via-zinc-900/50 to-zinc-950/90 border border-white/10 rounded-3xl p-6 shadow-2xl relative overflow-hidden flex flex-col justify-between`}>
+        <div className={`${result.gauges && result.gauges.length > 0 && showGauges ? 'lg:col-span-5' : 'lg:col-span-12'} bg-gradient-to-br from-zinc-900/90 via-zinc-900/50 to-zinc-950/90 border border-white/10 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl relative overflow-hidden flex flex-col justify-between`}>
           <div
             className="absolute -top-16 -right-16 w-48 h-48 rounded-full blur-3xl pointer-events-none opacity-20"
             style={{ backgroundColor: currentTheme.primary }}
@@ -100,8 +100,8 @@ export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
               </span>
             </div>
 
-            <div className="flex items-baseline space-x-2 mt-1">
-              <span className="text-4xl font-extrabold text-white tracking-tight">
+            <div className="flex flex-wrap items-baseline gap-2 mt-1">
+              <span className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
                 {formatNumber(totalVal || result.data_rows?.length || 0)}
               </span>
               <span className="text-xs text-zinc-400 font-medium">
@@ -112,23 +112,23 @@ export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
             {maxValRow && (
               <div className="mt-3 flex items-center space-x-2 text-xs text-zinc-400 bg-zinc-950/50 border border-white/5 rounded-xl p-2.5">
                 <ArrowUpRight className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>
-                  Líder destacado: <strong className="text-zinc-200">{String(maxValRow[catCol] || '')}</strong> ({formatNumber(Number(maxValRow[numCol]) || 0)})
+                <span className="truncate">
+                  Líder: <strong className="text-zinc-200">{String(maxValRow[catCol] || '')}</strong> ({formatNumber(Number(maxValRow[numCol]) || 0)})
                 </span>
               </div>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 pt-5 mt-5 border-t border-white/5">
+          <div className="grid grid-cols-2 gap-3 pt-4 sm:pt-5 mt-4 sm:mt-5 border-t border-white/5">
             <div>
               <div className="text-[11px] text-zinc-400 font-medium">Registros Analizados</div>
-              <div className="text-lg font-bold text-white mt-0.5">
+              <div className="text-base sm:text-lg font-bold text-white mt-0.5">
                 {result.data_rows?.length || 0} filas
               </div>
             </div>
             <div>
               <div className="text-[11px] text-zinc-400 font-medium">Latencia IA</div>
-              <div className="text-lg font-bold text-emerald-400 mt-0.5">
+              <div className="text-base sm:text-lg font-bold text-emerald-400 mt-0.5">
                 {(((result.traceability?.execution_time_ms ?? 0)) / 1000).toFixed(2)}s
               </div>
             </div>
