@@ -37,6 +37,22 @@ class Settings(BaseSettings):
 
     SQLITE_DB_NAME: str = "mental_health.sqlite"
 
+    # Path to Dedicated Metadata Database (Users, Roles, Connectors, Sessions, Audit, Catalog)
+    @property
+    def METADATA_DB_PATH(self) -> str:
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        root_dir = os.path.dirname(backend_dir)
+        return os.path.join(root_dir, "datia_metadata.db")
+
+    # Path to Uploaded and Structured Data Sources
+    @property
+    def DATA_SOURCES_DIR(self) -> str:
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        root_dir = os.path.dirname(backend_dir)
+        p = os.path.join(root_dir, "data_sources")
+        os.makedirs(p, exist_ok=True)
+        return p
+
     # Path to SQLite Demo Database (Centralized)
     @property
     def SQLITE_DB_PATH(self) -> str:

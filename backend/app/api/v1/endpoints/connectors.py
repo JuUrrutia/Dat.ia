@@ -14,6 +14,7 @@ from app.models.connection import CorporateConnection, DatabaseType
 from app.models.catalog import SemanticCatalog
 from app.models.permission import RoleTablePermission
 from app.models.role import Role
+from app.core.config import settings
 from app.core.security import encrypt_credential, decrypt_credential
 from app.schemas.connection_schema import (
     CorporateConnectionCreate,
@@ -25,15 +26,11 @@ from app.schemas.connection_schema import (
 
 router = APIRouter()
 
-DATA_SOURCES_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
-    "data_sources"
-)
-
 def _ensure_data_sources_dir() -> str:
-    """Creates the data_sources directory if it doesn't exist."""
-    os.makedirs(DATA_SOURCES_DIR, exist_ok=True)
-    return DATA_SOURCES_DIR
+    """Creates and returns the permanent data_sources directory."""
+    d = settings.DATA_SOURCES_DIR
+    os.makedirs(d, exist_ok=True)
+    return d
 
 class MetadataDBTestRequest(BaseModel):
     server: str
@@ -96,7 +93,7 @@ async def upload_database_file(
     converts it to a structured SQLite database in data_sources/, registers it with full RBAC permissions
     and initializes its semantic catalog (Admin only).
     """
-    _ensure_data_sources_dir()
+    ds_dir = _ensure_data_sources_dir()
     original_filename = file.filename or "uploaded_database.sqlite"
     clean_filename = "".join(c for c in original_filename if c.isalnum() or c in (".", "_", "-"))
     ext = os.path.splitext(clean_filename)[1].lower()
@@ -109,7 +106,7 @@ async def upload_database_file(
         )
 
     unique_raw_name = f"raw_{int(time.time())}_{clean_filename}"
-    raw_target_path = os.path.join(DATA_SOURCES_DIR, unique_raw_name)
+    raw_target_path = os.path.join(ds_dir, unique_raw_name)
 
     # Save uploaded file
     try:
@@ -123,11 +120,11 @@ async def upload_database_file(
 
     # Target SQLite database path
     sqlite_db_name = f"{int(time.time())}_{os.path.splitext(clean_filename)[0]}.sqlite"
-    target_path = os.path.join(DATA_SOURCES_DIR, sqlite_db_name)
+    target_path = os.path.join(ds_dir, sqlite_db_name)
 
     if ext in [".sqlite", ".db", ".sqlite3"]:
         # Direct SQLite database
-        target_path = os.path.join(DATA_SOURCES_DIR, f"{int(time.time())}_{clean_filename}")
+        target_path = os.path.join(ds_dir, f"{int(time.time())}_{clean_filename}")
         shutil.move(raw_target_path, target_path)
 
     # Convert or inspect tables

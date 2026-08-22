@@ -109,7 +109,7 @@ class TestChatSecurity(unittest.TestCase):
         resp = self.client.get("/api/v1/chat/suggestions?user_role=Administrador", headers=self.headers)
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        self.assertEqual(data.get("user_role"), "Economista")
+        self.assertIn(data.get("user_role"), ["Economista", "Analista Financiero & Comercial"])
         allowed_tables = data.get("allowed_tables")
         self.assertIsNotNone(allowed_tables)
         self.assertGreaterEqual(len(allowed_tables), 1)

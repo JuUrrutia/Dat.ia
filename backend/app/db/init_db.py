@@ -221,3 +221,61 @@ def init_db(db: Session):
             ))
 
     db.commit()
+
+    # Auto-register and preserve any existing uploaded databases in data_sources/
+    try:
+        import sqlite3
+        ds_dir = settings.DATA_SOURCES_DIR
+        if os.path.exists(ds_dir):
+            for fname in os.listdir(ds_dir):
+                if fname.startswith("raw_") or not (fname.endswith(".sqlite") or fname.endswith(".db")):
+                    continue
+                file_full_path = os.path.abspath(os.path.join(ds_dir, fname))
+                existing_uploaded_conn = db.query(CorporateConnection).filter(
+                    CorporateConnection.host == file_full_path
+                ).first()
+                if not existing_uploaded_conn:
+                    sq_conn = sqlite3.connect(file_full_path)
+                    cur = sq_conn.cursor()
+                    tables = [
+                        r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()
+                        if not r[0].startswith("sqlite_")
+                    ]
+                    sq_conn.close()
+                    if tables:
+                        # Clean display name removing timestamp prefix
+                        import re
+                        clean_disp_name = re.sub(r'^\d+_', '', fname)
+                        clean_disp_name = clean_disp_name.replace(".sqlite", "").replace(".db", "").replace("_", " ").upper()
+                        new_c = CorporateConnection(
+                            name=clean_disp_name,
+                            db_type=DatabaseType.SQLITE,
+                            host=file_full_path,
+                            port=0,
+                            database_name=fname,
+                            username="admin",
+                            encrypted_password="",
+                            is_active=True,
+                            is_uploaded=True
+                        )
+                        db.add(new_c)
+                        db.commit()
+                        db.refresh(new_c)
+
+                        for role in db.query(Role).all():
+                            for t in tables:
+                                if not db.query(RoleTablePermission).filter(
+                                    RoleTablePermission.role_id == role.id,
+                                    RoleTablePermission.connection_id == new_c.id,
+                                    RoleTablePermission.table_name == t
+                                ).first():
+                                    db.add(RoleTablePermission(
+                                        role_id=role.id,
+                                        connection_id=new_c.id,
+                                        schema_name="main",
+                                        table_name=t,
+                                        is_allowed=True
+                                    ))
+                        db.commit()
+    except Exception:
+        pass
