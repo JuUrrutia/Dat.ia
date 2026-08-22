@@ -97,7 +97,7 @@ export const AdminPage: React.FC = () => {
   const activeCount = connectors.filter((c) => c.is_active).length;
 
   return (
-    <div className="flex-1 bg-dark-base overflow-y-auto p-4 sm:p-6 space-y-6">
+    <div className="w-full h-full flex-1 bg-dark-base overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar pb-28">
       {/* Header Banner */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 glass-panel p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-white/10">
         <div className="space-y-1">
