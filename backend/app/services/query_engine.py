@@ -388,6 +388,14 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
 
         target_db_path = DynamicSchemaPruningService.resolve_db_path(db, connection_id)
 
+        # Build physical table columns map for CLS Star Expansion
+        table_columns_map: Dict[str, List[str]] = {}
+        for tbl in allowed_tables:
+            phys_cols_info = DynamicSchemaPruningService.get_physical_table_columns(
+                tbl, db_path=target_db_path, include_samples=False
+            )
+            table_columns_map[tbl.lower()] = [c["name"] for c in phys_cols_info if "name" in c]
+
         # =========================================================================
         # BRANCH 0: GREETING / GENERAL CONVERSATION (Conversational Welcome)
         # =========================================================================
@@ -440,7 +448,8 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                     grounding_sql,
                     dialect="sqlite",
                     allowed_tables=allowed_tables,
-                    blocked_columns=blocked_columns
+                    blocked_columns=blocked_columns,
+                    table_columns=table_columns_map
                 )
             except Exception:
                 secured_sql = grounding_sql
@@ -519,7 +528,8 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                     q_strip,
                     dialect="sqlite",
                     allowed_tables=allowed_tables,
-                    blocked_columns=blocked_columns
+                    blocked_columns=blocked_columns,
+                    table_columns=table_columns_map
                 )
                 candidate_sql = secured_sql
                 is_llm_active = True
@@ -582,7 +592,8 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 candidate_sql,
                 dialect="sqlite",
                 allowed_tables=allowed_tables,
-                blocked_columns=blocked_columns
+                blocked_columns=blocked_columns,
+                table_columns=table_columns_map
             )
         except ASTValidationError as e:
             return cls._build_rbac_denied_response(question, str(e))
@@ -641,7 +652,8 @@ Genera la consulta SQL corregida y funcional para SQLite:"""
                         healed_sql,
                         dialect="sqlite",
                         allowed_tables=allowed_tables,
-                        blocked_columns=blocked_columns
+                        blocked_columns=blocked_columns,
+                        table_columns=table_columns_map
                     )
                     cursor.execute(healed_secured_sql)
                     rows = [dict(r) for r in cursor.fetchall()]
@@ -654,11 +666,21 @@ Genera la consulta SQL corregida y funcional para SQLite:"""
 
             if rows is None:
                 first_table = sorted(list(allowed_tables))[0] if allowed_tables else "dual"
-                fb_sql = f"SELECT * FROM {first_table} LIMIT 20;"
+                raw_fb_sql = f"SELECT * FROM {first_table} LIMIT 20"
                 try:
-                    cursor.execute(fb_sql)
+                    _, secured_fb_sql, fb_meta = ASTValidator.validate_and_secure_sql(
+                        raw_fb_sql,
+                        dialect="sqlite",
+                        allowed_tables=allowed_tables,
+                        blocked_columns=blocked_columns,
+                        table_columns=table_columns_map,
+                        max_limit=20
+                    )
+                    cursor.execute(secured_fb_sql)
                     rows = [dict(r) for r in cursor.fetchall()]
-                    secured_sql = fb_sql
+                    secured_sql = secured_fb_sql
+                    meta = fb_meta
+                    validation_label = "APROBADO (Fallback de Emergencia)"
                 except Exception:
                     conn.close()
                     return cls._build_rbac_denied_response(question, f"Error al ejecutar consulta en la BD: {str(err)}")

@@ -263,6 +263,12 @@ def init_db(db: Session):
                         db.refresh(new_c)
 
                         for role in db.query(Role).all():
+                            is_admin = (
+                                role.name in [ROLE_ADMINISTRADOR, "Administrador", "Super Administrador", "Admin"]
+                                or "admin" in role.name.lower()
+                            )
+                            if not is_admin:
+                                continue
                             for t in tables:
                                 if not db.query(RoleTablePermission).filter(
                                     RoleTablePermission.role_id == role.id,

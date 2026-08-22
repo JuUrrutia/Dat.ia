@@ -15,6 +15,7 @@ from app.models.catalog import SemanticCatalog
 from app.models.permission import RoleTablePermission
 from app.models.role import Role
 from app.core.config import settings
+from app.core.constants import ADMIN_ROLES
 from app.core.security import encrypt_credential, decrypt_credential
 from app.schemas.connection_schema import (
     CorporateConnectionCreate,
@@ -182,9 +183,16 @@ async def upload_database_file(
     db.commit()
     db.refresh(new_conn)
 
-    # Auto-grant read permissions for all detected tables to active roles (Economista, TI)
+    # Closed-by-default security: Auto-grant read permissions ONLY to Administrator roles
     all_roles = db.query(Role).all()
     for role in all_roles:
+        is_admin_role = (
+            role.name in ADMIN_ROLES
+            or "admin" in role.name.lower()
+            or role.name == "Administrador"
+        )
+        if not is_admin_role:
+            continue
         for tbl in detected_tables:
             existing_perm = db.query(RoleTablePermission).filter(
                 RoleTablePermission.role_id == role.id,
@@ -233,7 +241,21 @@ async def upload_database_file(
 
     db.commit()
     db.refresh(new_conn)
-    return new_conn
+
+    return CorporateConnectionOut(
+        id=new_conn.id,
+        name=new_conn.name,
+        db_type=new_conn.db_type,
+        host=new_conn.host,
+        port=new_conn.port,
+        database_name=new_conn.database_name,
+        username=new_conn.username,
+        is_active=new_conn.is_active,
+        is_uploaded=new_conn.is_uploaded,
+        requires_permission_review=True,
+        detected_tables=detected_tables,
+        created_at=new_conn.created_at
+    )
 
 @router.put("/{conn_id}", response_model=CorporateConnectionOut)
 def update_connector(

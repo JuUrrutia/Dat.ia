@@ -60,12 +60,16 @@ export const DatabaseUploadModal: React.FC<DatabaseUploadModalProps> = ({
     setSuccessMessage(null);
 
     try {
-      await connectorService.uploadDatabase(selectedFile, customName);
-      setSuccessMessage('¡Fuente de datos importada, estructurada e indexada exitosamente!');
+      const res = await connectorService.uploadDatabase(selectedFile, customName);
+      setSuccessMessage(
+        res.requires_permission_review
+          ? '¡Base de datos importada! Ningún rol no-administrador tiene acceso todavía — configura los permisos en la pestaña Catálogo para habilitarla a los analistas.'
+          : '¡Fuente de datos importada, estructurada e indexada exitosamente!'
+      );
       setTimeout(() => {
         onUploadSuccess();
         handleClose();
-      }, 1100);
+      }, 2200);
     } catch (err: any) {
       const msg = err.response?.data?.detail || err.message || 'Error al importar la fuente de datos al servidor.';
       setErrorMessage(msg);

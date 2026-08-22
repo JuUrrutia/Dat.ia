@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
 from app.models.connection import DatabaseType
 
@@ -34,6 +34,8 @@ class CorporateConnectionOut(BaseModel):
     username: str
     is_active: bool
     is_uploaded: bool = False
+    requires_permission_review: bool = False
+    detected_tables: Optional[List[str]] = None
     created_at: datetime
 
     class Config:

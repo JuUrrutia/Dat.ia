@@ -246,3 +246,69 @@ class TestCatalogAndConnectors(unittest.TestCase):
                 except Exception:
                     pass
 
+    def test_upload_database_closed_by_default_permissions(self):
+        """
+        Uploading a new database must follow the principle of least privilege:
+        - Only Admin role gets automatic read permissions.
+        - Non-admin roles (Economista, TI, etc.) have NO automatic RoleTablePermission records.
+        - Response includes requires_permission_review: True and detected_tables list.
+        """
+        from app.models.permission import RoleTablePermission
+        from app.core.constants import ADMIN_ROLES
+
+        csv_content = b"id_sensor,ubicacion,temperatura\n1,Servidor-01,23.5\n2,Servidor-02,28.1\n"
+        file_obj = io.BytesIO(csv_content)
+
+        conn_id = None
+        try:
+            res_upload = self.client.post(
+                "/api/v1/connectors/upload",
+                files={"file": ("sensores_iot.csv", file_obj, "text/csv")},
+                data={"name": "Sensores IoT Test"},
+                headers=self.headers
+            )
+            self.assertEqual(res_upload.status_code, 201)
+            data = res_upload.json()
+            conn_id = data["id"]
+
+            self.assertTrue(data.get("requires_permission_review"))
+            self.assertIn("sensores_iot", data.get("detected_tables", []))
+
+            # Query all permissions for this connection
+            perms = self.db.query(RoleTablePermission).filter(
+                RoleTablePermission.connection_id == conn_id
+            ).all()
+
+            # Verify permissions exist ONLY for admin roles
+            for p in perms:
+                role = self.db.query(Role).filter(Role.id == p.role_id).first()
+                is_admin_role = (
+                    role.name in ADMIN_ROLES
+                    or "admin" in role.name.lower()
+                    or role.name == "Administrador"
+                )
+                self.assertTrue(
+                    is_admin_role,
+                    f"Role '{role.name}' should NOT have automatic permissions on newly uploaded database."
+                )
+
+            # Check that non-admin roles have 0 permissions for this connection
+            non_admin_roles = self.db.query(Role).filter(
+                ~Role.name.in_(ADMIN_ROLES)
+            ).all()
+            for nar in non_admin_roles:
+                if "admin" in nar.name.lower():
+                    continue
+                nar_perms = self.db.query(RoleTablePermission).filter(
+                    RoleTablePermission.connection_id == conn_id,
+                    RoleTablePermission.role_id == nar.id
+                ).all()
+                self.assertEqual(
+                    len(nar_perms), 0,
+                    f"Non-admin role '{nar.name}' unexpectedly has {len(nar_perms)} permissions."
+                )
+        finally:
+            if conn_id:
+                self.client.delete(f"/api/v1/connectors/{conn_id}", headers=self.headers)
+
+

@@ -10,6 +10,8 @@ export interface CorporateConnection {
   username: string;
   is_active: boolean;
   is_uploaded?: boolean;
+  requires_permission_review?: boolean;
+  detected_tables?: string[];
   created_at: string;
 }
 
