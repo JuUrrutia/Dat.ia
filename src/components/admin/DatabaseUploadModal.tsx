@@ -149,42 +149,20 @@ export const DatabaseUploadModal: React.FC<DatabaseUploadModalProps> = ({
             </div>
           )}
 
-          {/* Drag & Drop Area */}
-          <div
-            role="button"
-            tabIndex={0}
-            aria-label="Seleccionar o arrastrar archivo de base de datos"
-            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                fileInputRef.current?.click();
-              }
-            }}
-            className={`border-2 border-dashed rounded-2xl p-4 sm:p-5 text-center cursor-pointer transition-all ${
-              isDragging
-                ? 'border-purple-500 bg-purple-500/10 scale-[1.01]'
-                : selectedFile
-                ? 'border-emerald-500/40 bg-emerald-500/5'
-                : 'border-dark-border hover:border-purple-500/40 hover:bg-dark-card/40'
-            }`}
-          >
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={(e) => {
-                if (e.target.files && e.target.files.length > 0) {
-                  handleFileChange(e.target.files[0]);
-                }
-              }}
-              accept=".sqlite,.db,.sqlite3,.sql,.csv,.xlsx,.xls,.tsv,.txt"
-              className="hidden"
-            />
-
-            {selectedFile && fileBadge ? (
+          {/* Drag & Drop Area / Selected File Preview */}
+          {selectedFile && fileBadge ? (
+            <div className="border-2 border-emerald-500/40 bg-emerald-500/5 rounded-2xl p-4 sm:p-5 text-center transition-colors">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    handleFileChange(e.target.files[0]);
+                  }
+                }}
+                accept=".sqlite,.db,.sqlite3,.sql,.csv,.xlsx,.xls,.tsv,.txt"
+                className="hidden"
+              />
               <div className="space-y-2 flex flex-col items-center">
                 <div className={`p-2.5 rounded-xl border flex items-center justify-center ${fileBadge.color}`}>
                   {fileBadge.icon}
@@ -195,15 +173,57 @@ export const DatabaseUploadModal: React.FC<DatabaseUploadModalProps> = ({
                     {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Tipo: {fileBadge.label}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); setSelectedFile(null); }}
-                  className="text-[11px] text-rose-400 hover:text-rose-300 underline pt-0.5"
-                >
-                  Seleccionar otro archivo
-                </button>
+                <div className="flex items-center space-x-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-[11px] text-purple-400 hover:text-purple-300 underline font-medium"
+                  >
+                    Cambiar archivo
+                  </button>
+                  <span className="text-gray-600 text-xs">•</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFile(null)}
+                    className="text-[11px] text-rose-400 hover:text-rose-300 underline font-medium"
+                  >
+                    Eliminar archivo
+                  </button>
+                </div>
               </div>
-            ) : (
+            </div>
+          ) : (
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Seleccionar o arrastrar archivo de base de datos"
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              className={`border-2 border-dashed rounded-2xl p-4 sm:p-5 text-center cursor-pointer transition-colors ${
+                isDragging
+                  ? 'border-purple-500 bg-purple-500/10'
+                  : 'border-dark-border hover:border-purple-500/40 hover:bg-dark-card/40'
+              }`}
+            >
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    handleFileChange(e.target.files[0]);
+                  }
+                }}
+                accept=".sqlite,.db,.sqlite3,.sql,.csv,.xlsx,.xls,.tsv,.txt"
+                className="hidden"
+              />
               <div className="space-y-1.5 flex flex-col items-center py-2">
                 <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center border border-purple-500/20">
                   <UploadCloud className="w-5 h-5" />
@@ -217,8 +237,8 @@ export const DatabaseUploadModal: React.FC<DatabaseUploadModalProps> = ({
                   </p>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Database Name Field */}
           <div className="space-y-1.5">

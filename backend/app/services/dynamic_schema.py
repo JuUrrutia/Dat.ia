@@ -71,25 +71,33 @@ class DynamicSchemaPruningService:
             if not clean_table:
                 return []
             rows = cursor.execute(
-                f'PRAGMA table_info("{clean_table}")'
+                "SELECT cid, name, type, [notnull], dflt_value, pk FROM pragma_table_info(?)",
+                (clean_table,)
             ).fetchall()
+
+            col_samples_map: Dict[str, List[str]] = {}
+            if include_samples:
+                try:
+                    conn.row_factory = sqlite3.Row
+                    s_cursor = conn.cursor()
+                    s_cursor.execute("SELECT * FROM " + clean_table + " LIMIT 20")
+                    for row in s_cursor.fetchall():
+                        for k in row.keys():
+                            val = row[k]
+                            if val is not None and str(val).strip():
+                                s_list = col_samples_map.setdefault(k, [])
+                                val_str = str(val)[:35]
+                                if val_str not in s_list and len(s_list) < 3:
+                                    s_list.append(val_str)
+                except Exception:
+                    pass
 
             result = []
             for r in rows:
                 col_name = r[1]
                 col_type = r[2] or "TEXT"
                 is_pk = bool(r[5])
-                samples = []
-
-                if include_samples:
-                    try:
-                        clean_col = "".join(c for c in col_name if c.isalnum() or c == "_")
-                        sample_rows = cursor.execute(
-                            f'SELECT DISTINCT "{clean_col}" FROM "{clean_table}" WHERE "{clean_col}" IS NOT NULL AND "{clean_col}" != "" LIMIT 3'
-                        ).fetchall()
-                        samples = [str(s[0])[:35] for s in sample_rows if s and s[0] is not None]
-                    except Exception:
-                        samples = []
+                samples = col_samples_map.get(col_name, [])
 
                 result.append({
                     "name": col_name,
