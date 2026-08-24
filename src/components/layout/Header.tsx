@@ -54,7 +54,7 @@ export const Header: React.FC = () => {
                 IA Local
               </span>
             </h1>
-            <p className="text-[10px] sm:text-xs text-gray-400 hidden xs:block truncate">
+            <p className="block text-[10px] sm:text-xs text-gray-400 truncate">
               Transformando datos en decisiones
             </p>
           </div>
