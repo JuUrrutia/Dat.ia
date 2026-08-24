@@ -165,7 +165,7 @@ const ExecutiveAssistantHeader: React.FC<ExecutiveAssistantHeaderProps> = ({
             <div className="flex items-center space-x-2.5 flex-wrap gap-y-1">
               <h2 className="text-base font-bold text-white tracking-tight">
                 {result.response_type === 'greeting'
-                  ? 'Asistente DATIA'
+                  ? 'Asistente Dat.ia'
                   : result.response_type === 'explanation'
                   ? 'Explicación Conceptual'
                   : result.response_type === 'data_analysis'

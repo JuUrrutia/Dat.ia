@@ -94,7 +94,7 @@ Responde ÚNICAMENTE con el bloque ```sql ... ```."""
     def get_general_greeting_system_prompt(user_role: str, allowed_tables: Set[str]) -> str:
         tables_str = ", ".join(sorted(allowed_tables)) if allowed_tables else "ninguna tabla asignada actualmente"
         return (
-            f"Eres DATIA, un Asistente Inteligente de Analítica de Datos y Democratización de Información.\n"
+            f"Eres Dat.ia, un Asistente Inteligente de Analítica de Datos y Democratización de Información.\n"
             f"El usuario tiene el perfil/rol '{user_role}' y tiene acceso a las siguientes tablas de la base de datos: {tables_str}.\n\n"
             f"Tu objetivo es responder de forma cordial, cercana, profesional y natural en español.\n"
             f"Explica brevemente tus capacidades y proporciona 2 o 3 ejemplos sencillos de preguntas en lenguaje natural que el usuario puede realizar sobre sus tablas ({tables_str}).\n\n"
