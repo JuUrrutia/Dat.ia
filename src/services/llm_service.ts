@@ -45,60 +45,74 @@ export const llmClientService = {
       // Backend not available, try direct
     }
 
-    // Try 2: Direct fetch to LLM server
-    const url = baseUrl.replace(/\/+$/, '');
+    // Try 2: Direct fetch to LLM server with fallback probing
+    const primaryUrl = baseUrl.replace(/\/+$/, '');
     const startTime = Date.now();
 
-    // 2a. Ollama /api/tags
-    if (provider === 'ollama' || url.includes('11434')) {
-      try {
-        const res = await fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(5000) });
-        if (res.ok) {
-          const data = await res.json();
-          const models = (data.models || []).map((m: any) => m.name || m.model || '');
-          return {
-            success: true,
-            message: `Conectado exitosamente con Ollama en ${url}.`,
-            available_models: models.length > 0 ? models : [modelName],
-            latency_ms: Date.now() - startTime
-          };
-        }
-      } catch { /* continue */ }
-    }
+    const candidateUrls = [
+      primaryUrl,
+      'http://127.0.0.1:8080',
+      'http://localhost:8080',
+      'http://localhost:11434',
+      'http://localhost:1234',
+    ].filter((u, idx, arr) => arr.indexOf(u) === idx);
 
-    // 2b. OpenAI-compatible /v1/models (llama.cpp, LM Studio, vLLM)
-    for (const endpoint of [`${url}/v1/models`, `${url}/props`, `${url}/health`]) {
-      try {
-        const res = await fetch(endpoint, { signal: AbortSignal.timeout(5000) });
-        if (res.ok) {
-          const data = await res.json();
-          let models: string[] = [];
+    for (const url of candidateUrls) {
+      const candStart = Date.now();
 
-          if (data.data && Array.isArray(data.data)) {
-            models = data.data.flatMap((m: any) => (m.id ? [m.id] : []));
-          } else if (data.default_generation_settings || data.model) {
-            const mName = data.default_generation_settings?.model || data.model || '';
-            if (mName) models = [mName];
+      // 2a. Ollama /api/tags
+      if (provider === 'ollama' || url.includes('11434')) {
+        try {
+          const res = await fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(3000) });
+          if (res.ok) {
+            const data = await res.json();
+            const models = (data.models || []).map((m: any) => m.name || m.model || '');
+            return {
+              success: true,
+              message: `Conectado exitosamente con Ollama en ${url}.`,
+              available_models: models.length > 0 ? models : [modelName],
+              latency_ms: Date.now() - candStart,
+            };
           }
+        } catch { /* continue */ }
+      }
 
-          if (models.length === 0) models = [modelName || 'local-model'];
+      // 2b. OpenAI-compatible / llama.cpp (/v1/models, /props, /health, /slots)
+      for (const endpoint of [`${url}/v1/models`, `${url}/props`, `${url}/health`, `${url}/slots`]) {
+        try {
+          const res = await fetch(endpoint, { signal: AbortSignal.timeout(3000) });
+          if (res.ok) {
+            const data = await res.json().catch(() => ({}));
+            let models: string[] = [];
 
-          return {
-            success: true,
-            message: `Conectado exitosamente con servidor LLM local en ${url}.`,
-            available_models: models,
-            latency_ms: Date.now() - startTime
-          };
-        }
-      } catch { /* continue */ }
+            if (data.data && Array.isArray(data.data)) {
+              models = data.data.flatMap((m: any) => (m.id ? [m.id] : []));
+            } else if (data.default_generation_settings || data.model) {
+              const mName = data.default_generation_settings?.model || data.model || '';
+              if (mName) models = [mName];
+            }
+
+            if (models.length === 0) models = [modelName || 'local-model'];
+
+            const provLabel = url.includes('8080') || endpoint.includes('props') ? 'llama.cpp' : 'servidor LLM local';
+
+            return {
+              success: true,
+              message: `Conectado exitosamente con ${provLabel} en ${url}.`,
+              available_models: models,
+              latency_ms: Date.now() - candStart,
+            };
+          }
+        } catch { /* continue */ }
+      }
     }
 
     // All attempts failed
     return {
       success: false,
-      message: `No se pudo contactar al servidor LLM en ${url}. Verifica que llama.exe serve u Ollama esté activo.`,
+      message: `No se pudo contactar al servidor LLM en ${primaryUrl} ni en puertos 8080/11434/1234. Verifica que llama.exe serve u Ollama esté activo.`,
       available_models: [modelName],
-      latency_ms: 0
+      latency_ms: 0,
     };
   },
 

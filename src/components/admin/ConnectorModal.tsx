@@ -196,7 +196,7 @@ export const ConnectorModal: React.FC<ConnectorModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4">
+        <form id="connector-modal-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto min-h-0 p-5 sm:p-6 space-y-4">
           {state.errorMessage && (
             <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center space-x-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -231,39 +231,40 @@ export const ConnectorModal: React.FC<ConnectorModalProps> = ({
               <span>{state.testResult.message} ({state.testResult.latency_ms} ms)</span>
             </div>
           )}
+        </form>
 
-          {/* Actions */}
-          <div className="pt-4 flex items-center justify-between border-t border-dark-border">
+        {/* Fixed Sticky Footer Actions */}
+        <div className="shrink-0 px-5 sm:px-6 py-3.5 border-t border-dark-border bg-dark-surface/95 backdrop-blur flex items-center justify-between z-10">
+          <button
+            type="button"
+            onClick={handleTestConnection}
+            disabled={state.testingConn}
+            className="flex items-center space-x-1.5 text-xs bg-dark-base hover:bg-dark-border text-brand-400 border border-brand-500/30 px-3.5 py-2 rounded-xl transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${state.testingConn ? 'animate-spin' : ''}`} />
+            <span>{state.testingConn ? 'Probando Red...' : 'Probar Conexión BD'}</span>
+          </button>
+
+          <div className="flex items-center space-x-2">
             <button
               type="button"
-              onClick={handleTestConnection}
-              disabled={state.testingConn}
-              className="flex items-center space-x-1.5 text-xs bg-dark-base hover:bg-dark-border text-brand-400 border border-brand-500/30 px-4 py-2 rounded-xl transition-colors"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl bg-dark-card hover:bg-dark-border text-gray-300 text-xs font-medium transition-colors"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${state.testingConn ? 'animate-spin' : ''}`} />
-              <span>{state.testingConn ? 'Probando Red...' : 'Probar Conexión BD'}</span>
+              Cancelar
             </button>
 
-            <div className="flex items-center space-x-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 rounded-xl bg-dark-card hover:bg-dark-border text-gray-300 text-xs font-medium transition-colors"
-              >
-                Cancelar
-              </button>
-
-              <button
-                type="submit"
-                disabled={state.isSubmitting}
-                className="flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold px-5 py-2 rounded-xl shadow-lg shadow-purple-600/30 transition-colors"
-              >
-                <Save className="w-4 h-4" />
-                <span>{editingConnector ? 'Guardar Cambios' : 'Registrar Conexión BD'}</span>
-              </button>
-            </div>
+            <button
+              form="connector-modal-form"
+              type="submit"
+              disabled={state.isSubmitting}
+              className="flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold px-5 py-2 rounded-xl shadow-lg shadow-purple-600/30 transition-colors"
+            >
+              <Save className="w-4 h-4" />
+              <span>{editingConnector ? 'Guardar Cambios' : 'Registrar Conexión BD'}</span>
+            </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

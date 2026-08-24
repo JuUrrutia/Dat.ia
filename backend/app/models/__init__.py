@@ -5,6 +5,7 @@ from app.models.connection import CorporateConnection
 from app.models.catalog import SemanticCatalog
 from app.models.audit_log import AuditLog
 from app.models.session import UserSession
+from app.models.learning import QueryLearningMemory
 
 __all__ = [
     "User",
@@ -16,5 +17,6 @@ __all__ = [
     "CorporateConnection",
     "SemanticCatalog",
     "AuditLog",
-    "UserSession"
+    "UserSession",
+    "QueryLearningMemory"
 ]

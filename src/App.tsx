@@ -23,7 +23,7 @@ const MainAppContent: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-[#0B0F19] text-gray-100 overflow-hidden font-sans">
       <Header />
-      <main className="flex-1 overflow-hidden relative">
+      <main className="flex-1 overflow-hidden relative flex flex-col min-h-0">
         {activePage === 'dashboard' && <ChatDashboardPage />}
         {activePage === 'settings' && <SettingsPage />}
         {activePage === 'admin' && <AdminPage />}

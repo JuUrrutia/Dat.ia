@@ -12,7 +12,7 @@ from app.models.role import Role
 from app.models.session import UserSession
 from app.core.constants import MAX_FAILED_LOGIN_ATTEMPTS, ACCOUNT_LOCKOUT_DURATION_MINUTES
 from app.schemas.user_schema import (
-    UserLogin, UserCreate, UserOut, Token, PasswordChangeRequest,
+    UserLogin, UserSelfRegister, UserCreateByAdmin, UserCreate, UserOut, Token, PasswordChangeRequest,
     PasswordResetResponse, SessionOut
 )
 
@@ -20,7 +20,7 @@ router = APIRouter()
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def register_user(
-    user_in: UserCreate,
+    user_in: UserSelfRegister,
     db: Session = Depends(get_db)
 ) -> Any:
     """

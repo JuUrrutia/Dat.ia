@@ -24,6 +24,18 @@ def init_db(db: Session):
                     conn.execute(text("ALTER TABLE users ADD COLUMN locked_until TIMESTAMP NULL"))
                 if "must_change_password" not in user_cols:
                     conn.execute(text("ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT 0 NOT NULL"))
+
+        if "corporate_connections" in inspector.get_table_names():
+            conn_cols = {c["name"] for c in inspector.get_columns("corporate_connections")}
+            with engine.begin() as conn:
+                if "is_uploaded" not in conn_cols:
+                    conn.execute(text("ALTER TABLE corporate_connections ADD COLUMN is_uploaded BOOLEAN DEFAULT 0 NOT NULL"))
+
+        if "audit_logs" in inspector.get_table_names():
+            audit_cols = {c["name"] for c in inspector.get_columns("audit_logs")}
+            with engine.begin() as conn:
+                if "result_snapshot" not in audit_cols:
+                    conn.execute(text("ALTER TABLE audit_logs ADD COLUMN result_snapshot TEXT NULL"))
     except Exception:
         pass
 
@@ -32,6 +44,8 @@ def init_db(db: Session):
         {"name": "Economía & Finanzas", "description": "Ingresos, costos, presupuestos, facturación y márgenes de negocio"},
         {"name": "Tecnología & TI", "description": "Infraestructura, servidores, consumo de recursos e incidentes técnicos"},
         {"name": "Operaciones & Comercial", "description": "Ventas, clientes, almacenes y catálogo de productos"},
+        {"name": "Talento & Personas", "description": "Desempeño, clima laboral, encuestas y bienestar organizacional"},
+        {"name": "Seguridad & Gobernanza", "description": "Cumplimiento normativo, auditoría, accesos y trazabilidad de datos"},
     ]
 
     for dom_data in default_domains:
@@ -40,12 +54,21 @@ def init_db(db: Session):
             db.add(Domain(name=dom_data["name"], description=dom_data["description"]))
     db.commit()
 
-    # Seed Default Roles (3 Core Roles + Default "Usuario")
+    # Seed Corporate Enterprise Roles (with backwards compatibility aliases)
     default_roles = [
-        {"name": "Usuario", "description": "Perfil inicial por defecto sin asignación de dominios hasta aprobación por Administrador"},
-        {"name": "Administrador", "description": "Acceso total a gobernanza RBAC, gestión de usuarios, conexiones BD y auditoría"},
-        {"name": "Economista", "description": "Acceso a información económica, financiera, facturación, costos y márgenes de negocio"},
-        {"name": "TI", "description": "Acceso a métricas de infraestructura, rendimiento de servidores e incidentes técnicos"},
+        {"name": "Administrador de Plataforma", "description": "Acceso total a gobernanza RBAC, gestión de usuarios, conexiones BD y auditoría"},
+        {"name": "Director Ejecutivo (C-Level)", "description": "Visión macro estratégica, rentabilidad global, indicadores clave de negocio y alertas de riesgo"},
+        {"name": "Analista Financiero & Comercial", "description": "Evaluación de ventas, facturación, márgenes, rentabilidad por producto/cliente y proyección de ingresos"},
+        {"name": "Gerente de Talento & Operaciones", "description": "Gestión de clima laboral, encuestas organizacionales, retención y métricas operacionales"},
+        {"name": "Analista de Datos & BI", "description": "Exploración multidimensional de datos, cruce de métricas y correlaciones estadísticas"},
+        {"name": "Ingeniero de Infraestructura & TI", "description": "Monitoreo de salud de conectores, consumo de servidores, rendimiento de consultas e incidentes técnicos"},
+        {"name": "Oficial de Cumplimiento & Seguridad", "description": "Vigilancia de trazabilidad, cumplimiento de normativas de datos y auditoría de accesos"},
+        {"name": "Usuario Consultor", "description": "Perfil inicial por defecto con acceso de solo lectura restringida"},
+        # Legacy Aliases
+        {"name": "Administrador", "description": "Alias de Administrador de Plataforma"},
+        {"name": "Economista", "description": "Alias de Analista Financiero & Comercial"},
+        {"name": "TI", "description": "Alias de Ingeniero de Infraestructura & TI"},
+        {"name": "Usuario", "description": "Alias de Usuario Consultor"},
     ]
 
     for role_data in default_roles:
@@ -54,16 +77,20 @@ def init_db(db: Session):
             db.add(Role(name=role_data["name"], description=role_data["description"]))
     db.commit()
 
-    # Get roles
-    admin_role = db.query(Role).filter(Role.name == "Administrador").first()
-    economista_role = db.query(Role).filter(Role.name == "Economista").first()
-    ti_role = db.query(Role).filter(Role.name == "TI").first()
+    # Retrieve role references
+    admin_role = db.query(Role).filter(Role.name.in_(["Administrador de Plataforma", "Administrador"])).first()
+    c_level_role = db.query(Role).filter(Role.name == "Director Ejecutivo (C-Level)").first()
+    financiero_role = db.query(Role).filter(Role.name.in_(["Analista Financiero & Comercial", "Economista"])).first()
+    talento_role = db.query(Role).filter(Role.name == "Gerente de Talento & Operaciones").first()
+    bi_role = db.query(Role).filter(Role.name == "Analista de Datos & BI").first()
+    ti_role = db.query(Role).filter(Role.name.in_(["Ingeniero de Infraestructura & TI", "TI"])).first()
+    dpo_role = db.query(Role).filter(Role.name == "Oficial de Cumplimiento & Seguridad").first()
 
-    # Seed Default Demo Users with official credentials (admin123, economista123, ti123)
+    # Seed Default Demo Users with official credentials
     demo_users = [
         {"username": "admin", "email": "admin@empresa.com", "pwd": "admin123", "is_admin": True, "role": admin_role},
-        {"username": "economista", "email": "economista@empresa.com", "pwd": "economista123", "is_admin": False, "role": economista_role},
-        {"username": "felipe_economista", "email": "felipe@empresa.com", "pwd": "economista123", "is_admin": False, "role": economista_role},
+        {"username": "economista", "email": "economista@empresa.com", "pwd": "economista123", "is_admin": False, "role": financiero_role},
+        {"username": "felipe_economista", "email": "felipe@empresa.com", "pwd": "economista123", "is_admin": False, "role": financiero_role},
         {"username": "ti", "email": "ti@empresa.com", "pwd": "ti123", "is_admin": False, "role": ti_role},
         {"username": "juan_ti", "email": "juan@empresa.com", "pwd": "ti123", "is_admin": False, "role": ti_role},
     ]
@@ -83,52 +110,74 @@ def init_db(db: Session):
             db.add(new_user)
     db.commit()
 
-    # Seed RoleTablePermission for Economista & TI
-    economista_role = db.query(Role).filter(Role.name == "Economista").first()
-    ti_role = db.query(Role).filter(Role.name == "TI").first()
-
+    # Seed RoleTablePermission for Corporate Roles
     from app.models.permission import RoleTablePermission
     from app.models.catalog import SemanticCatalog
+    from app.models.connection import CorporateConnection, DatabaseType
+    import os
+    from app.core.config import settings
 
-    economista_tables = [
+    existing_conn = db.query(CorporateConnection).first()
+    if not existing_conn:
+        db_path = settings.SQLITE_DB_PATH
+        db_name = os.path.basename(db_path)
+        default_conn = CorporateConnection(
+            name="BD Corporativa Local",
+            db_type=DatabaseType.SQLITE,
+            host=db_path,
+            port=0,
+            database_name=db_name,
+            username="admin",
+            encrypted_password="",
+            is_active=True,
+            is_uploaded=False
+        )
+        db.add(default_conn)
+        db.commit()
+
+    all_business_tables = [
         "dim_categorias", "dim_productos", "dim_clientes",
         "fact_ventas", "fact_ingresos_costos", "dim_empleados",
         "Answer", "Question", "Survey", "answer", "question", "survey"
     ]
-    ti_tables = [
+    all_tech_tables = [
         "dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos", "dim_empleados",
         "Answer", "Question", "Survey", "answer", "question", "survey"
     ]
+    all_combined_tables = list(set(all_business_tables + all_tech_tables))
 
-    if economista_role:
-        for tbl in economista_tables:
-            existing_perm = db.query(RoleTablePermission).filter(
-                RoleTablePermission.role_id == economista_role.id,
-                RoleTablePermission.table_name == tbl
-            ).first()
-            if not existing_perm:
-                db.add(RoleTablePermission(
-                    role_id=economista_role.id,
-                    connection_id=1,
-                    schema_name="main",
-                    table_name=tbl,
-                    is_allowed=True
-                ))
+    role_table_mappings = [
+        (c_level_role, all_combined_tables),
+        (financiero_role, all_business_tables),
+        (talento_role, ["dim_empleados", "dim_clientes", "dim_categorias", "Answer", "Question", "Survey", "answer", "question", "survey"]),
+        (bi_role, all_combined_tables),
+        (ti_role, all_tech_tables),
+        (dpo_role, ["dim_empleados", "dim_servidores", "fact_incidentes_ti", "Answer", "Question", "Survey", "answer", "question", "survey"]),
+    ]
 
-    if ti_role:
-        for tbl in ti_tables:
-            existing_perm = db.query(RoleTablePermission).filter(
-                RoleTablePermission.role_id == ti_role.id,
-                RoleTablePermission.table_name == tbl
-            ).first()
-            if not existing_perm:
-                db.add(RoleTablePermission(
-                    role_id=ti_role.id,
-                    connection_id=1,
-                    schema_name="main",
-                    table_name=tbl,
-                    is_allowed=True
-                ))
+    # Also map legacy roles if present separately
+    legacy_econ = db.query(Role).filter(Role.name == "Economista").first()
+    if legacy_econ:
+        role_table_mappings.append((legacy_econ, all_business_tables))
+    legacy_ti = db.query(Role).filter(Role.name == "TI").first()
+    if legacy_ti:
+        role_table_mappings.append((legacy_ti, all_tech_tables))
+
+    for r_obj, tbl_list in role_table_mappings:
+        if r_obj:
+            for tbl in tbl_list:
+                existing_perm = db.query(RoleTablePermission).filter(
+                    RoleTablePermission.role_id == r_obj.id,
+                    RoleTablePermission.table_name == tbl
+                ).first()
+                if not existing_perm:
+                    db.add(RoleTablePermission(
+                        role_id=r_obj.id,
+                        connection_id=1,
+                        schema_name="main",
+                        table_name=tbl,
+                        is_allowed=True
+                    ))
 
     db.commit()
 
@@ -178,3 +227,67 @@ def init_db(db: Session):
             ))
 
     db.commit()
+
+    # Auto-register and preserve any existing uploaded databases in data_sources/
+    try:
+        import sqlite3
+        ds_dir = settings.DATA_SOURCES_DIR
+        if os.path.exists(ds_dir):
+            for fname in os.listdir(ds_dir):
+                if fname.startswith("raw_") or not (fname.endswith(".sqlite") or fname.endswith(".db")):
+                    continue
+                file_full_path = os.path.abspath(os.path.join(ds_dir, fname))
+                existing_uploaded_conn = db.query(CorporateConnection).filter(
+                    CorporateConnection.host == file_full_path
+                ).first()
+                if not existing_uploaded_conn:
+                    sq_conn = sqlite3.connect(file_full_path)
+                    cur = sq_conn.cursor()
+                    tables = [
+                        r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()
+                        if not r[0].startswith("sqlite_")
+                    ]
+                    sq_conn.close()
+                    if tables:
+                        # Clean display name removing timestamp prefix
+                        import re
+                        clean_disp_name = re.sub(r'^\d+_', '', fname)
+                        clean_disp_name = clean_disp_name.replace(".sqlite", "").replace(".db", "").replace("_", " ").upper()
+                        new_c = CorporateConnection(
+                            name=clean_disp_name,
+                            db_type=DatabaseType.SQLITE,
+                            host=file_full_path,
+                            port=0,
+                            database_name=fname,
+                            username="admin",
+                            encrypted_password="",
+                            is_active=True,
+                            is_uploaded=True
+                        )
+                        db.add(new_c)
+                        db.commit()
+                        db.refresh(new_c)
+
+                        for role in db.query(Role).all():
+                            is_admin = (
+                                role.name in [ROLE_ADMINISTRADOR, "Administrador", "Super Administrador", "Admin"]
+                                or "admin" in role.name.lower()
+                            )
+                            if not is_admin:
+                                continue
+                            for t in tables:
+                                if not db.query(RoleTablePermission).filter(
+                                    RoleTablePermission.role_id == role.id,
+                                    RoleTablePermission.connection_id == new_c.id,
+                                    RoleTablePermission.table_name == t
+                                ).first():
+                                    db.add(RoleTablePermission(
+                                        role_id=role.id,
+                                        connection_id=new_c.id,
+                                        schema_name="main",
+                                        table_name=t,
+                                        is_allowed=True
+                                    ))
+                        db.commit()
+    except Exception:
+        pass

@@ -15,13 +15,33 @@ class DynamicSchemaPruningService:
     """
 
     @classmethod
-    def get_physical_db_tables(cls) -> Set[str]:
+    def resolve_db_path(cls, db: Optional[Session] = None, connection_id: Optional[int] = None) -> str:
+        """Resolves target physical SQLite database path for active connection."""
+        if db is not None:
+            try:
+                from app.models.connection import CorporateConnection, DatabaseType
+                conn = None
+                if connection_id:
+                    conn = db.query(CorporateConnection).filter(CorporateConnection.id == connection_id).first()
+                if not conn:
+                    conn = db.query(CorporateConnection).filter(CorporateConnection.is_active == True).first()
+                if conn and conn.db_type == DatabaseType.SQLITE:
+                    if conn.host and os.path.exists(conn.host):
+                        return conn.host
+                    if conn.database_name and os.path.exists(conn.database_name):
+                        return conn.database_name
+            except Exception:
+                pass
+        return settings.SQLITE_DB_PATH
+
+    @classmethod
+    def get_physical_db_tables(cls, db_path: Optional[str] = None) -> Set[str]:
         """Inspects active SQLite database file to retrieve physically existing data tables."""
         try:
-            db_path = settings.SQLITE_DB_PATH
-            if not db_path or not os.path.exists(db_path):
+            target_path = db_path or settings.SQLITE_DB_PATH
+            if not target_path or not os.path.exists(target_path):
                 return set()
-            conn = sqlite3.connect(db_path)
+            conn = sqlite3.connect(target_path)
             cursor = conn.cursor()
             raw_tables = [r[0].lower() for r in cursor.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()]
             conn.close()
@@ -35,31 +55,59 @@ class DynamicSchemaPruningService:
             return set()
 
     @classmethod
-    def get_physical_table_columns(cls, table_name: str) -> List[Dict[str, Any]]:
-        """Inspects active SQLite database file to retrieve real physical columns and data types for a table."""
+    def get_physical_table_columns(cls, table_name: str, db_path: Optional[str] = None, include_samples: bool = True) -> List[Dict[str, Any]]:
+        """
+        Inspects active SQLite database file to retrieve real physical columns, data types,
+        and representative sample values for automatic profiling of cryptic/numbered tables.
+        """
         try:
-            db_path = settings.SQLITE_DB_PATH
-            if not db_path or not os.path.exists(db_path):
+            target_path = db_path or settings.SQLITE_DB_PATH
+            if not target_path or not os.path.exists(target_path):
                 return []
-            conn = sqlite3.connect(db_path)
+            conn = sqlite3.connect(target_path)
             cursor = conn.cursor()
             # PRAGMA table_info returns: (cid, name, type, notnull, dflt_value, pk)
             clean_table = "".join(c for c in table_name if c.isalnum() or c == "_")
             if not clean_table:
                 return []
             rows = cursor.execute(
-                "SELECT cid, name, type, notnull, dflt_value, pk FROM pragma_table_info(?)",
+                "SELECT cid, name, type, [notnull], dflt_value, pk FROM pragma_table_info(?)",
                 (clean_table,)
             ).fetchall()
+
+            col_samples_map: Dict[str, List[str]] = {}
+            if include_samples:
+                try:
+                    conn.row_factory = sqlite3.Row
+                    s_cursor = conn.cursor()
+                    s_cursor.execute("SELECT * FROM " + clean_table + " LIMIT 20")
+                    for row in s_cursor.fetchall():
+                        for k in row.keys():
+                            val = row[k]
+                            if val is not None and str(val).strip():
+                                s_list = col_samples_map.setdefault(k, [])
+                                val_str = str(val)[:35]
+                                if val_str not in s_list and len(s_list) < 3:
+                                    s_list.append(val_str)
+                except Exception:
+                    pass
+
+            result = []
+            for r in rows:
+                col_name = r[1]
+                col_type = r[2] or "TEXT"
+                is_pk = bool(r[5])
+                samples = col_samples_map.get(col_name, [])
+
+                result.append({
+                    "name": col_name,
+                    "type": col_type,
+                    "is_pk": is_pk,
+                    "samples": samples
+                })
+
             conn.close()
-            return [
-                {
-                    "name": r[1],
-                    "type": r[2] or "TEXT",
-                    "is_pk": bool(r[5])
-                }
-                for r in rows
-            ]
+            return result
         except Exception:
             return []
 
@@ -77,7 +125,8 @@ class DynamicSchemaPruningService:
         plus semantic descriptions, and sets of allowed_tables & blocked_columns for AST validation.
         Prunes tables that do not exist physically in the currently active database.
         """
-        physical_tables = cls.get_physical_db_tables()
+        target_db_path = cls.resolve_db_path(db, connection_id)
+        physical_tables = cls.get_physical_db_tables(target_db_path)
 
         # Determine effective role_id and permissions
         effective_role_id = role_id
@@ -143,7 +192,7 @@ class DynamicSchemaPruningService:
         table_columns_map: Dict[str, List[str]] = {}
 
         for tbl in sorted(list(allowed_tables)):
-            phys_cols = cls.get_physical_table_columns(tbl)
+            phys_cols = cls.get_physical_table_columns(tbl, target_db_path)
             table_columns_map[tbl] = []
 
             col_lines = []
@@ -157,8 +206,10 @@ class DynamicSchemaPruningService:
                     table_columns_map[tbl].append(c_name)
                     desc = catalog_desc_map.get(f"{tbl}.{c_lower}", "")
                     is_masked = column_perm_map.get(f"{tbl}.{c_lower}") == "MASKED"
+                    samples = pc.get("samples", [])
+                    sample_str = f", ej: {', '.join([repr(s) if not s.replace('.', '', 1).isdigit() else s for s in samples])}" if samples else ""
                     
-                    details = f"{c_name} ({pc['type']})"
+                    details = f"{c_name} ({pc['type']}{sample_str})"
                     if desc:
                         details += f" - {desc}"
                     if is_masked:

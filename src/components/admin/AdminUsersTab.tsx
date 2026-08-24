@@ -42,21 +42,10 @@ type UsersAction =
   | { type: 'CLOSE_NEW_USER' }
   | { type: 'SET_SUCCESS_BANNER'; message: string | null };
 
+import { getRoleBadgeStyle } from '../../constants';
+
 const STORAGE_KEY = 'datia_governance_users:v1';
 const LEGACY_STORAGE_KEY = 'datia_governance_users';
-
-const getRoleBadgeStyle = (role: string, isAdmin: boolean): string => {
-  if (isAdmin || role === 'Administrador') {
-    return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
-  }
-  if (role === 'Economista') {
-    return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-  }
-  if (role === 'TI') {
-    return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
-  }
-  return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
-};
 
 function usersReducer(state: UsersState, action: UsersAction): UsersState {
   switch (action.type) {
@@ -238,7 +227,7 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({ users, onRefreshUs
                 </td>
                 <td className="px-4 py-3 text-gray-400 font-mono">{u.email}</td>
                 <td className="px-4 py-3">
-                  <span className={`border px-2.5 py-1 rounded-lg text-xs font-semibold ${getRoleBadgeStyle(u.role, u.is_admin)}`}>
+                  <span className={`border px-2.5 py-1 rounded-lg text-xs font-semibold ${getRoleBadgeStyle(u.role)}`}>
                     {u.role}
                   </span>
                 </td>

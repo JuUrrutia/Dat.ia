@@ -40,7 +40,11 @@ Servir como la única fuente de verdad (Single Source of Truth) para el diseño,
    `Estado: ✅ Completado y Aprobado`
 
 8. **[08 - Especificación de Perfiles de Usuario y Matriz de Permisos RBAC](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/DOCS/08_PERFILES_Y_ROLES_RBAC.md)**  
-   *Definición de los 3 perfiles principales (Administrador, Economista, TI) y perfil inicial por defecto (Usuario), asignación de dominios, tablas permitidas y reglas de enmascaramiento.*  
+   *Definición de los perfiles base iniciales, asignación de dominios, tablas permitidas y reglas de enmascaramiento.*  
+   `Estado: ✅ Completado y Aprobado`
+
+9. **[09 - Registro de Decisiones Arquitectónicas (ADR): Roles Corporativos, Data Profiling y Aprendizaje Autónomo](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/DOCS/09_DECISIONES_ARQUITECTONICAS_ROLES_Y_APRENDIZAJE.md)**  
+   *Documento de Checkpoint formal: Matriz de roles empresariales, auto-muestreo y descifrado de tablas criptográficas (SAP/ERP), ciclo de auto-reparación SQL sin intervención humana, opciones descartadas e inventario completo de archivos.*  
    `Estado: ✅ Completado y Aprobado`
 
 ---

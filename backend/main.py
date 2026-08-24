@@ -22,12 +22,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def validate_startup_security():
+    """Enforces production environment security checks before starting."""
+    if settings.ENVIRONMENT.lower() == "production":
+        if settings.SECRET_KEY == settings.DEFAULT_SECRET_KEY:
+            raise RuntimeError(
+                "SECRET_KEY no fue configurado para producción. Defina una clave única en su archivo .env antes de desplegar."
+            )
+        if "*" in settings.CORS_ORIGINS:
+            logger.warning(
+                "CORS: Orígenes abiertos con '*' detectados en entorno de producción. Asegúrese de que esta configuración sea intencional."
+            )
+
 # Include API v1 router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.on_event("startup")
 def on_startup():
     logger.info("Iniciando Servidor Backend FastAPI...")
+    validate_startup_security()
     # 1. Ensure a working SQLite database exists if needed
     try:
         import os

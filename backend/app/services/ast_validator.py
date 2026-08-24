@@ -1,7 +1,9 @@
+import logging
 from typing import List, Set, Dict, Tuple, Optional, Any
 import sqlglot
 from sqlglot import exp, parse_one, transpile
 from app.core.config import settings
+from app.core.logging import logger
 
 class ASTValidationError(Exception):
     """Custom exception raised when SQL fails AST security or RBAC validation."""
@@ -11,7 +13,8 @@ class ASTValidator:
     """
     SQL Guardrail & AST Security Parser based on sqlglot.
     Enforces read-only SELECT queries, single statement execution,
-    role-based table/column whitelisting, and automatic LIMIT injection.
+    role-based table/column whitelisting, Star expansion for Column-Level Security (CLS),
+    and automatic LIMIT injection.
     """
 
     ALLOWED_DIALECTS = {"postgres", "tsql", "mysql", "oracle", "sqlite"}
@@ -23,6 +26,7 @@ class ASTValidator:
         dialect: str = "postgres",
         allowed_tables: Optional[Set[str]] = None,
         blocked_columns: Optional[Set[str]] = None,
+        table_columns: Optional[Dict[str, List[str]]] = None,
         max_limit: int = settings.DEFAULT_ROW_LIMIT
     ) -> Tuple[bool, str, Dict[str, Any]]:
         """
@@ -88,12 +92,112 @@ class ASTValidator:
                     "Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos."
                 )
 
+        # Rule 4.5: Expand SELECT * / table.* to explicit allowed columns (Column-Level Security Enforcement)
+        has_star = expression.find(exp.Star) is not None
+        if has_star:
+            if table_columns:
+                # Normalize table_columns mapping: lowercase table_name -> list of physical column strings
+                norm_table_cols: Dict[str, List[str]] = {
+                    t.lower(): [str(c) for c in cols]
+                    for t, cols in table_columns.items()
+                }
+                blocked_set = {c.lower() for c in blocked_columns} if blocked_columns else set()
+
+                for select_node in expression.find_all(exp.Select):
+                    table_nodes = list(select_node.find_all(exp.Table))
+                    alias_to_table: Dict[str, str] = {}
+                    table_list: List[Tuple[str, str]] = []
+
+                    for t_node in table_nodes:
+                        t_name = t_node.name.lower() if t_node.name else ""
+                        if t_name:
+                            t_alias = t_node.alias.lower() if t_node.alias else ""
+                            table_list.append((t_name, t_node.alias or ""))
+                            if t_alias:
+                                alias_to_table[t_alias] = t_name
+                            alias_to_table[t_name] = t_name
+
+                    new_expressions = []
+                    expanded_any_star = False
+
+                    for expr_item in select_node.expressions:
+                        is_simple_star = isinstance(expr_item, exp.Star)
+                        is_col_star = (
+                            isinstance(expr_item, exp.Column)
+                            and isinstance(expr_item.this, exp.Star)
+                        )
+
+                        if is_simple_star:
+                            expanded_any_star = True
+                            if not table_list:
+                                target_tables = sorted(list(extracted_tables))
+                                for t_name in target_tables:
+                                    phys_cols = norm_table_cols.get(t_name, [])
+                                    vis_cols = [c for c in phys_cols if c.lower() not in blocked_set]
+                                    if not vis_cols and phys_cols:
+                                        raise ASTValidationError(
+                                            f"Gobernanza RBAC: Acceso denegado. No tienes columnas autorizadas para visualizar en la tabla '{t_name}'."
+                                        )
+                                    for c in vis_cols:
+                                        new_expressions.append(exp.Column(this=exp.to_identifier(c)))
+                            else:
+                                for t_name, t_alias in table_list:
+                                    phys_cols = norm_table_cols.get(t_name, [])
+                                    vis_cols = [c for c in phys_cols if c.lower() not in blocked_set]
+                                    if not vis_cols and phys_cols:
+                                        raise ASTValidationError(
+                                            f"Gobernanza RBAC: Acceso denegado. No tienes columnas autorizadas para visualizar en la tabla '{t_name}'."
+                                        )
+                                    for c in vis_cols:
+                                        if len(table_list) > 1 and t_alias:
+                                            new_expressions.append(
+                                                exp.Column(this=exp.to_identifier(c), table=exp.to_identifier(t_alias))
+                                            )
+                                        elif len(table_list) > 1:
+                                            new_expressions.append(
+                                                exp.Column(this=exp.to_identifier(c), table=exp.to_identifier(t_name))
+                                            )
+                                        else:
+                                            new_expressions.append(exp.Column(this=exp.to_identifier(c)))
+
+                        elif is_col_star:
+                            expanded_any_star = True
+                            target_ref = expr_item.table.lower() if expr_item.table else ""
+                            target_table = alias_to_table.get(target_ref, target_ref)
+                            phys_cols = norm_table_cols.get(target_table, [])
+                            vis_cols = [c for c in phys_cols if c.lower() not in blocked_set]
+                            if not vis_cols and phys_cols:
+                                raise ASTValidationError(
+                                    f"Gobernanza RBAC: Acceso denegado. No tienes columnas autorizadas para visualizar en la tabla '{target_table}'."
+                                )
+                            for c in vis_cols:
+                                if expr_item.table:
+                                    new_expressions.append(
+                                        exp.Column(this=exp.to_identifier(c), table=exp.to_identifier(expr_item.table))
+                                    )
+                                else:
+                                    new_expressions.append(exp.Column(this=exp.to_identifier(c)))
+
+                        else:
+                            new_expressions.append(expr_item)
+
+                    if expanded_any_star:
+                        if not new_expressions:
+                            raise ASTValidationError(
+                                "Gobernanza RBAC: Acceso denegado. No tienes columnas autorizadas para visualizar en la consulta."
+                            )
+                        select_node.set("expressions", new_expressions)
+            else:
+                logger.warning("CLS: SELECT * validado sin expansión de esquema, no se puede garantizar bloqueo de columnas")
+
         # Rule 5: Extract and Validate Columns against Blocked List
         extracted_columns = set()
         for column_node in expression.find_all(exp.Column):
-            col_name = column_node.name.lower()
-            if col_name:
-                extracted_columns.add(col_name)
+            # Only count actual column identifiers, skip Star if any remained
+            if not isinstance(column_node.this, exp.Star):
+                col_name = column_node.name.lower()
+                if col_name:
+                    extracted_columns.add(col_name)
 
         if blocked_columns is not None:
             blocked_set = {c.lower() for c in blocked_columns}

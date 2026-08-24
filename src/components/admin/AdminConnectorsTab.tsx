@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Database, Plus, Edit3, Trash2, RefreshCw, CheckCircle2, RotateCcw, Filter } from 'lucide-react';
+import { Database, Plus, Edit3, Trash2, RefreshCw, CheckCircle2, RotateCcw, Filter, UploadCloud, HardDrive } from 'lucide-react';
 import { CorporateConnection, ConnectionTestResult, connectorService } from '../../services/connector_service';
+import { DatabaseUploadModal } from './DatabaseUploadModal';
 
 interface AdminConnectorsTabProps {
   connectors: CorporateConnection[];
@@ -9,6 +10,7 @@ interface AdminConnectorsTabProps {
   onDeleteConnector: (id: number, name: string) => void;
   onToggleActive: (id: number) => void;
   onResetDemoConnectors: () => void;
+  onRefreshConnectors?: () => void;
 }
 
 const fontSuccessCheck = (_conn: CorporateConnection): boolean => true;
@@ -20,10 +22,12 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
   onDeleteConnector,
   onToggleActive,
   onResetDemoConnectors,
+  onRefreshConnectors,
 }) => {
   const [filterDbType, setFilterDbType] = useState<string>('ALL');
   const [testingId, setTestingId] = useState<number | null>(null);
   const [testResultsMap, setTestResultsMap] = useState<Record<number, ConnectionTestResult>>({});
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
   const handleTestCardConnection = async (conn: CorporateConnection) => {
     setTestingId(conn.id);
@@ -54,17 +58,23 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
   );
 
   return (
-    <div className="glass-panel rounded-2xl p-6 border border-white/10 space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-dark-border pb-4">
+    <div className="glass-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-white/10 space-y-5">
+      {/* Header with Title and Action Buttons */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-dark-border pb-4">
         <div>
-          <h3 className="text-sm font-semibold text-white">Fuentes de Datos Corporativas Registradas</h3>
-          <p className="text-xs text-gray-400">Conexiones operativas en modo estricto de Solo Lectura (`READ ONLY`)</p>
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <Database className="w-4 h-4 text-purple-400" />
+            Fuentes de Datos Corporativas Registradas
+          </h3>
+          <p className="text-xs text-gray-400">
+            Conexiones operativas en modo estricto de Solo Lectura (`READ ONLY`) con soporte para SQLite, PostgreSQL, MySQL y SQL Server
+          </p>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {/* Filter by DB Type */}
-          <div className="flex items-center space-x-1 text-xs bg-dark-base border border-dark-border rounded-xl px-2 py-1">
-            <Filter className="w-3.5 h-3.5 text-gray-400 ml-1" />
+          <div className="flex items-center space-x-1 text-xs bg-dark-base border border-dark-border rounded-xl px-2.5 py-1.5">
+            <Filter className="w-3.5 h-3.5 text-gray-400" />
             <label htmlFor="admin-filter-db-type" className="sr-only">
               Filtrar por motor de base de datos
             </label>
@@ -84,13 +94,24 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
             </select>
           </div>
 
+          {/* Import SQLite / Excel / CSV File Button */}
+          <button
+            type="button"
+            onClick={() => setIsUploadModalOpen(true)}
+            className="flex items-center space-x-1.5 text-xs bg-dark-base hover:bg-dark-border text-gray-200 border border-dark-border hover:border-purple-500/40 px-3.5 py-2 rounded-xl transition-colors font-medium"
+          >
+            <UploadCloud className="w-4 h-4 text-purple-400" />
+            <span>Importar BD (SQLite / Excel / CSV)</span>
+          </button>
+
+          {/* Register Remote DB Connection Button */}
           <button
             type="button"
             onClick={onOpenCreateModal}
             className="flex items-center space-x-1.5 text-xs bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium px-4 py-2 rounded-xl shadow-lg shadow-purple-600/30 transition-colors"
           >
             <Plus className="w-4 h-4" />
-            <span>Registrar Nueva BD Corporativa</span>
+            <span>Registrar Conexión BD</span>
           </button>
         </div>
       </div>
@@ -104,10 +125,10 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
           <div className="space-y-1">
             <h4 className="text-sm font-semibold text-white">No hay fuentes de datos registradas para este filtro</h4>
             <p className="text-xs text-gray-400 max-w-sm mx-auto">
-              Registra una nueva conexión a tu base de datos PostgreSQL, SQL Server, MySQL u Oracle, o restaura la configuración por defecto.
+              Importa un archivo SQLite, Excel (.xlsx) o CSV (.csv), o registra una conexión remota a PostgreSQL, SQL Server o MySQL.
             </p>
           </div>
-          <div className="flex items-center justify-center space-x-3 pt-2">
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
             <button
               type="button"
               onClick={onResetDemoConnectors}
@@ -118,11 +139,11 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
             </button>
             <button
               type="button"
-              onClick={onOpenCreateModal}
+              onClick={() => setIsUploadModalOpen(true)}
               className="flex items-center space-x-1.5 text-xs bg-purple-600 hover:bg-purple-500 text-white font-semibold px-4 py-2 rounded-xl transition-colors"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Registrar Conexión BD</span>
+              <UploadCloud className="w-3.5 h-3.5" />
+              <span>Importar SQLite / Excel / CSV</span>
             </button>
           </div>
         </div>
@@ -135,30 +156,40 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
           return (
             <div
               key={c.id}
-              className="glass-card p-5 rounded-2xl border border-white/10 space-y-4 hover:border-purple-500/30 transition-colors shadow-md"
+              className="glass-card p-4 sm:p-5 rounded-2xl border border-white/10 space-y-4 hover:border-purple-500/30 transition-colors shadow-md"
             >
-              <div className="flex items-start justify-between">
-                <div className="space-y-1.5">
-                  <div className="font-bold text-white text-sm flex items-center space-x-2">
-                    <span>{c.name}</span>
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1.5 min-w-0">
+                  <div className="font-bold text-white text-sm flex flex-wrap items-center gap-2">
+                    <span className="truncate">{c.name}</span>
                     <span className="text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded-md font-mono uppercase tracking-wider font-semibold">
                       {c.db_type}
                     </span>
+                    {c.is_uploaded && (
+                      <span className="text-[9px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-1.5 py-0.5 rounded font-semibold flex items-center gap-1">
+                        <HardDrive className="w-2.5 h-2.5" />
+                        Archivo Importado
+                      </span>
+                    )}
                   </div>
-                  <div className="text-xs text-gray-400 flex items-center space-x-2">
-                    <span>Host: <span className="text-gray-200 font-mono">{c.host}:{c.port}</span></span>
+                  <div className="text-xs text-gray-400 flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span>
+                      Host: <span className="text-gray-200 font-mono text-[11px] break-all">{c.host}{c.port ? `:${c.port}` : ''}</span>
+                    </span>
                     <span>•</span>
-                    <span>BD: <span className="text-gray-200 font-mono">{c.database_name}</span></span>
+                    <span>
+                      BD: <span className="text-gray-200 font-mono text-[11px] truncate">{c.database_name}</span>
+                    </span>
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-1">
+                <div className="flex items-center space-x-1 shrink-0">
                   <button
                     type="button"
                     onClick={() => onOpenEditModal(c)}
                     title="Editar Conexión"
                     aria-label={`Editar conexión ${c.name}`}
-                    className="p-2 rounded-lg text-gray-400 hover:text-purple-400 hover:bg-purple-500/10 border border-transparent hover:border-purple-500/20 transition-colors"
+                    className="p-1.5 sm:p-2 rounded-lg text-gray-400 hover:text-purple-400 hover:bg-purple-500/10 border border-transparent hover:border-purple-500/20 transition-colors"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                   </button>
@@ -168,7 +199,7 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
                     onClick={() => onDeleteConnector(c.id, c.name)}
                     title="Eliminar Conexión"
                     aria-label={`Eliminar conexión ${c.name}`}
-                    className="p-2 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-colors"
+                    className="p-1.5 sm:p-2 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -194,7 +225,7 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
                   className="flex items-center space-x-1 text-xs text-purple-400 hover:text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 px-3 py-1.5 rounded-lg transition-colors font-medium"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${testingId === c.id ? 'animate-spin' : ''}`} />
-                  <span>{testingId === c.id ? 'Probando...' : 'Probar Red'}</span>
+                  <span>{testingId === c.id ? 'Probando...' : 'Probar'}</span>
                 </button>
               </div>
 
@@ -214,6 +245,17 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
           );
         })}
       </div>
+
+      {/* Database Import Modal */}
+      <DatabaseUploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onUploadSuccess={() => {
+          if (onRefreshConnectors) {
+            onRefreshConnectors();
+          }
+        }}
+      />
     </div>
   );
 };

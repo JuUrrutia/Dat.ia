@@ -9,6 +9,9 @@ export interface CorporateConnection {
   database_name: string;
   username: string;
   is_active: boolean;
+  is_uploaded?: boolean;
+  requires_permission_review?: boolean;
+  detected_tables?: string[];
   created_at: string;
 }
 
@@ -21,6 +24,7 @@ export interface ConnectionFormData {
   username: string;
   password?: string;
   is_active?: boolean;
+  is_uploaded?: boolean;
 }
 
 export interface ConnectionTestResult {
@@ -59,25 +63,24 @@ export const connectorService = {
   },
 
   async getConnectors(): Promise<CorporateConnection[]> {
-    const stored = this.getStoredConnectors();
     try {
       const res = await apiClient.get<CorporateConnection[]>('/connectors');
       if (res.data && res.data.length > 0) {
-        // Merge API connectors with stored active states
-        const merged = res.data.map((apiConn) => {
-          const matchedStored = stored.find((s) => s.id === apiConn.id || s.name === apiConn.name);
-          return matchedStored ? { ...apiConn, is_active: matchedStored.is_active } : apiConn;
-        });
-        this.saveConnectorsToStorage(merged);
-        return merged;
+        this.saveConnectorsToStorage(res.data);
+        return res.data;
       }
     } catch {
       // API offline or empty, use stored
     }
-    return stored;
+    return this.getStoredConnectors();
   },
 
-  toggleActive(id: number): CorporateConnection[] {
+  async toggleActive(id: number): Promise<CorporateConnection[]> {
+    try {
+      await apiClient.post(`/connectors/${id}/toggle-active`);
+    } catch {
+      // Fallback
+    }
     const current = this.getStoredConnectors();
     const updated = current.map((c) => (c.id === id ? { ...c, is_active: !c.is_active } : c));
     this.saveConnectorsToStorage(updated);
@@ -85,12 +88,14 @@ export const connectorService = {
   },
 
   async createConnector(data: ConnectionFormData): Promise<CorporateConnection> {
-    let newConn: CorporateConnection;
     try {
       const res = await apiClient.post<CorporateConnection>('/connectors', data);
-      newConn = res.data;
-    } catch {
-      newConn = {
+      const current = this.getStoredConnectors();
+      const updated = [res.data, ...current.filter((c) => c.id !== res.data.id)];
+      this.saveConnectorsToStorage(updated);
+      return res.data;
+    } catch (err) {
+      const newConn: CorporateConnection = {
         id: Date.now(),
         name: data.name,
         db_type: data.db_type,
@@ -99,44 +104,62 @@ export const connectorService = {
         database_name: data.database_name,
         username: data.username,
         is_active: data.is_active ?? true,
+        is_uploaded: data.is_uploaded ?? false,
         created_at: new Date().toISOString().split('T')[0],
       };
+      const current = this.getStoredConnectors();
+      const updated = [newConn, ...current];
+      this.saveConnectorsToStorage(updated);
+      return newConn;
     }
+  },
 
+  async uploadDatabase(file: File, name?: string): Promise<CorporateConnection> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (name) {
+      formData.append('name', name);
+    }
+    const res = await apiClient.post<CorporateConnection>('/connectors/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
     const current = this.getStoredConnectors();
-    const updated = [...current, newConn];
+    const updated = [res.data, ...current.filter((c) => c.id !== res.data.id)];
     this.saveConnectorsToStorage(updated);
-    return newConn;
+    return res.data;
   },
 
   async updateConnector(id: number, data: Partial<ConnectionFormData>): Promise<CorporateConnection> {
     try {
-      await apiClient.put<CorporateConnection>(`/connectors/${id}`, data);
+      const res = await apiClient.put<CorporateConnection>(`/connectors/${id}`, data);
+      const current = this.getStoredConnectors();
+      const updated = current.map((c) => (c.id === id ? res.data : c));
+      this.saveConnectorsToStorage(updated);
+      return res.data;
     } catch {
-      // Local fallback
+      const current = this.getStoredConnectors();
+      let updatedItem: CorporateConnection | null = null;
+      const updated = current.map((c) => {
+        if (c.id === id) {
+          updatedItem = {
+            ...c,
+            ...(data.name ? { name: data.name } : {}),
+            ...(data.db_type ? { db_type: data.db_type } : {}),
+            ...(data.host ? { host: data.host } : {}),
+            ...(data.port !== undefined ? { port: data.port } : {}),
+            ...(data.database_name ? { database_name: data.database_name } : {}),
+            ...(data.username ? { username: data.username } : {}),
+            ...(data.is_active !== undefined ? { is_active: data.is_active } : {}),
+          };
+          return updatedItem;
+        }
+        return c;
+      });
+      this.saveConnectorsToStorage(updated);
+      return updatedItem || current[0];
     }
-
-    const current = this.getStoredConnectors();
-    let updatedItem: CorporateConnection | null = null;
-    const updated = current.map((c) => {
-      if (c.id === id) {
-        updatedItem = {
-          ...c,
-          ...(data.name ? { name: data.name } : {}),
-          ...(data.db_type ? { db_type: data.db_type } : {}),
-          ...(data.host ? { host: data.host } : {}),
-          ...(data.port !== undefined ? { port: data.port } : {}),
-          ...(data.database_name ? { database_name: data.database_name } : {}),
-          ...(data.username ? { username: data.username } : {}),
-          ...(data.is_active !== undefined ? { is_active: data.is_active } : {}),
-        };
-        return updatedItem;
-      }
-      return c;
-    });
-
-    this.saveConnectorsToStorage(updated);
-    return updatedItem || current[0];
   },
 
   async deleteConnector(id: number): Promise<void> {

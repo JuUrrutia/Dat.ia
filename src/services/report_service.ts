@@ -53,16 +53,14 @@ export const reportService = {
     }
   },
 
-  async exportExecutiveReportPdf(result: QueryResult, chartBase64?: string): Promise<void> {
+  async exportExecutiveReportPdf(result: QueryResult | { audit_log_id?: number }, chartBase64?: string): Promise<void> {
+    const auditId = (result as any).audit_log_id || (result as QueryResult).traceability?.audit_log_id;
+    if (!auditId) {
+      throw new Error('No se encontró el identificador de auditoría para generar la exportación.');
+    }
+
     const payload = {
-      question: result.question,
-      summary_text: result.summary_text,
-      executive_report: result.executive_report,
-      kpis: result.kpis || [],
-      gauges: result.gauges || [],
-      data_columns: result.data_columns || [],
-      data_rows: result.data_rows || [],
-      traceability: result.traceability,
+      audit_log_id: auditId,
       chart_image_base64: chartBase64,
     };
 
@@ -85,16 +83,14 @@ export const reportService = {
     }
   },
 
-  async exportExecutiveReportExcel(result: QueryResult): Promise<void> {
+  async exportExecutiveReportExcel(result: QueryResult | { audit_log_id?: number }): Promise<void> {
+    const auditId = (result as any).audit_log_id || (result as QueryResult).traceability?.audit_log_id;
+    if (!auditId) {
+      throw new Error('No se encontró el identificador de auditoría para generar la exportación.');
+    }
+
     const payload = {
-      question: result.question,
-      summary_text: result.summary_text,
-      executive_report: result.executive_report,
-      kpis: result.kpis || [],
-      gauges: result.gauges || [],
-      data_columns: result.data_columns || [],
-      data_rows: result.data_rows || [],
-      traceability: result.traceability,
+      audit_log_id: auditId,
     };
 
     const res = await apiClient.post('/reports/export/excel', payload, {

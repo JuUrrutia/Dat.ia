@@ -1,265 +1,257 @@
-import React, { useReducer } from 'react';
-import { Sparkles, Check, Search, Plus, Edit3, BookOpen } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Sparkles, Check, Plus, BookOpen, Database } from 'lucide-react';
+import {
+  CatalogItem,
+  DataDictionaryResponse,
+  catalogService,
+} from '../../services/catalog_service';
 import { CatalogEditModal } from './CatalogEditModal';
 import { CatalogAddModal } from './CatalogAddModal';
-
-export interface CatalogItem {
-  table: string;
-  column: string;
-  desc: string;
-  formula: string;
-  is_ai: boolean;
-}
+import { SemanticCatalogSection } from './catalog/SemanticCatalogSection';
+import { DataDictionarySection } from './catalog/DataDictionarySection';
 
 interface AdminCatalogTabProps {
-  catalog: CatalogItem[];
-  aiEnriching: boolean;
-  aiSuccess: boolean;
-  onRunAiCatalog: () => void;
+  catalog?: any[];
+  aiEnriching?: boolean;
+  aiSuccess?: boolean;
+  onRunAiCatalog?: () => void;
 }
 
-interface CatalogState {
-  items: CatalogItem[];
-  searchQuery: string;
-  selectedTableFilter: string;
-  editingItem: CatalogItem | null;
-  isAddModalOpen: boolean;
-}
+export const AdminCatalogTab: React.FC<AdminCatalogTabProps> = () => {
+  const [subTab, setSubTab] = useState<'catalog' | 'dictionary'>('catalog');
 
-type CatalogAction =
-  | { type: 'SET_ITEMS'; items: CatalogItem[] }
-  | { type: 'SET_SEARCH'; query: string }
-  | { type: 'SET_TABLE_FILTER'; filter: string }
-  | { type: 'OPEN_EDIT'; item: CatalogItem }
-  | { type: 'CLOSE_EDIT' }
-  | { type: 'OPEN_ADD' }
-  | { type: 'CLOSE_ADD' };
+  // Semantic Catalog State
+  const [items, setItems] = useState<CatalogItem[]>([]);
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
+  const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-const STORAGE_KEY = 'datia_semantic_catalog:v1';
-const LEGACY_STORAGE_KEY = 'datia_semantic_catalog';
+  // AI Auto-enrichment State
+  const [isEnriching, setIsEnriching] = useState(false);
+  const [enrichSuccessMsg, setEnrichSuccessMsg] = useState<string | null>(null);
 
-function loadInitialCatalog(fallback: CatalogItem[]): CatalogItem[] {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch {}
-  return fallback || [];
-}
+  // Technical Data Dictionary State
+  const [dataDictionary, setDataDictionary] = useState<DataDictionaryResponse | null>(null);
+  const [isLoadingDictionary, setIsLoadingDictionary] = useState(false);
+  const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>({});
 
-function catalogReducer(state: CatalogState, action: CatalogAction): CatalogState {
-  switch (action.type) {
-    case 'SET_ITEMS':
-      return { ...state, items: action.items };
-    case 'SET_SEARCH':
-      return { ...state, searchQuery: action.query };
-    case 'SET_TABLE_FILTER':
-      return { ...state, selectedTableFilter: action.filter };
-    case 'OPEN_EDIT':
-      return { ...state, editingItem: action.item };
-    case 'CLOSE_EDIT':
-      return { ...state, editingItem: null };
-    case 'OPEN_ADD':
-      return { ...state, isAddModalOpen: true };
-    case 'CLOSE_ADD':
-      return { ...state, isAddModalOpen: false };
-    default:
-      return state;
-  }
-}
-
-export const AdminCatalogTab: React.FC<AdminCatalogTabProps> = ({
-  catalog,
-  aiEnriching,
-  aiSuccess,
-  onRunAiCatalog,
-}) => {
-  const [state, dispatch] = useReducer(catalogReducer, undefined, () => ({
-    items: loadInitialCatalog(catalog),
-    searchQuery: '',
-    selectedTableFilter: 'ALL',
-    editingItem: null,
-    isAddModalOpen: false,
-  }));
-
-  const saveCatalogToStorage = (updatedItems: CatalogItem[]) => {
-    dispatch({ type: 'SET_ITEMS', items: updatedItems });
+  const fetchCatalogData = useCallback(async () => {
+    setIsLoadingCatalog(true);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedItems));
-    } catch {}
+      const data = await catalogService.getCatalog();
+      setItems(data);
+    } catch {
+      // Fallback
+    } finally {
+      setIsLoadingCatalog(false);
+    }
+  }, []);
+
+  const fetchDictionaryData = useCallback(async () => {
+    setIsLoadingDictionary(true);
+    try {
+      const data = await catalogService.getDataDictionary();
+      setDataDictionary(data);
+      // Auto-expand first 3 tables
+      const initialExpanded: Record<string, boolean> = {};
+      data.tables.forEach((t, idx) => {
+        initialExpanded[t.table_name] = idx < 3;
+      });
+      setExpandedTables(initialExpanded);
+    } catch {
+      // Fallback
+    } finally {
+      setIsLoadingDictionary(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCatalogData();
+    fetchDictionaryData();
+  }, [fetchCatalogData, fetchDictionaryData]);
+
+  const handleRunAiAutoEnrich = async () => {
+    setIsEnriching(true);
+    setEnrichSuccessMsg(null);
+    try {
+      const res = await catalogService.autoEnrich();
+      setEnrichSuccessMsg(res.message);
+      await fetchCatalogData();
+      await fetchDictionaryData();
+      setTimeout(() => setEnrichSuccessMsg(null), 4500);
+    } catch (err: any) {
+      setEnrichSuccessMsg(err.message || 'Error al auto-enriquecer el catálogo.');
+    } finally {
+      setIsEnriching(false);
+    }
   };
 
-  const uniqueTables = Array.from(new Set(state.items.map((i) => i.table)));
-
-  const filteredItems = state.items.filter((cat) => {
-    const matchesSearch =
-      cat.table.toLowerCase().includes(state.searchQuery.toLowerCase()) ||
-      cat.column.toLowerCase().includes(state.searchQuery.toLowerCase()) ||
-      cat.desc.toLowerCase().includes(state.searchQuery.toLowerCase());
-    const matchesTable = state.selectedTableFilter === 'ALL' || cat.table === state.selectedTableFilter;
-    return matchesSearch && matchesTable;
-  });
-
-  const handleSaveEdit = (desc: string, formula: string) => {
-    if (!state.editingItem) return;
-    const updated = state.items.map((i) =>
-      i.table === state.editingItem?.table && i.column === state.editingItem?.column
-        ? { ...i, desc, formula }
-        : i
-    );
-    saveCatalogToStorage(updated);
-    dispatch({ type: 'CLOSE_EDIT' });
+  const handleSaveEdit = async (desc: string, formula: string) => {
+    if (!editingItem) return;
+    try {
+      await catalogService.updateCatalogItem(editingItem.id, {
+        description: desc,
+        business_formula: formula,
+      });
+      await fetchCatalogData();
+      await fetchDictionaryData();
+    } catch {
+      setItems((prev) =>
+        prev.map((i) => (i.id === editingItem.id ? { ...i, description: desc, business_formula: formula } : i))
+      );
+    }
+    setEditingItem(null);
   };
 
-  const handleAddItem = (newItem: CatalogItem) => {
-    const updated = [newItem, ...state.items];
-    saveCatalogToStorage(updated);
+  const handleAddItem = async (newItem: {
+    table: string;
+    column: string;
+    desc: string;
+    formula: string;
+    is_ai: boolean;
+  }) => {
+    try {
+      await catalogService.createCatalogItem({
+        table_name: newItem.table,
+        column_name: newItem.column,
+        description: newItem.desc,
+        business_formula: newItem.formula,
+        is_ai_generated: newItem.is_ai,
+      });
+      await fetchCatalogData();
+      await fetchDictionaryData();
+    } catch {
+      // Fallback
+    }
+    setIsAddModalOpen(false);
+  };
+
+  const handleDeleteItem = async (id: number, table: string, column?: string) => {
+    const label = column ? `${table}.${column}` : table;
+    if (!window.confirm(`¿Estás seguro de eliminar la regla del catálogo para '${label}'?`)) return;
+    try {
+      await catalogService.deleteCatalogItem(id);
+      setItems((prev) => prev.filter((i) => i.id !== id));
+      await fetchDictionaryData();
+    } catch {
+      // Fallback
+    }
+  };
+
+  const toggleTableExpansion = (tableName: string) => {
+    setExpandedTables((prev) => ({
+      ...prev,
+      [tableName]: !prev[tableName],
+    }));
   };
 
   return (
-    <div className="glass-panel rounded-2xl p-6 border border-white/10 space-y-5">
-      {/* Header Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-dark-border pb-4">
-        <div>
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-            <BookOpen className="w-4 h-4 text-purple-400" /> Catálogo Semántico y Diccionario de Datos (IA)
+    <div className="glass-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-white/10 space-y-6">
+      {/* Header and Subtab Navigation */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-dark-border pb-4">
+        <div className="space-y-1">
+          <h3 className="text-sm sm:text-base font-semibold text-white flex items-center gap-2">
+            <BookOpen className="w-4 h-4 text-purple-400" />
+            Gobernanza Semántica & Diccionario de Datos Dinámico
           </h3>
           <p className="text-xs text-gray-400">
-            Define descripciones en lenguaje natural y reglas de gobernanza para el modelo Qwen2.5-Coder
+            Metadatos dinámicos, tipos de datos reales y contexto de negocio para el motor Text-to-SQL con IA
           </p>
         </div>
 
-        <div className="flex items-center space-x-2">
-          <button
-            type="button"
-            onClick={() => dispatch({ type: 'OPEN_ADD' })}
-            className="flex items-center space-x-1.5 text-xs bg-dark-base hover:bg-dark-border text-gray-200 border border-dark-border px-3.5 py-2 rounded-xl transition-colors font-medium"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Añadir Regla</span>
-          </button>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          {/* Subtab Toggle Buttons */}
+          <div className="flex items-center bg-dark-base p-1 rounded-xl border border-dark-border">
+            <button
+              type="button"
+              onClick={() => setSubTab('catalog')}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                subTab === 'catalog'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Catálogo Semántico ({items.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSubTab('dictionary')}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                subTab === 'dictionary'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <Database className="w-3.5 h-3.5" />
+              <span>Diccionario de Datos ({dataDictionary?.total_tables || 0} Tablas)</span>
+            </button>
+          </div>
+
+          {subTab === 'catalog' && (
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center space-x-1.5 text-xs bg-dark-base hover:bg-dark-border text-gray-200 border border-dark-border px-3 py-2 rounded-xl transition-colors font-medium"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Añadir Regla</span>
+            </button>
+          )}
 
           <button
             type="button"
-            onClick={onRunAiCatalog}
-            disabled={aiEnriching}
-            className="flex items-center space-x-2 text-xs bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium px-4 py-2 rounded-xl shadow-lg shadow-purple-600/30 transition-colors"
+            onClick={handleRunAiAutoEnrich}
+            disabled={isEnriching}
+            className="flex items-center space-x-2 text-xs bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium px-4 py-2 rounded-xl shadow-lg shadow-purple-600/30 transition-colors disabled:opacity-50"
           >
-            <Sparkles className={`w-4 h-4 ${aiEnriching ? 'animate-spin' : ''}`} />
-            <span>{aiEnriching ? 'Analizando Esquema...' : 'Auto-enriquecer con IA'}</span>
+            <Sparkles className={`w-4 h-4 ${isEnriching ? 'animate-spin' : ''}`} />
+            <span>{isEnriching ? 'Auto-enriqueciendo con IA...' : 'Auto-enriquecer con IA'}</span>
           </button>
         </div>
       </div>
 
-      {aiSuccess && (
-        <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center space-x-2 animate-fadeIn">
-          <Check className="w-4 h-4" />
-          <span>Catálogo semántico enriquecido automáticamente con descripciones generadas por la IA local.</span>
+      {enrichSuccessMsg && (
+        <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center space-x-2 animate-fadeIn">
+          <Check className="w-4 h-4 shrink-0" />
+          <span>{enrichSuccessMsg}</span>
         </div>
       )}
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-72">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <label htmlFor="catalog-search" className="sr-only">
-            Buscar en catálogo
-          </label>
-          <input
-            id="catalog-search"
-            aria-label="Buscar tabla, campo o descripción"
-            type="text"
-            value={state.searchQuery}
-            onChange={(e) => dispatch({ type: 'SET_SEARCH', query: e.target.value })}
-            placeholder="Buscar tabla, campo o descripción..."
-            className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
-          />
-        </div>
+      {/* Subtab 1: Semantic Catalog */}
+      {subTab === 'catalog' && (
+        <SemanticCatalogSection
+          items={items}
+          isLoadingCatalog={isLoadingCatalog}
+          onOpenEditModal={(item) => setEditingItem(item)}
+          onDeleteItem={handleDeleteItem}
+        />
+      )}
 
-        <div className="flex items-center space-x-2 text-xs w-full sm:w-auto">
-          <label htmlFor="catalog-table-filter" className="text-gray-400 font-medium whitespace-nowrap">
-            Filtrar por tabla:
-          </label>
-          <select
-            id="catalog-table-filter"
-            aria-label="Filtrar por tabla"
-            value={state.selectedTableFilter}
-            onChange={(e) => dispatch({ type: 'SET_TABLE_FILTER', filter: e.target.value })}
-            className="bg-dark-base border border-dark-border rounded-xl px-3 py-1.5 text-white focus:outline-none focus:border-purple-500 text-xs"
-          >
-            <option value="ALL">Todas las Tablas ({state.items.length})</option>
-            {uniqueTables.map((tbl) => (
-              <option key={tbl} value={tbl}>
-                {tbl}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Catalog Table */}
-      <div className="overflow-x-auto rounded-xl border border-dark-border">
-        <table className="w-full text-left text-xs">
-          <thead className="bg-dark-base border-b border-dark-border text-gray-400 uppercase tracking-wider">
-            <tr>
-              <th className="px-4 py-3">Tabla BD</th>
-              <th className="px-4 py-3">Campo / Columna</th>
-              <th className="px-4 py-3">Descripción Semántica (Contexto IA)</th>
-              <th className="px-4 py-3">Fórmula / Regla</th>
-              <th className="px-4 py-3">Origen</th>
-              <th className="px-4 py-3 text-right">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-dark-border text-gray-200">
-            {filteredItems.map((cat) => (
-              <tr key={`${cat.table}-${cat.column}`} className="hover:bg-dark-card/50 transition-colors">
-                <td className="px-4 py-3 font-mono font-semibold text-purple-400">{cat.table}</td>
-                <td className="px-4 py-3 font-mono font-medium text-white">{cat.column}</td>
-                <td className="px-4 py-3 text-gray-300 max-w-md">{cat.desc}</td>
-                <td className="px-4 py-3 font-mono text-gray-400 text-[11px]">{cat.formula}</td>
-                <td className="px-4 py-3">
-                  {cat.is_ai ? (
-                    <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded text-[10px] font-semibold">
-                      IA Auto-generado
-                    </span>
-                  ) : (
-                    <span className="bg-gray-500/10 text-gray-400 border border-gray-500/20 px-2 py-0.5 rounded text-[10px]">
-                      Manual Admin
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <button
-                    type="button"
-                    onClick={() => dispatch({ type: 'OPEN_EDIT', item: cat })}
-                    aria-label={`Editar regla para ${cat.table}.${cat.column}`}
-                    className="p-1.5 rounded-lg text-gray-400 hover:text-purple-400 hover:bg-purple-500/10 transition-colors ml-auto"
-                    title="Editar Regla"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* Subtab 2: Technical Data Dictionary */}
+      {subTab === 'dictionary' && (
+        <DataDictionarySection
+          dataDictionary={dataDictionary}
+          isLoadingDictionary={isLoadingDictionary}
+          expandedTables={expandedTables}
+          onToggleTableExpansion={toggleTableExpansion}
+        />
+      )}
 
       {/* Edit Rule Modal */}
       <CatalogEditModal
-        isOpen={Boolean(state.editingItem)}
-        item={state.editingItem}
-        onClose={() => dispatch({ type: 'CLOSE_EDIT' })}
+        isOpen={Boolean(editingItem)}
+        item={editingItem as any}
+        onClose={() => setEditingItem(null)}
         onSave={handleSaveEdit}
       />
 
       {/* Add New Rule Modal */}
       <CatalogAddModal
-        isOpen={state.isAddModalOpen}
-        onClose={() => dispatch({ type: 'CLOSE_ADD' })}
-        onAdd={handleAddItem}
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onAdd={handleAddItem as any}
       />
     </div>
   );

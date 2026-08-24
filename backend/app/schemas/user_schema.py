@@ -15,12 +15,20 @@ class UserLogin(BaseModel):
     username: str
     password: str
 
-class UserCreate(BaseModel):
+class UserSelfRegister(BaseModel):
+    username: str
+    email: Optional[EmailStr] = None
+    password: str
+
+class UserCreateByAdmin(BaseModel):
     username: str
     email: Optional[EmailStr] = None
     password: str
     is_admin: bool = False
     role_id: Optional[int] = None
+
+# Backward compatibility alias
+UserCreate = UserCreateByAdmin
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
