@@ -10,6 +10,7 @@ import {
   Menu,
   X,
 } from 'lucide-react';
+import logoDatia2 from '../../pages/Logo_datia_2.png';
 import { SystemHealthPopover } from './SystemHealthPopover';
 
 export const Header: React.FC = () => {
@@ -40,26 +41,21 @@ export const Header: React.FC = () => {
     <header className="h-16 border-b border-dark-border bg-dark-surface/90 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between z-30 relative select-none">
       {/* Brand & Offline / Dynamic Health Status Badge */}
       <div className="flex items-center space-x-3 sm:space-x-4">
-        <button
-          type="button"
-          className="flex items-center space-x-2.5 sm:space-x-3 text-left focus:outline-none"
-          onClick={() => {
-            setActivePage('dashboard');
-            setIsMobileMenuOpen(false);
-          }}
-        >
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/20 shrink-0">
-            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-          </div>
+        <button type="button" className="flex items-center space-x-2.5 sm:space-x-3 text-left focus:outline-none" onClick={() => { setActivePage('dashboard'); setIsMobileMenuOpen(false); }}>
+          <img
+            src={logoDatia2}
+            alt="Logo Datia"
+            className="w-9 h-9 sm:w-10 sm:h-10 object-contain rounded-xl bg-dark-card/60 p-1 shadow-lg shadow-brand-500/20 shrink-0"
+          />
           <div className="truncate">
             <h1 className="text-xs sm:text-base font-semibold text-white tracking-tight flex items-center gap-1.5 sm:gap-2">
-              <span>DATIA</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20 font-normal">
+              <span>Dat.ia</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20 font-normal">
                 IA Local
               </span>
             </h1>
-            <p className="text-[10px] sm:text-xs text-gray-400 hidden xs:block truncate">
-              Democratización de Datos
+            <p className="block text-[10px] sm:text-xs text-gray-400 truncate">
+              Transformando datos en decisiones
             </p>
           </div>
         </button>

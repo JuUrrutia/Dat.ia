@@ -114,7 +114,7 @@ class ReportGeneratorService:
         header_table = Table(
             [
                 [
-                    Paragraph("<b>DATIA</b> | Executive Analytics", title_style),
+                    Paragraph("<b>Dat.ia</b> | Executive Analytics", title_style),
                     Paragraph(f"<b>Fecha:</b> {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}<br/><b>BD:</b> {data.target_database or 'SQLite Demo'}", subtitle_style)
                 ]
             ],
@@ -325,7 +325,7 @@ class ReportGeneratorService:
         # Title Banner
         ws_summary.merge_cells("A1:F2")
         title_cell = ws_summary["A1"]
-        title_cell.value = "DATIA - INFORME EJECUTIVO DE NEGOCIO"
+        title_cell.value = "Dat.ia - INFORME EJECUTIVO DE NEGOCIO"
         title_cell.font = font_title
         title_cell.fill = fill_header
         title_cell.alignment = Alignment(horizontal="center", vertical="center")

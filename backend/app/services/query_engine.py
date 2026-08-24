@@ -404,7 +404,7 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             conversational = await cls._generate_conversational_response(
                 question, user_role, "greeting", columns=list(allowed_tables), is_llm_active=True
             )
-            summary_text = "Asistente DATIA listo para responder tus consultas sobre la base de datos activa."
+            summary_text = "Asistente Dat.ia listo para responder tus consultas sobre la base de datos activa."
             return QueryResponse(
                 question=question,
                 summary_text=summary_text,
