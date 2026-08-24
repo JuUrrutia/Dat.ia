@@ -92,7 +92,8 @@ async def get_system_health(
     for c in active_conns:
         if c.db_type == DatabaseType.SQLITE:
             # SQLite local file check
-            db_path = c.database_name
+            # Uploaded connectors store their absolute file path in host.
+            db_path = c.host or c.database_name
             exists = os.path.exists(db_path) if db_path else True
             conn_ok = exists
             conn_msg = f"Archivo SQLite '{db_path}' verificado." if exists else f"Archivo SQLite '{db_path}' no encontrado."
