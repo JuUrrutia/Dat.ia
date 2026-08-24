@@ -311,4 +311,78 @@ class TestCatalogAndConnectors(unittest.TestCase):
             if conn_id:
                 self.client.delete(f"/api/v1/connectors/{conn_id}", headers=self.headers)
 
+    def test_multi_active_databases_dictionary_and_catalog(self):
+        """
+        Ensures that when 2 active databases exist, their data dictionaries
+        and semantic catalogs are accurately introspected, isolated, and updated.
+        """
+        with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        conn_id = None
+        try:
+            conn = sqlite3.connect(tmp_path)
+            conn.execute("CREATE TABLE clientes_nuevos (id INTEGER PRIMARY KEY, nombre_cliente TEXT, saldo REAL);")
+            conn.execute("INSERT INTO clientes_nuevos VALUES (1, 'Cliente Alfa', 1500.50);")
+            conn.execute("INSERT INTO clientes_nuevos VALUES (2, 'Cliente Beta', 3200.00);")
+            conn.commit()
+            conn.close()
+
+            with open(tmp_path, "rb") as f:
+                file_bytes = f.read()
+
+            file_obj = io.BytesIO(file_bytes)
+
+            # Upload second database
+            res_upload = self.client.post(
+                "/api/v1/connectors/upload",
+                files={"file": ("clientes_db.sqlite", file_obj, "application/octet-stream")},
+                data={"name": "Base de Datos Clientes Nuevos"},
+                headers=self.headers
+            )
+            self.assertEqual(res_upload.status_code, 201)
+            conn_id = res_upload.json()["id"]
+
+            # 1. Verify that semantic catalog was automatically seeded on upload for connection 2
+            res_cat_conn2 = self.client.get(f"/api/v1/catalog/?connection_id={conn_id}", headers=self.headers)
+            self.assertEqual(res_cat_conn2.status_code, 200)
+            conn2_catalog_items = res_cat_conn2.json()
+            self.assertTrue(len(conn2_catalog_items) > 0, "Initial catalog entries should be automatically seeded.")
+            table_names_seeded = {i["table_name"] for i in conn2_catalog_items}
+            self.assertIn("clientes_nuevos", table_names_seeded)
+
+            # 2. Verify Data Dictionary for connection 2 returns its specific tables
+            res_dict_conn2 = self.client.get(f"/api/v1/catalog/data-dictionary?connection_id={conn_id}", headers=self.headers)
+            self.assertEqual(res_dict_conn2.status_code, 200)
+            dict_data_conn2 = res_dict_conn2.json()
+            self.assertEqual(dict_data_conn2["connection_id"], conn_id)
+            self.assertEqual(dict_data_conn2["connection_name"], "Base de Datos Clientes Nuevos")
+            tbl_names = [t["table_name"] for t in dict_data_conn2["tables"]]
+            self.assertIn("clientes_nuevos", tbl_names)
+
+            # 3. Verify auto-enriching connection 2 works
+            res_enrich = self.client.post(
+                "/api/v1/catalog/auto-enrich",
+                json={"connection_id": conn_id},
+                headers=self.headers
+            )
+            self.assertEqual(res_enrich.status_code, 200)
+            self.assertTrue(res_enrich.json()["success"])
+
+            # 4. Verify connection 1's dictionary is distinct from connection 2
+            res_dict_conn1 = self.client.get("/api/v1/catalog/data-dictionary?connection_id=1", headers=self.headers)
+            self.assertEqual(res_dict_conn1.status_code, 200)
+            tbl_names_conn1 = [t["table_name"] for t in res_dict_conn1.json()["tables"]]
+            self.assertNotIn("clientes_nuevos", tbl_names_conn1)
+
+        finally:
+            if conn_id:
+                self.client.delete(f"/api/v1/connectors/{conn_id}", headers=self.headers)
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
+
+
 

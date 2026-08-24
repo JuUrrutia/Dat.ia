@@ -1,141 +1,42 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { useNotifications } from '../context/NotificationContext';
-import { QueryResult } from '../types';
-import { SidebarChatHistory, ChatThread } from '../components/chat/SidebarChatHistory';
+import React from 'react';
+import { useChatEngine } from '../features/chat/hooks/useChatEngine';
+import { SidebarChatHistory } from '../components/chat/SidebarChatHistory';
 import { ChatMessageItem } from '../components/chat/ChatMessageItem';
 import { ChatEmptyState } from '../components/chat/ChatEmptyState';
 import { ChatPromptInput } from '../components/chat/ChatPromptInput';
 import { TraceabilityModal } from '../components/traceability/TraceabilityModal';
-import { queryService } from '../services/query_service';
-import { connectorService } from '../services/connector_service';
-import { History, Database, Bot, User as UserIcon } from 'lucide-react';
-
-interface FullThread {
-  id: string;
-  title: string;
-  timestamp: string;
-  results: QueryResult[];
-}
+import { History, Database, User as UserIcon, Bot } from 'lucide-react';
 
 export const ChatDashboardPage: React.FC = () => {
-  const { user, settings } = useAuth();
-  const { notify } = useNotifications();
-  const [promptInput, setPromptInput] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [activeTraceability, setActiveTraceability] = useState<QueryResult['traceability'] | null>(null);
-  const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
-  const [activeDatabaseName, setActiveDatabaseName] = useState('BD Corporativa Local (SQLite)');
-  const chatBottomRef = useRef<HTMLDivElement>(null);
-
-  const userRole = user?.role_name || (user?.is_admin ? 'Administrador' : 'Usuario');
-  const [promptSuggestions, setPromptSuggestions] = useState<string[]>([]);
-
-  useEffect(() => {
-    let isMounted = true;
-    queryService.getSuggestions(userRole).then((suggs) => {
-      if (isMounted) {
-        setPromptSuggestions(suggs);
-      }
-    });
-    // Fetch active connector name
-    connectorService.getConnectors().then((conns) => {
-      if (isMounted && conns && conns.length > 0) {
-        const active = conns.find((c) => c.is_active) || conns[0];
-        setActiveDatabaseName(`${active.name} (${active.db_type.toUpperCase()})`);
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [userRole]);
-
-  // Full Threads state
-  const [threads, setThreads] = useState<FullThread[]>([]);
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
-
-  useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [threads, isGenerating, activeThreadId, pendingPrompt]);
-
-  const activeThread = threads.find((t) => t.id === activeThreadId);
-
-  const sidebarThreads: ChatThread[] = threads.map((t) => ({
-    id: t.id,
-    title: t.title,
-    timestamp: t.timestamp,
-  }));
-
-  const handleSelectThread = (id: string) => {
-    setActiveThreadId(id);
-  };
-
-  const handleNewThread = () => {
-    setActiveThreadId(null);
-    setPendingPrompt(null);
-  };
-
-  const handleDeleteThread = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setThreads((prev) => prev.filter((t) => t.id !== id));
-    if (activeThreadId === id) {
-      setActiveThreadId(null);
-    }
-  };
-
-  const handleSendPrompt = async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed || isGenerating) return;
-
-    const currentThreadId = activeThreadId || `thread-${Date.now()}`;
-    if (!activeThreadId) {
-      setActiveThreadId(currentThreadId);
-    }
-
-    setPendingPrompt(trimmed);
-    setIsGenerating(true);
-    setPromptInput('');
-
-    try {
-      const newResult = await queryService.sendQuery(trimmed, userRole, settings);
-
-      const vStatus = newResult.traceability?.validation_status;
-      if (vStatus && vStatus !== 'APROBADO') {
-        if (vStatus.includes('RECHAZADO')) {
-          notify('warning', `Consulta bloqueada por AST Guardrail (${vStatus}) según perfil ${userRole}.`);
-        } else if (vStatus.includes('ERROR')) {
-          notify('error', `Error al procesar consulta SQL (${vStatus}).`);
-        }
-      }
-
-      setThreads((prevThreads) => {
-        const existing = prevThreads.find((t) => t.id === currentThreadId);
-        if (existing) {
-          return prevThreads.map((t) =>
-            t.id === currentThreadId ? { ...t, results: [...t.results, newResult] } : t
-          );
-        } else {
-          const newThread: FullThread = {
-            id: currentThreadId,
-            title: trimmed,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            results: [newResult],
-          };
-          return [newThread, ...prevThreads];
-        }
-      });
-    } catch {
-      // Handled in queryService fallback
-    } finally {
-      setPendingPrompt(null);
-      setIsGenerating(false);
-    }
-  };
+  const {
+    user,
+    userRole,
+    promptInput,
+    setPromptInput,
+    isGenerating,
+    activeTraceability,
+    setActiveTraceability,
+    isMobileHistoryOpen,
+    setIsMobileHistoryOpen,
+    activeDatabaseName,
+    activeConnectionId,
+    connectors,
+    promptSuggestions,
+    activeThread,
+    sidebarThreads,
+    activeThreadId,
+    pendingPrompt,
+    chatBottomRef,
+    handleSelectThread,
+    handleNewThread,
+    handleDeleteThread,
+    handleSendPrompt,
+    handleSelectConnection,
+  } = useChatEngine();
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] bg-dark-base overflow-hidden">
-      {/* Left Sidebar: Threads History */}
+    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-[#0A0D14]">
+      {/* Sidebar Desktop & Mobile */}
       <SidebarChatHistory
         threads={sidebarThreads}
         activeId={activeThreadId}
@@ -147,104 +48,146 @@ export const ChatDashboardPage: React.FC = () => {
         onDeleteThread={handleDeleteThread}
       />
 
-      {/* Main Conversation & Dashboard Area */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-        {/* Mobile Subheader Bar with History Toggle */}
-        <div className="md:hidden px-4 py-2.5 bg-dark-surface/90 border-b border-dark-border flex items-center justify-between z-10 shrink-0">
-          <button
-            type="button"
-            onClick={() => setIsMobileHistoryOpen(true)}
-            className="flex items-center space-x-1.5 text-xs text-brand-400 bg-brand-500/10 border border-brand-500/20 px-3 py-1.5 rounded-xl font-medium transition-colors"
-          >
-            <History className="w-3.5 h-3.5" />
-            <span>Historial ({threads.length})</span>
-          </button>
+      {/* Main Container */}
+      <div className="flex-1 flex flex-col min-w-0 h-full relative bg-gradient-to-b from-[#0B0F19] via-[#0A0D14] to-[#07090E]">
+        {/* Top Context Subheader */}
+        <div className="h-12 border-b border-[#1E293B]/60 bg-[#0F172A]/40 backdrop-blur-md px-4 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsMobileHistoryOpen(true)}
+              className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              title="Ver Historial"
+            >
+              <History size={18} />
+            </button>
 
-          <div className="flex items-center space-x-1.5 text-[11px] text-gray-400 truncate max-w-[200px]">
-            <Database className="w-3 h-3 text-purple-400 shrink-0" />
-            <span className="truncate font-mono">{activeDatabaseName.split(' ')[0]}</span>
+            <div className="flex items-center gap-2 text-xs font-medium">
+              <Database size={14} className="text-cyan-400 shrink-0" />
+              {connectors.length > 1 ? (
+                <div className="flex items-center gap-1.5">
+                  <label htmlFor="chat-active-db-select" className="sr-only">Seleccionar Fuente de Datos</label>
+                  <select
+                    id="chat-active-db-select"
+                    aria-label="Seleccionar Fuente de Datos Activa"
+                    value={activeConnectionId || ''}
+                    onChange={(e) => handleSelectConnection(Number(e.target.value))}
+                    className="bg-slate-900/90 border border-slate-700/80 text-slate-200 text-xs rounded-lg px-2.5 py-1 focus:outline-none focus:border-cyan-500/60 cursor-pointer font-medium hover:border-slate-600 transition-colors"
+                  >
+                    {connectors.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.db_type.toUpperCase()})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <span className="text-slate-300 font-semibold truncate max-w-[200px] sm:max-w-none">
+                  {activeDatabaseName}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
+              Perfil: {userRole}
+            </span>
           </div>
         </div>
 
-        {/* Scrollable Conversation Thread */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-6 sm:space-y-8">
-          {(activeThread && activeThread.results.length > 0) || pendingPrompt ? (
-            <div className="max-w-5xl mx-auto space-y-6 sm:space-y-10 animate-fadeIn">
-              {activeThread?.results.map((result, resIdx) => (
+        {/* Scrollable Conversation Stream */}
+        <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6 scrollbar-thin scrollbar-thumb-slate-800">
+          {(!activeThread || activeThread.results.length === 0) && !pendingPrompt ? (
+            <ChatEmptyState
+              promptSuggestions={promptSuggestions}
+              onSelectSuggestion={(sugg) => {
+                setPromptInput(sugg);
+                handleSendPrompt(sugg);
+              }}
+            />
+          ) : (
+            <div className="max-w-4xl mx-auto space-y-8">
+              {activeThread?.results.map((res, index) => (
                 <ChatMessageItem
-                  key={result.id || resIdx}
-                  result={result}
+                  key={res.id || index}
+                  result={res}
                   user={user}
                   userRole={userRole}
-                  onOpenTraceability={(traceability) => setActiveTraceability(traceability)}
+                  onOpenTraceability={(trace) => setActiveTraceability(trace)}
                 />
               ))}
 
-              {/* Optimistic Pending Message while LLM is generating */}
+              {/* Pending Query: Optimistic User Message Bubble + AI Thinking Bubble */}
               {pendingPrompt && (
                 <div className="space-y-4 sm:space-y-6 pt-4 border-t border-dark-border/40 first:border-0 first:pt-0 animate-fadeIn">
+                  {/* User Question Bubble */}
                   <div className="flex items-start space-x-2 sm:space-x-3 justify-end">
-                    <div className="bg-brand-600/20 border border-brand-500/30 rounded-2xl rounded-tr-sm p-3.5 sm:p-4 max-w-[85%] sm:max-w-2xl">
+                    <div className="bg-brand-600/20 border border-brand-500/30 rounded-2xl rounded-tr-sm p-3.5 sm:p-4 max-w-[85%] sm:max-w-2xl shadow-md">
                       <div className="flex items-center space-x-1.5 text-[10px] text-brand-400 font-semibold mb-1">
                         <UserIcon className="w-3 h-3" />
                         <span>
-                          {user?.username} ({userRole})
+                          {user?.username || 'Usuario'} ({userRole})
                         </span>
                       </div>
-                      <p className="text-xs sm:text-sm text-white font-medium break-words">
-                        {pendingPrompt}
-                      </p>
+                      <p className="text-xs sm:text-sm text-white font-medium break-words">{pendingPrompt}</p>
                     </div>
                     <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-brand-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-brand-600/30">
                       <UserIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </div>
                   </div>
 
-                  <div className="flex items-start space-x-2 sm:space-x-3 animate-fadeIn">
-                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-brand-500/20 animate-pulse">
-                      <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  {/* AI Thinking Bubble */}
+                  <div className="flex items-start space-x-2 sm:space-x-3 justify-start">
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-cyan-600/20">
+                      <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-pulse" />
                     </div>
-
-                    <div className="bg-dark-surface/90 border border-dark-border/80 rounded-2xl rounded-tl-sm p-4 space-y-2 max-w-md shadow-xl backdrop-blur-sm">
-                      <div className="flex items-center space-x-2 text-xs text-brand-400 font-medium">
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
+                    <div className="bg-slate-900/90 border border-slate-700/60 rounded-2xl rounded-tl-sm p-4 max-w-[85%] sm:max-w-2xl space-y-2.5 shadow-xl">
+                      <div className="flex items-center space-x-2 text-[10px] text-cyan-400 font-semibold">
+                        <Bot className="w-3 h-3" />
+                        <span>DATIA IA</span>
+                        <span className="text-slate-500">•</span>
+                        <span className="text-slate-400 font-normal flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+                          Traduciendo a SQL con IA Local...
                         </span>
-                        <span>Procesando consulta con IA Local...</span>
                       </div>
-                      <p className="text-[11px] text-gray-400 leading-relaxed">
-                        Traduciendo a SQL, validando permisos RBAC y consultando base de datos activa.
-                      </p>
+                      <div className="flex items-center space-x-2 text-xs text-slate-300">
+                        <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-bounce" />
+                        <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-bounce [animation-delay:0.2s]" />
+                        <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-bounce [animation-delay:0.4s]" />
+                        <span className="text-slate-400 text-xs pl-1">
+                          Generando consulta SQL y preparando visualizaciones...
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
-
-              <div ref={chatBottomRef} />
             </div>
-          ) : (
-            <ChatEmptyState
-              promptSuggestions={promptSuggestions}
-              onSelectSuggestion={(sug) => handleSendPrompt(sug)}
-            />
           )}
+
+          <div ref={chatBottomRef} />
         </div>
 
-        {/* Input Prompt Box at Bottom */}
-        <ChatPromptInput
-          promptInput={promptInput}
-          setPromptInput={setPromptInput}
-          isGenerating={isGenerating}
-          userRole={userRole}
-          onSubmit={() => handleSendPrompt(promptInput)}
-        />
+        {/* Floating Input Controls */}
+        <div className="p-4 md:p-6 bg-gradient-to-t from-[#07090E] via-[#0A0D14] to-transparent shrink-0">
+          <div className="max-w-4xl mx-auto">
+            <ChatPromptInput
+              promptInput={promptInput}
+              setPromptInput={setPromptInput}
+              isGenerating={isGenerating}
+              userRole={userRole}
+              onSubmit={() => handleSendPrompt(promptInput)}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* SQL & Governance Traceability Modal */}
+      {/* Traceability Modal */}
       <TraceabilityModal
-        isOpen={Boolean(activeTraceability)}
         traceability={activeTraceability}
+        isOpen={Boolean(activeTraceability)}
         onClose={() => setActiveTraceability(null)}
       />
     </div>

@@ -1,11 +1,10 @@
-from app.models.user import User
-from app.models.role import Role, Domain
-from app.models.permission import RoleDomainLink, RoleTablePermission, RoleColumnPermission
-from app.models.connection import CorporateConnection
-from app.models.catalog import SemanticCatalog
-from app.models.audit_log import AuditLog
-from app.models.session import UserSession
-from app.models.learning import QueryLearningMemory
+from app.modules.auth.models import User, Role, Domain, UserSession
+from app.modules.admin_catalog.models import (
+    CorporateConnection, SemanticCatalog, ColumnPermissionType,
+    RoleDomainLink, RoleTablePermission, RoleColumnPermission
+)
+from app.modules.telemetry_audit.models import AuditLog
+from app.modules.chat_engine.models import QueryLearningMemory
 
 __all__ = [
     "User",
