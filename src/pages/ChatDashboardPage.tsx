@@ -31,8 +31,6 @@ interface FullThread {
   results: QueryResult[];
 }
 
-// Clave de respaldo para guardar conversaciones sin dependencia de usuario
-const BACKUP_CHAT_KEY = 'datia_chat_history:v1:backup:all_conversations';
 const SUGGESTIONS_PREFERENCE_KEY = 'datia_suggestions_enabled:v1';
 
 const getChatHistoryKey = (user: { id?: number | string | null; username?: string | null; role_name?: string | null } | null): string => {
@@ -53,17 +51,6 @@ const loadUserThreads = (user: { id?: number | string | null; username?: string 
     console.error('Error cargando threads de clave específica:', err);
   }
 
-  // Fallback: intentar cargar desde respaldo
-  try {
-    const backup = localStorage.getItem(BACKUP_CHAT_KEY);
-    if (backup) {
-      const parsed = JSON.parse(backup);
-      return Array.isArray(parsed) ? parsed : [];
-    }
-  } catch (err) {
-    console.error('Error cargando threads de respaldo:', err);
-  }
-
   return [];
 };
 
@@ -76,9 +63,6 @@ const saveUserThreads = (user: { id?: number | string | null; username?: string 
       console.log(`✅ Guardado en clave específica: ${key}`);
     }
 
-    // Guardar también en respaldo global
-    localStorage.setItem(BACKUP_CHAT_KEY, JSON.stringify(threads));
-    console.log(`✅ Guardado en respaldo global: ${BACKUP_CHAT_KEY}`);
   } catch (err) {
     console.error('❌ Error guardando threads:', err);
   }
@@ -188,7 +172,6 @@ export const ChatDashboardPage: React.FC = () => {
 
     const loadThreads = () => {
       try {
-        // Primero intenta cargar con usuario específico, sino desde respaldo
         const threadsData = loadUserThreads(user);
         setThreads(threadsData);
         console.log(`✅ ${threadsData.length} conversaciones cargadas (Usuario: ${user?.username || 'anónimo'})`);
@@ -203,8 +186,7 @@ export const ChatDashboardPage: React.FC = () => {
     // Escuchar cambios de localStorage desde otras pestañas/ventanas
     const handleStorageChange = (event: StorageEvent) => {
       if (
-        event.key === getChatHistoryKey(user) ||
-        event.key === BACKUP_CHAT_KEY
+        event.key === getChatHistoryKey(user)
       ) {
         console.log('🔄 Cambio detectado en localStorage (otra pestaña), recargando...');
         loadThreads();
