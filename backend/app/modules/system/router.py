@@ -75,7 +75,7 @@ async def get_system_health(
         meta_msg = f"Error en base de datos de metadatos: {str(e)}"
 
     meta_comp = ComponentHealth(
-        name="Metadata Store (Datia DB)",
+        name="Metadata Store (Dat.ia DB)",
         type="metadata_db",
         status=SYSTEM_STATUS_OPERATIONAL if meta_ok else SYSTEM_STATUS_DEGRADED,
         latency_ms=meta_latency,

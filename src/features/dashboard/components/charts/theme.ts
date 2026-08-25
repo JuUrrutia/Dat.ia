@@ -47,7 +47,7 @@ export const THEME_COLORS: Record<
     gradient: ['#10B981', '#059669', '#047857', '#34D399', '#6EE7B7', '#064E3B'],
   },
   indigo: {
-    name: 'Púrpura Datia IA',
+    name: 'Púrpura Dat.ia IA',
     primary: '#8B5CF6',
     secondary: '#A78BFA',
     glow: 'rgba(139, 92, 246, 0.35)',

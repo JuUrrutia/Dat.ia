@@ -29,7 +29,7 @@ export const ChatPromptInput: React.FC<ChatPromptInputProps> = ({
           type="text"
           value={promptInput}
           onChange={(e) => setPromptInput(e.target.value)}
-          placeholder={`Pregunta a Datia sobre los datos corporativos (${userRole})...`}
+          placeholder={`Pregunta a Dat.ia sobre los datos corporativos (${userRole})...`}
           disabled={isGenerating}
           aria-label="Pregunta analítica"
           className="w-full bg-dark-base border border-dark-border rounded-2xl pl-4 sm:pl-5 pr-12 sm:pr-14 py-3 sm:py-3.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors shadow-inner"

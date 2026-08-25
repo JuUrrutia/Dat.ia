@@ -91,7 +91,7 @@ export const UserPasswordResetModal: React.FC<UserPasswordResetModalProps> = ({
             <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 flex items-start space-x-2">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>
-                Como Datia es un sistema 100% local y offline, deberás comunicar manualmente la clave temporal al usuario.
+                Como Dat.ia es un sistema 100% local y offline, deberás comunicar manualmente la clave temporal al usuario.
               </span>
             </div>
 

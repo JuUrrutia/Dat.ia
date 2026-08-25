@@ -21,7 +21,7 @@ $projectPath = "d:\Duoc\8vo Semestre 2025\Capston\Datia"
 cd $projectPath
 
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "    GENERANDO DATIA .EXE" -ForegroundColor Cyan
+Write-Host "    GENERANDO Dat.ia .EXE" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
 

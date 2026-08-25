@@ -2,7 +2,7 @@
 REM Script para compilar Datia a .exe en Windows
 
 echo ============================================
-echo    COMPILANDO DATIA A .EXE
+echo    COMPILANDO Dat.ia A .EXE
 echo ============================================
 echo.
 
