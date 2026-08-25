@@ -253,13 +253,12 @@ class KPICalculator:
 
         try:
             system_prompt = PromptManager.get_semantic_data_synthesis_system_prompt()
+            compact_rows = json.dumps(rows[:10], ensure_ascii=False)
             prompt_data = f"""Pregunta del usuario ({user_role}): "{question}"
 Consulta SQL ejecutada: {secured_sql}
-Contexto del Esquema y Catálogo:
-{schema_context}
 
-Muestra de datos devueltos ({len(rows)} filas):
-{json.dumps(rows[:25], ensure_ascii=False, indent=2)}
+Muestra de datos devueltos ({len(rows)} filas, mostrando hasta 10):
+{compact_rows}
 
 Genera la síntesis semántica, las 3 tarjetas KPI contextuales y el informe ejecutivo en JSON."""
 
@@ -335,11 +334,11 @@ Genera la síntesis semántica, las 3 tarjetas KPI contextuales y el informe eje
 
         try:
             system_prompt = PromptManager.get_executive_report_system_prompt()
-
+            compact_rows = json.dumps(rows[:10], ensure_ascii=False)
             prompt_data = f"""Pregunta realizada por el usuario ({user_role}): "{question}"
 Consulta SQL ejecutada sobre la BD activa: {secured_sql}
-Muestra de registros devueltos por la BD ({len(rows)} filas):
-{json.dumps(rows[:25], ensure_ascii=False, indent=2)}
+Muestra de registros devueltos ({len(rows)} filas, mostrando hasta 10):
+{compact_rows}
 
 Analiza la información devuelta y genera el informe ejecutivo en formato JSON."""
 

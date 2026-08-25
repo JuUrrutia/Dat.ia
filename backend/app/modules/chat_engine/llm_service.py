@@ -80,7 +80,8 @@ class LLMService:
                 {"role": "user", "content": prompt}
             ],
             "temperature": temperature,
-            "max_tokens": max_tokens
+            "max_tokens": max_tokens,
+            "options": {"num_ctx": 16384}
         }
 
         timeout_cfg = cls._get_timeout_config()
@@ -129,7 +130,7 @@ class LLMService:
                 "prompt": prompt,
                 "system": system_prompt,
                 "stream": False,
-                "options": {"temperature": temperature, "num_predict": max_tokens}
+                "options": {"temperature": temperature, "num_predict": max_tokens, "num_ctx": 16384}
             }
             async with httpx.AsyncClient(timeout=timeout_cfg) as client:
                 res = await client.post(url_ollama, json=payload_ollama)
