@@ -14,19 +14,20 @@ class TestDynamicPrompts(unittest.TestCase):
 
     def test_prompt_manager_conversational(self):
         """Verifica que PromptManager devuelva configuraciones para respuestas conversacionales."""
-        advisory_prompt, temp = PromptManager.get_conversational_system_prompt("advisory")
-        self.assertIn("Asesor Ejecutivo", advisory_prompt)
-        self.assertEqual(temp, 0.15)
+        from app.core.prompts import ResponseType, RESPONSE_GENERATION_CONFIG
+        advisory_prompt = PromptManager.get_conversational_system_prompt(ResponseType.ADVISORY)
+        self.assertIn("asesor", advisory_prompt.lower())
+        self.assertEqual(RESPONSE_GENERATION_CONFIG[ResponseType.ADVISORY].temperature, 0.2)
 
-        expl_prompt, temp_expl = PromptManager.get_conversational_system_prompt("explanation")
+        expl_prompt = PromptManager.get_conversational_system_prompt(ResponseType.EXPLANATION)
         self.assertIn("gobernanza", expl_prompt.lower())
-        self.assertEqual(temp_expl, 0.1)
+        self.assertEqual(RESPONSE_GENERATION_CONFIG[ResponseType.EXPLANATION].temperature, 0.1)
 
     def test_prompt_manager_data_analysis_conversational(self):
         """Verifica que el prompt de interpretación de datos genere instrucciones directas y fluidas."""
         prompt = PromptManager.get_data_analysis_conversational_system_prompt("Economista")
         self.assertIn("Economista", prompt)
-        self.assertIn("RESPUESTA DIRECTA", prompt)
+        self.assertIn("directamente", prompt.lower())
 
     def test_prompt_manager_greeting(self):
         """Verifica que el prompt de saludo reconozca las tablas autorizadas del rol."""

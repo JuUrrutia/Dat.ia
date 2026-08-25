@@ -3,6 +3,7 @@ from typing import Generator, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+import app.models  # Ensures all SQLAlchemy models (RoleDomainLink, RoleTablePermission, etc.) are registered
 from app.core.database import SessionLocal
 from app.core.security import decode_access_token, decode_token_payload
 from app.modules.auth.models import User, UserSession
@@ -57,8 +58,17 @@ def get_current_user(
                     detail="La sesión ha sido revocada o cerrada. Inicia sesión nuevamente.",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
-            now = datetime.datetime.utcnow()
-            if (now - session.last_seen_at).total_seconds() > (SESSION_LAST_SEEN_UPDATE_INTERVAL_MINUTES * 60):
+            now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+            last_seen = session.last_seen_at
+            if isinstance(last_seen, str):
+                try:
+                    last_seen = datetime.datetime.fromisoformat(last_seen).replace(tzinfo=None)
+                except Exception:
+                    last_seen = now
+            elif hasattr(last_seen, 'tzinfo') and last_seen.tzinfo is not None:
+                last_seen = last_seen.replace(tzinfo=None)
+
+            if last_seen and (now - last_seen).total_seconds() > (SESSION_LAST_SEEN_UPDATE_INTERVAL_MINUTES * 60):
                 session.last_seen_at = now
                 try:
                     db.commit()
