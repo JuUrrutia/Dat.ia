@@ -150,12 +150,12 @@ class ConnectorDomainService:
 
         all_roles = db.query(Role).all()
         for role in all_roles:
-            is_admin_role = (
-                role.name in ADMIN_ROLES
-                or "admin" in role.name.lower()
-                or role.name == "Administrador"
+            # Exclude unassigned/restricted base user roles
+            is_unassigned = (
+                role.name in ["Usuario", "Usuario Consultor"]
+                or role.name.lower() == "usuario"
             )
-            if not is_admin_role:
+            if is_unassigned:
                 continue
             for tbl in detected_tables:
                 existing_perm = db.query(RoleTablePermission).filter(
