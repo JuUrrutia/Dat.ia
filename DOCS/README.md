@@ -47,6 +47,10 @@ Servir como la única fuente de verdad (Single Source of Truth) para el diseño,
    *Documento de Checkpoint formal: Matriz de roles empresariales, auto-muestreo y descifrado de tablas criptográficas (SAP/ERP), ciclo de auto-reparación SQL sin intervención humana, opciones descartadas e inventario completo de archivos.*  
    `Estado: ✅ Completado y Aprobado`
 
+10. **[10 - Refactorizaciones Arquitectónicas y Descomposición Modular](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/DOCS/10_REFACTORIZACIONES_ARQUITECTONICAS_Y_DESCOMPOSICION_MODULAR.md)**  
+    *Documentación detallada de las 4 Fases de Refactorización: migración del Backend a Domain-Driven Design (DDD), eliminación de endpoints legados, descomposición de God Objects del Frontend, aislamiento de Contextos (Auth vs Settings) y modularización del importador tabular.*  
+    `Estado: ✅ Completado y Aprobado`
+
 ---
 
 ## 🔒 Reglas Principales del Proyecto

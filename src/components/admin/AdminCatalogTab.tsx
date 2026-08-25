@@ -1,14 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Sparkles, Check, Plus, BookOpen, Database } from 'lucide-react';
-import {
-  CatalogItem,
-  DataDictionaryResponse,
-  catalogService,
-} from '../../services/catalog_service';
+import React from 'react';
+import { Sparkles, Check, Plus, BookOpen, Database, RefreshCw, HardDrive, AlertCircle } from 'lucide-react';
 import { CatalogEditModal } from './CatalogEditModal';
 import { CatalogAddModal } from './CatalogAddModal';
 import { SemanticCatalogSection } from './catalog/SemanticCatalogSection';
 import { DataDictionarySection } from './catalog/DataDictionarySection';
+import { useAdminCatalog } from '../../features/admin/hooks/useAdminCatalog';
 
 interface AdminCatalogTabProps {
   catalog?: any[];
@@ -18,132 +14,33 @@ interface AdminCatalogTabProps {
 }
 
 export const AdminCatalogTab: React.FC<AdminCatalogTabProps> = () => {
-  const [subTab, setSubTab] = useState<'catalog' | 'dictionary'>('catalog');
-
-  // Semantic Catalog State
-  const [items, setItems] = useState<CatalogItem[]>([]);
-  const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
-  const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-
-  // AI Auto-enrichment State
-  const [isEnriching, setIsEnriching] = useState(false);
-  const [enrichSuccessMsg, setEnrichSuccessMsg] = useState<string | null>(null);
-
-  // Technical Data Dictionary State
-  const [dataDictionary, setDataDictionary] = useState<DataDictionaryResponse | null>(null);
-  const [isLoadingDictionary, setIsLoadingDictionary] = useState(false);
-  const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>({});
-
-  const fetchCatalogData = useCallback(async () => {
-    setIsLoadingCatalog(true);
-    try {
-      const data = await catalogService.getCatalog();
-      setItems(data);
-    } catch {
-      // Fallback
-    } finally {
-      setIsLoadingCatalog(false);
-    }
-  }, []);
-
-  const fetchDictionaryData = useCallback(async () => {
-    setIsLoadingDictionary(true);
-    try {
-      const data = await catalogService.getDataDictionary();
-      setDataDictionary(data);
-      // Auto-expand first 3 tables
-      const initialExpanded: Record<string, boolean> = {};
-      data.tables.forEach((t, idx) => {
-        initialExpanded[t.table_name] = idx < 3;
-      });
-      setExpandedTables(initialExpanded);
-    } catch {
-      // Fallback
-    } finally {
-      setIsLoadingDictionary(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchCatalogData();
-    fetchDictionaryData();
-  }, [fetchCatalogData, fetchDictionaryData]);
-
-  const handleRunAiAutoEnrich = async () => {
-    setIsEnriching(true);
-    setEnrichSuccessMsg(null);
-    try {
-      const res = await catalogService.autoEnrich();
-      setEnrichSuccessMsg(res.message);
-      await fetchCatalogData();
-      await fetchDictionaryData();
-      setTimeout(() => setEnrichSuccessMsg(null), 4500);
-    } catch (err: any) {
-      setEnrichSuccessMsg(err.message || 'Error al auto-enriquecer el catálogo.');
-    } finally {
-      setIsEnriching(false);
-    }
-  };
-
-  const handleSaveEdit = async (desc: string, formula: string) => {
-    if (!editingItem) return;
-    try {
-      await catalogService.updateCatalogItem(editingItem.id, {
-        description: desc,
-        business_formula: formula,
-      });
-      await fetchCatalogData();
-      await fetchDictionaryData();
-    } catch {
-      setItems((prev) =>
-        prev.map((i) => (i.id === editingItem.id ? { ...i, description: desc, business_formula: formula } : i))
-      );
-    }
-    setEditingItem(null);
-  };
-
-  const handleAddItem = async (newItem: {
-    table: string;
-    column: string;
-    desc: string;
-    formula: string;
-    is_ai: boolean;
-  }) => {
-    try {
-      await catalogService.createCatalogItem({
-        table_name: newItem.table,
-        column_name: newItem.column,
-        description: newItem.desc,
-        business_formula: newItem.formula,
-        is_ai_generated: newItem.is_ai,
-      });
-      await fetchCatalogData();
-      await fetchDictionaryData();
-    } catch {
-      // Fallback
-    }
-    setIsAddModalOpen(false);
-  };
-
-  const handleDeleteItem = async (id: number, table: string, column?: string) => {
-    const label = column ? `${table}.${column}` : table;
-    if (!window.confirm(`¿Estás seguro de eliminar la regla del catálogo para '${label}'?`)) return;
-    try {
-      await catalogService.deleteCatalogItem(id);
-      setItems((prev) => prev.filter((i) => i.id !== id));
-      await fetchDictionaryData();
-    } catch {
-      // Fallback
-    }
-  };
-
-  const toggleTableExpansion = (tableName: string) => {
-    setExpandedTables((prev) => ({
-      ...prev,
-      [tableName]: !prev[tableName],
-    }));
-  };
+  const {
+    subTab,
+    setSubTab,
+    connectors,
+    selectedConnectionId,
+    selectedConnector,
+    isLoadingConnectors,
+    handleSelectConnection,
+    items,
+    isLoadingCatalog,
+    editingItem,
+    setEditingItem,
+    isAddModalOpen,
+    setIsAddModalOpen,
+    isEnriching,
+    enrichSuccessMsg,
+    enrichErrorMsg,
+    dataDictionary,
+    isLoadingDictionary,
+    expandedTables,
+    handleRunAiAutoEnrich,
+    handleSaveEdit,
+    handleAddItem,
+    handleDeleteItem,
+    toggleTableExpansion,
+    refreshAll,
+  } = useAdminCatalog();
 
   return (
     <div className="glass-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-white/10 space-y-6">
@@ -212,10 +109,72 @@ export const AdminCatalogTab: React.FC<AdminCatalogTabProps> = () => {
         </div>
       </div>
 
+      {/* Database Connection Selector Toolbar */}
+      {connectors.length > 0 && (
+        <div className="bg-dark-base/80 p-3 rounded-2xl border border-dark-border flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center space-x-2 text-xs text-gray-300">
+            <Database className="w-4 h-4 text-purple-400 shrink-0" />
+            <span className="font-semibold text-white whitespace-nowrap">Fuente de Datos:</span>
+            <span className="text-gray-400 text-[11px] hidden sm:inline">
+              Selecciona la base de datos a inspeccionar
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {connectors.map((c) => {
+              const isSelected = c.id === selectedConnectionId;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => handleSelectConnection(c.id)}
+                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs transition-all ${
+                    isSelected
+                      ? 'bg-purple-600/20 text-purple-300 border border-purple-500/50 shadow-sm shadow-purple-500/20 font-bold'
+                      : 'bg-dark-card/60 text-gray-400 hover:text-white hover:bg-dark-card border border-dark-border font-medium'
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      c.is_active ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-gray-500'
+                    }`}
+                  />
+                  <span className="truncate max-w-[150px] sm:max-w-[200px]">{c.name}</span>
+                  <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 bg-dark-base rounded text-gray-400">
+                    {c.db_type}
+                  </span>
+                  {c.is_uploaded && (
+                    <span title="Archivo importado">
+                      <HardDrive className="w-3 h-3 text-cyan-400 shrink-0" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={refreshAll}
+              className="p-1.5 text-gray-400 hover:text-white bg-dark-card/40 hover:bg-dark-card rounded-xl border border-dark-border transition-colors"
+              title="Refrescar fuentes y esquemas"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingConnectors ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {enrichSuccessMsg && (
         <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center space-x-2 animate-fadeIn">
           <Check className="w-4 h-4 shrink-0" />
           <span>{enrichSuccessMsg}</span>
+        </div>
+      )}
+
+      {enrichErrorMsg && (
+        <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center space-x-2 animate-fadeIn">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{enrichErrorMsg}</span>
         </div>
       )}
 
@@ -252,6 +211,8 @@ export const AdminCatalogTab: React.FC<AdminCatalogTabProps> = () => {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onAdd={handleAddItem as any}
+        connectionName={selectedConnector?.name}
+        connectionId={selectedConnectionId ?? undefined}
       />
     </div>
   );

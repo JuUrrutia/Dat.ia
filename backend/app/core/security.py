@@ -3,15 +3,12 @@ import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Union, Optional
+import bcrypt
 from cryptography.fernet import Fernet
 from jose import jwt
-from passlib.context import CryptContext
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
-
-# Password hashing context (Argon2 / bcrypt)
-pwd_context = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
 
 def _get_fernet_key() -> bytes:
     """Generates a valid 32-byte url-safe base64 Fernet key derived from SECRET_KEY."""
@@ -23,16 +20,30 @@ def _get_fernet_key() -> bytes:
 fernet = Fernet(_get_fernet_key())
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verifies plain password against hashed password."""
+    """Verifies plain password against hashed password (bcrypt / Argon2)."""
+    if not plain_password or not hashed_password:
+        return False
     try:
-        return pwd_context.verify(plain_password, hashed_password)
+        if hashed_password.startswith("$argon2"):
+            try:
+                import argon2
+                ph = argon2.PasswordHasher()
+                return ph.verify(hashed_password, plain_password)
+            except Exception:
+                pass
+
+        pwd_bytes = plain_password.encode('utf-8')
+        hash_bytes = hashed_password.encode('utf-8')
+        return bcrypt.checkpw(pwd_bytes, hash_bytes)
     except Exception as e:
         logger.warning(f"Password verification error: {type(e).__name__}")
         return False
 
 def get_password_hash(password: str) -> str:
-    """Hashes a raw password securely using Argon2 / bcrypt."""
-    return pwd_context.hash(password)
+    """Hashes a raw password securely using direct bcrypt."""
+    pwd_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
 
 def encrypt_credential(plain_text: str) -> str:
     """Encrypts sensitive database connection passwords or tokens using AES-256 (Fernet)."""

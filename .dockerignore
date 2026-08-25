@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-electron
+release
+.git
+.gitignore
+.vscode
+.idea
+backend
+DOCS
+*.log

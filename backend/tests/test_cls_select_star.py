@@ -36,14 +36,12 @@ class TestCLSSelectStar(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertTrue(is_valid)
-        # Verify rewritten SQL excludes rut and email
         self.assertNotIn("rut", secured_sql.lower())
         self.assertNotIn("email", secured_sql.lower())
         self.assertIn("nombre", secured_sql.lower())
         self.assertIn("id", secured_sql.lower())
         self.assertIn("telefono", secured_sql.lower())
 
-        # Verify metadata extracted columns
         self.assertNotIn("rut", meta["columns_used"])
         self.assertNotIn("email", meta["columns_used"])
         self.assertIn("nombre", meta["columns_used"])
@@ -112,9 +110,9 @@ class TestCLSSelectStar(unittest.IsolatedAsyncioTestCase):
         self.assertIn("nombre", secured_sql.lower())
         self.assertEqual(len(meta["columns_used"]), 5)
 
-    @patch("app.services.llm_service.LLMService.generate_completion")
-    @patch("app.services.query_engine.DynamicSchemaPruningService.resolve_db_path")
-    @patch("app.services.query_engine.DynamicSchemaPruningService.get_physical_table_columns")
+    @patch("app.modules.chat_engine.llm_service.LLMService.generate_completion")
+    @patch("app.modules.chat_engine.dynamic_schema.DynamicSchemaPruningService.resolve_db_path")
+    @patch("app.modules.chat_engine.dynamic_schema.DynamicSchemaPruningService.get_physical_table_columns")
     async def test_self_healing_fallback_respects_cls(
         self, mock_get_cols, mock_resolve_db, mock_llm
     ):
@@ -129,7 +127,6 @@ class TestCLSSelectStar(unittest.IsolatedAsyncioTestCase):
             {"name": "nombre", "type": "TEXT"},
             {"name": "salario_bruto", "type": "REAL"},
         ]
-        # LLM returns invalid SQL to trigger fallback
         mock_llm.return_value = "```sql\nSELECT non_existent FROM dim_empleados;\n```"
 
         with patch("sqlite3.connect") as mock_sqlite:
@@ -138,9 +135,6 @@ class TestCLSSelectStar(unittest.IsolatedAsyncioTestCase):
             mock_sqlite.return_value = mock_conn
             mock_conn.cursor.return_value = mock_cursor
 
-            # First query fails with sqlite error to trigger self-healing
-            # Second (healing attempt) fails to trigger emergency fallback
-            # Third (fallback execution) succeeds
             mock_cursor.execute.side_effect = [
                 Exception("no such column: non_existent"),
                 Exception("no such column: non_existent"),
@@ -158,7 +152,6 @@ class TestCLSSelectStar(unittest.IsolatedAsyncioTestCase):
                         is_admin=False
                     )
 
-                    # Traceability SQL executed must be secured and not contain salario_bruto
                     executed_sql = response.traceability.sql_executed.lower()
                     self.assertNotIn("salario_bruto", executed_sql)
                     self.assertIn("dim_empleados", executed_sql)

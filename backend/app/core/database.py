@@ -53,8 +53,32 @@ def update_database_engine(server: str, port: int, user: str, password: str, db_
             pass
         engine = new_engine
     except Exception:
-        db_path = settings.SQLITE_DB_PATH
+        db_path = settings.METADATA_DB_PATH
         new_url = f"sqlite:///{db_path}"
         engine = create_engine(new_url, connect_args={"check_same_thread": False})
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     return engine
+
+def build_engine_for_connector(conn):
+    """
+    Dynamically creates an isolated SQLAlchemy engine for any registered CorporateConnection.
+    Supports PostgreSQL, MySQL, SQL Server, and SQLite.
+    """
+    from app.core.security import decrypt_credential
+    from app.modules.admin_catalog.models import DatabaseType
+
+    if conn.db_type == DatabaseType.POSTGRESQL or str(conn.db_type).lower() == "postgresql":
+        pwd = decrypt_credential(conn.encrypted_password) if conn.encrypted_password else ""
+        port = conn.port if conn.port and conn.port > 0 else 5432
+        url = f"postgresql+psycopg://{conn.username}:{pwd}@{conn.host}:{port}/{conn.database_name}"
+        return create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=10)
+
+    elif conn.db_type == DatabaseType.MYSQL or str(conn.db_type).lower() == "mysql":
+        pwd = decrypt_credential(conn.encrypted_password) if conn.encrypted_password else ""
+        port = conn.port if conn.port and conn.port > 0 else 3306
+        url = f"mysql+pymysql://{conn.username}:{pwd}@{conn.host}:{port}/{conn.database_name}"
+        return create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=10)
+
+    else:  # SQLite
+        db_path = conn.host if (conn.host and os.path.exists(conn.host)) else settings.SQLITE_DB_PATH
+        return create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
