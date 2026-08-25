@@ -1,3 +1,4 @@
+import app.models  # Ensures all SQLAlchemy models are registered
 from sqlalchemy.orm import Session
 from app.core.database import Base, engine
 from app.core.security import get_password_hash
@@ -162,12 +163,42 @@ def init_db(db: Session):
             for tbl in tbl_list:
                 existing_perm = db.query(RoleTablePermission).filter(
                     RoleTablePermission.role_id == r_obj.id,
+                    RoleTablePermission.connection_id == 1,
                     RoleTablePermission.table_name == tbl
                 ).first()
                 if not existing_perm:
                     db.add(RoleTablePermission(
                         role_id=r_obj.id,
                         connection_id=1,
+                        schema_name="main",
+                        table_name=tbl,
+                        is_allowed=True
+                    ))
+
+    # Also seed permissions for all other registered connections (e.g. uploaded datasets)
+    from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
+    other_connections = db.query(CorporateConnection).filter(CorporateConnection.id != 1).all()
+    operational_roles = db.query(Role).filter(~Role.name.in_(["Usuario", "Usuario Consultor"])).all()
+
+    for o_conn in other_connections:
+        db_path = o_conn.host if (o_conn.host and os.path.exists(o_conn.host)) else (
+            o_conn.database_name if (o_conn.database_name and os.path.exists(o_conn.database_name)) else None
+        )
+        phys_tables = DynamicSchemaPruningService.get_physical_db_tables(db_path) if db_path else set()
+        if not phys_tables:
+            cat_entries = db.query(SemanticCatalog).filter(SemanticCatalog.connection_id == o_conn.id).all()
+            phys_tables = {e.table_name for e in cat_entries if e.table_name}
+        for r_obj in operational_roles:
+            for tbl in phys_tables:
+                existing_perm = db.query(RoleTablePermission).filter(
+                    RoleTablePermission.role_id == r_obj.id,
+                    RoleTablePermission.connection_id == o_conn.id,
+                    RoleTablePermission.table_name.ilike(tbl)
+                ).first()
+                if not existing_perm:
+                    db.add(RoleTablePermission(
+                        role_id=r_obj.id,
+                        connection_id=o_conn.id,
                         schema_name="main",
                         table_name=tbl,
                         is_allowed=True

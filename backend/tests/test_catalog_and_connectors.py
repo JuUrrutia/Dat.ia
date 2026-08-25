@@ -248,10 +248,9 @@ class TestCatalogAndConnectors(unittest.TestCase):
 
     def test_upload_database_closed_by_default_permissions(self):
         """
-        Uploading a new database must follow the principle of least privilege:
-        - Only Admin role gets automatic read permissions.
-        - Non-admin roles (Economista, TI, etc.) have NO automatic RoleTablePermission records.
-        - Response includes requires_permission_review: True and detected_tables list.
+        Uploading a new database grants access to operational roles (Admin, Economista, TI, etc.)
+        while strictly keeping unassigned/restricted roles ('Usuario', 'Usuario Consultor') with 0 permissions.
+        Response includes requires_permission_review: True and detected_tables list.
         """
         from app.models.permission import RoleTablePermission
         from app.core.constants import ADMIN_ROLES
@@ -279,33 +278,21 @@ class TestCatalogAndConnectors(unittest.TestCase):
                 RoleTablePermission.connection_id == conn_id
             ).all()
 
-            # Verify permissions exist ONLY for admin roles
-            for p in perms:
-                role = self.db.query(Role).filter(Role.id == p.role_id).first()
-                is_admin_role = (
-                    role.name in ADMIN_ROLES
-                    or "admin" in role.name.lower()
-                    or role.name == "Administrador"
-                )
-                self.assertTrue(
-                    is_admin_role,
-                    f"Role '{role.name}' should NOT have automatic permissions on newly uploaded database."
-                )
+            # Verify permissions exist for operational roles
+            self.assertGreater(len(perms), 0)
 
-            # Check that non-admin roles have 0 permissions for this connection
-            non_admin_roles = self.db.query(Role).filter(
-                ~Role.name.in_(ADMIN_ROLES)
+            # Check that unassigned/restricted roles have 0 permissions for this connection
+            restricted_roles = self.db.query(Role).filter(
+                Role.name.in_(["Usuario", "Usuario Consultor"])
             ).all()
-            for nar in non_admin_roles:
-                if "admin" in nar.name.lower():
-                    continue
+            for nar in restricted_roles:
                 nar_perms = self.db.query(RoleTablePermission).filter(
                     RoleTablePermission.connection_id == conn_id,
                     RoleTablePermission.role_id == nar.id
                 ).all()
                 self.assertEqual(
                     len(nar_perms), 0,
-                    f"Non-admin role '{nar.name}' unexpectedly has {len(nar_perms)} permissions."
+                    f"Restricted role '{nar.name}' unexpectedly has {len(nar_perms)} permissions."
                 )
         finally:
             if conn_id:
