@@ -1,0 +1,85 @@
+services:
+  # ==========================================
+  # 1. DATABASE: PostgreSQL 16 (Metadata & Governance)
+  # ==========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: datia-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-democratizacion_metadatos}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-democratizacion_metadatos}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - datia-network
+
+  # ==========================================
+  # 2. BACKEND: FastAPI & Local Text-to-SQL Engine
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: datia-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - ENVIRONMENT=production
+      - SECRET_KEY=${SECRET_KEY:-democratizacion_datos_super_secret_key_local_2026_aes256_change_in_prod}
+      - POSTGRES_SERVER=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-democratizacion_metadatos}
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5-coder:7b}
+      - CORS_ORIGINS=["*"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - data_sources_data:/app/data_sources
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - datia-network
+
+  # ==========================================
+  # 3. FRONTEND: React SPA & Nginx Reverse Proxy
+  # ==========================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: datia-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "5173:80"
+    networks:
+      - datia-network
+
+volumes:
+  postgres_data:
+    driver: local
+  data_sources_data:
+    driver: local
+
+networks:
+  datia-network:
+    driver: bridge

@@ -1,17 +1,18 @@
 {
   "name": "democratizacion-de-datos",
   "version": "1.0.0",
-  "description": "Aplicación de Escritorio Standalone 100% Offline para Democratización de Datos Corporativos con IA Local",
+  "description": "Plataforma Web para Democratización de Datos Corporativos con IA Local y PostgreSQL",
   "author": "Felipe",
-  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k -p \"[{name}]\" -n \"BACKEND,FRONTEND\" -c \"cyan.bold,magenta.bold\" \"node scripts/run-backend.js\" \"vite\"",
     "dev:frontend": "vite",
     "dev:backend": "node scripts/run-backend.js",
-    "build:frontend": "vite build",
-    "build:exe": "tsc && vite build && electron-builder",
-    "build": "tsc && vite build && electron-builder",
+    "build": "tsc && vite build && node scripts/init-db.js",
     "preview": "vite preview",
+    "db:init": "node scripts/init-db.js",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
     "backend:test": "cd backend && pytest",
     "doctor": "npx react-doctor@latest"
   },
@@ -21,7 +22,8 @@
     "echarts-for-react": "^3.0.2",
     "lucide-react": "^0.469.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
@@ -30,13 +32,9 @@
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "concurrently": "^10.0.5",
-    "electron": "^33.2.1",
-    "electron-builder": "^25.1.8",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
-    "vite": "^6.0.5",
-    "vite-plugin-electron": "^0.29.0",
-    "vite-plugin-electron-renderer": "^0.14.6"
+    "vite": "^6.0.5"
   }
 }

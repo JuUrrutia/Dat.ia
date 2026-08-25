@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
-import { X, BookOpen } from 'lucide-react';
+import { X, BookOpen, Database } from 'lucide-react';
 import { CatalogItem } from './CatalogEditModal';
 
 interface CatalogAddModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (item: CatalogItem) => void;
+  connectionName?: string;
+  connectionId?: number;
 }
 
 export const CatalogAddModal: React.FC<CatalogAddModalProps> = ({
   isOpen,
   onClose,
   onAdd,
+  connectionName,
+  connectionId,
 }) => {
   const [formTable, setFormTable] = useState('');
   const [formColumn, setFormColumn] = useState('');
@@ -30,7 +34,8 @@ export const CatalogAddModal: React.FC<CatalogAddModalProps> = ({
       desc: formDesc.trim(),
       formula: formFormula.trim() || 'MANUAL_RULE',
       is_ai: false,
-    });
+      connection_id: connectionId,
+    } as any);
 
     setFormTable('');
     setFormColumn('');
@@ -44,9 +49,17 @@ export const CatalogAddModal: React.FC<CatalogAddModalProps> = ({
       <div className="glass-panel w-full max-w-md rounded-2xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[88vh] sm:max-h-[90vh]">
         {/* Header */}
         <div className="shrink-0 px-5 sm:px-6 py-4 border-b border-dark-border flex items-center justify-between bg-dark-surface/95 backdrop-blur">
-          <h4 className="text-sm font-bold text-white flex items-center gap-2">
-            <BookOpen className="w-4 h-4 text-purple-400" /> Nueva Regla Semántica
-          </h4>
+          <div className="space-y-0.5">
+            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-purple-400" /> Nueva Regla Semántica
+            </h4>
+            {connectionName && (
+              <div className="flex items-center gap-1.5 text-[11px] text-purple-300">
+                <Database className="w-3 h-3 text-purple-400" />
+                <span>Base de Datos: <strong className="text-white font-medium">{connectionName}</strong></span>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}

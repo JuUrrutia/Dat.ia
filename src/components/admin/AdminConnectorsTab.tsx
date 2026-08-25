@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Database, Plus, Edit3, Trash2, RefreshCw, CheckCircle2, RotateCcw, Filter, UploadCloud, HardDrive } from 'lucide-react';
-import { CorporateConnection, ConnectionTestResult, connectorService } from '../../services/connector_service';
+import { CorporateConnection } from '../../services/connector_service';
 import { DatabaseUploadModal } from './DatabaseUploadModal';
+import { useAdminConnectors } from '../../features/admin/hooks/useAdminConnectors';
 
 interface AdminConnectorsTabProps {
   connectors: CorporateConnection[];
@@ -13,8 +14,6 @@ interface AdminConnectorsTabProps {
   onRefreshConnectors?: () => void;
 }
 
-const fontSuccessCheck = (_conn: CorporateConnection): boolean => true;
-
 export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
   connectors,
   onOpenCreateModal,
@@ -24,38 +23,16 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
   onResetDemoConnectors,
   onRefreshConnectors,
 }) => {
-  const [filterDbType, setFilterDbType] = useState<string>('ALL');
-  const [testingId, setTestingId] = useState<number | null>(null);
-  const [testResultsMap, setTestResultsMap] = useState<Record<number, ConnectionTestResult>>({});
-  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-
-  const handleTestCardConnection = async (conn: CorporateConnection) => {
-    setTestingId(conn.id);
-    const result = await connectorService.testConnection({
-      name: conn.name,
-      db_type: conn.db_type,
-      host: conn.host,
-      port: conn.port,
-      database_name: conn.database_name,
-      username: conn.username,
-    });
-
-    let finalRes = result;
-    if (!result.success && (conn.db_type === 'sqlite' || conn.host === 'localhost')) {
-      finalRes = {
-        success: fontSuccessCheck(conn),
-        message: `Conexión verificada a ${conn.database_name} (${conn.db_type.toUpperCase()}) en modo SOLO LECTURA.`,
-        latency_ms: Math.floor(Math.random() * 8) + 2,
-      };
-    }
-
-    setTestingId(null);
-    setTestResultsMap((prev) => ({ ...prev, [conn.id]: finalRes }));
-  };
-
-  const filteredConnectors = connectors.filter(
-    (c) => filterDbType === 'ALL' || c.db_type === filterDbType
-  );
+  const {
+    filterDbType,
+    setFilterDbType,
+    testingId,
+    testResultsMap,
+    isUploadModalOpen,
+    setIsUploadModalOpen,
+    handleTestCardConnection,
+    filteredConnectors,
+  } = useAdminConnectors(connectors);
 
   return (
     <div className="glass-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-white/10 space-y-5">

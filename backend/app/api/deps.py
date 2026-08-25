@@ -1,10 +1,12 @@
+import datetime
 from typing import Generator, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
-from app.core.security import decode_access_token
-from app.models.user import User
+from app.core.security import decode_access_token, decode_token_payload
+from app.modules.auth.models import User, UserSession
+from app.core.constants import SESSION_LAST_SEEN_UPDATE_INTERVAL_MINUTES, ADMIN_ROLES
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -15,11 +17,6 @@ def get_db() -> Generator:
         yield db
     finally:
         db.close()
-
-import datetime
-from app.core.security import decode_token_payload
-from app.models.session import UserSession
-from app.core.constants import SESSION_LAST_SEEN_UPDATE_INTERVAL_MINUTES
 
 def get_current_user(
     db: Session = Depends(get_db),
@@ -60,7 +57,6 @@ def get_current_user(
                     detail="La sesión ha sido revocada o cerrada. Inicia sesión nuevamente.",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
-            # Throttled update of last_seen_at
             now = datetime.datetime.utcnow()
             if (now - session.last_seen_at).total_seconds() > (SESSION_LAST_SEEN_UPDATE_INTERVAL_MINUTES * 60):
                 session.last_seen_at = now
@@ -70,8 +66,6 @@ def get_current_user(
                     db.rollback()
 
     return user
-
-from app.core.constants import ADMIN_ROLES
 
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 

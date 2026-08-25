@@ -1,17 +1,18 @@
 from sqlalchemy.orm import Session
 from app.core.database import Base, engine
 from app.core.security import get_password_hash
-from app.models.user import User
-from app.models.role import Role, Domain
+from app.modules.auth.models import User, Role, Domain
+from app.modules.admin_catalog.models import (
+    CorporateConnection, DatabaseType, SemanticCatalog, RoleTablePermission
+)
+from app.core.constants import ROLE_ADMINISTRADOR
 
 def init_db(db: Session):
     """
-    Creates all database tables in PostgreSQL and seeds initial default roles and admin.
+    Creates all database tables in PostgreSQL/SQLite and seeds initial default roles and admin.
     """
-    # Create all tables defined in models
     Base.metadata.create_all(bind=engine)
 
-    # Safe schema evolution check for existing deployments
     try:
         from sqlalchemy import inspect, text
         inspector = inspect(engine)
@@ -39,7 +40,6 @@ def init_db(db: Session):
     except Exception:
         pass
 
-    # Seed Default Domains
     default_domains = [
         {"name": "Economía & Finanzas", "description": "Ingresos, costos, presupuestos, facturación y márgenes de negocio"},
         {"name": "Tecnología & TI", "description": "Infraestructura, servidores, consumo de recursos e incidentes técnicos"},
@@ -54,7 +54,6 @@ def init_db(db: Session):
             db.add(Domain(name=dom_data["name"], description=dom_data["description"]))
     db.commit()
 
-    # Seed Corporate Enterprise Roles (with backwards compatibility aliases)
     default_roles = [
         {"name": "Administrador de Plataforma", "description": "Acceso total a gobernanza RBAC, gestión de usuarios, conexiones BD y auditoría"},
         {"name": "Director Ejecutivo (C-Level)", "description": "Visión macro estratégica, rentabilidad global, indicadores clave de negocio y alertas de riesgo"},
@@ -64,7 +63,6 @@ def init_db(db: Session):
         {"name": "Ingeniero de Infraestructura & TI", "description": "Monitoreo de salud de conectores, consumo de servidores, rendimiento de consultas e incidentes técnicos"},
         {"name": "Oficial de Cumplimiento & Seguridad", "description": "Vigilancia de trazabilidad, cumplimiento de normativas de datos y auditoría de accesos"},
         {"name": "Usuario Consultor", "description": "Perfil inicial por defecto con acceso de solo lectura restringida"},
-        # Legacy Aliases
         {"name": "Administrador", "description": "Alias de Administrador de Plataforma"},
         {"name": "Economista", "description": "Alias de Analista Financiero & Comercial"},
         {"name": "TI", "description": "Alias de Ingeniero de Infraestructura & TI"},
@@ -77,16 +75,10 @@ def init_db(db: Session):
             db.add(Role(name=role_data["name"], description=role_data["description"]))
     db.commit()
 
-    # Retrieve role references
     admin_role = db.query(Role).filter(Role.name.in_(["Administrador de Plataforma", "Administrador"])).first()
-    c_level_role = db.query(Role).filter(Role.name == "Director Ejecutivo (C-Level)").first()
     financiero_role = db.query(Role).filter(Role.name.in_(["Analista Financiero & Comercial", "Economista"])).first()
-    talento_role = db.query(Role).filter(Role.name == "Gerente de Talento & Operaciones").first()
-    bi_role = db.query(Role).filter(Role.name == "Analista de Datos & BI").first()
     ti_role = db.query(Role).filter(Role.name.in_(["Ingeniero de Infraestructura & TI", "TI"])).first()
-    dpo_role = db.query(Role).filter(Role.name == "Oficial de Cumplimiento & Seguridad").first()
 
-    # Seed Default Demo Users with official credentials
     demo_users = [
         {"username": "admin", "email": "admin@empresa.com", "pwd": "admin123", "is_admin": True, "role": admin_role},
         {"username": "economista", "email": "economista@empresa.com", "pwd": "economista123", "is_admin": False, "role": financiero_role},
@@ -110,10 +102,6 @@ def init_db(db: Session):
             db.add(new_user)
     db.commit()
 
-    # Seed RoleTablePermission for Corporate Roles
-    from app.models.permission import RoleTablePermission
-    from app.models.catalog import SemanticCatalog
-    from app.models.connection import CorporateConnection, DatabaseType
     import os
     from app.core.config import settings
 
@@ -147,21 +135,10 @@ def init_db(db: Session):
     all_combined_tables = list(set(all_business_tables + all_tech_tables))
 
     role_table_mappings = [
-        (c_level_role, all_combined_tables),
+        (admin_role, all_combined_tables),
         (financiero_role, all_business_tables),
-        (talento_role, ["dim_empleados", "dim_clientes", "dim_categorias", "Answer", "Question", "Survey", "answer", "question", "survey"]),
-        (bi_role, all_combined_tables),
         (ti_role, all_tech_tables),
-        (dpo_role, ["dim_empleados", "dim_servidores", "fact_incidentes_ti", "Answer", "Question", "Survey", "answer", "question", "survey"]),
     ]
-
-    # Also map legacy roles if present separately
-    legacy_econ = db.query(Role).filter(Role.name == "Economista").first()
-    if legacy_econ:
-        role_table_mappings.append((legacy_econ, all_business_tables))
-    legacy_ti = db.query(Role).filter(Role.name == "TI").first()
-    if legacy_ti:
-        role_table_mappings.append((legacy_ti, all_tech_tables))
 
     for r_obj, tbl_list in role_table_mappings:
         if r_obj:
@@ -181,113 +158,10 @@ def init_db(db: Session):
 
     db.commit()
 
-    # Seed SemanticCatalog entries for connection 1 if not present
-    all_demo_tables = [
-        ("dim_categorias", "nombre_categoria", "Nombre de la categoría de productos o servicios"),
-        ("dim_productos", "nombre_producto", "Nombre comercial del producto o licencia"),
-        ("dim_productos", "precio_unitario", "Precio unitario de venta en USD"),
-        ("dim_clientes", "nombre_empresa", "Razón social del cliente corporativo"),
-        ("fact_ventas", "monto_total", "Monto total transaccionado en la venta"),
-        ("fact_ventas", "fecha_venta", "Fecha de realización de la venta"),
-        ("fact_ingresos_costos", "ingreso_bruto", "Ingreso bruto mensual consolidado"),
-        ("fact_ingresos_costos", "utilidad_neta", "Utilidad neta mensual consolidada"),
-        ("dim_empleados", "salario_bruto", "Salario bruto mensual del colaborador"),
-        ("dim_empleados", "evaluacion_desempeno", "Puntaje de evaluación de desempeño"),
-        ("dim_servidores", "nombre_host", "Nombre del servidor o nodo de infraestructura"),
-        ("dim_servidores", "datacenter", "Ubicación del datacenter"),
-        ("fact_incidentes_ti", "tipo_falla", "Tipo o clasificación de la falla de TI"),
-        ("fact_incidentes_ti", "horas_resolucion", "Horas tomadas para resolver el incidente SLA"),
-        ("fact_consumo_recursos", "porcentaje_cpu", "Porcentaje de uso de CPU del servidor"),
-        ("fact_consumo_recursos", "uso_ram_gb", "Memoria RAM utilizada en Gigabytes"),
-        
-        # Mental Health Survey Tables
-        ("Answer", "AnswerText", "Texto de la respuesta dada por el encuestado (ej. Yes, No, Male, Female, United States)"),
-        ("Answer", "SurveyID", "Año de la encuesta OSMI (2014, 2016, 2017, 2018, 2019)"),
-        ("Answer", "UserID", "ID de usuario anónimo del encuestado"),
-        ("Answer", "QuestionID", "ID numérico de la pregunta de la encuesta"),
-        ("Question", "questiontext", "Texto descriptivo de la pregunta de la encuesta de salud mental"),
-        ("Question", "questionid", "ID numérico único de la pregunta"),
-        ("Survey", "SurveyID", "Año de realización de la encuesta (2014-2019)"),
-        ("Survey", "Description", "Descripción de la edición de la encuesta")
-    ]
-
-
-    for tbl, col, desc in all_demo_tables:
-        existing_cat = db.query(SemanticCatalog).filter(
-            SemanticCatalog.connection_id == 1,
-            SemanticCatalog.table_name == tbl,
-            SemanticCatalog.column_name == col
-        ).first()
-        if not existing_cat:
-            db.add(SemanticCatalog(
-                connection_id=1,
-                table_name=tbl,
-                column_name=col,
-                description=desc
-            ))
-
-    db.commit()
-
-    # Auto-register and preserve any existing uploaded databases in data_sources/
     try:
-        import sqlite3
-        ds_dir = settings.DATA_SOURCES_DIR
-        if os.path.exists(ds_dir):
-            for fname in os.listdir(ds_dir):
-                if fname.startswith("raw_") or not (fname.endswith(".sqlite") or fname.endswith(".db")):
-                    continue
-                file_full_path = os.path.abspath(os.path.join(ds_dir, fname))
-                existing_uploaded_conn = db.query(CorporateConnection).filter(
-                    CorporateConnection.host == file_full_path
-                ).first()
-                if not existing_uploaded_conn:
-                    sq_conn = sqlite3.connect(file_full_path)
-                    cur = sq_conn.cursor()
-                    tables = [
-                        r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()
-                        if not r[0].startswith("sqlite_")
-                    ]
-                    sq_conn.close()
-                    if tables:
-                        # Clean display name removing timestamp prefix
-                        import re
-                        clean_disp_name = re.sub(r'^\d+_', '', fname)
-                        clean_disp_name = clean_disp_name.replace(".sqlite", "").replace(".db", "").replace("_", " ").upper()
-                        new_c = CorporateConnection(
-                            name=clean_disp_name,
-                            db_type=DatabaseType.SQLITE,
-                            host=file_full_path,
-                            port=0,
-                            database_name=fname,
-                            username="admin",
-                            encrypted_password="",
-                            is_active=True,
-                            is_uploaded=True
-                        )
-                        db.add(new_c)
-                        db.commit()
-                        db.refresh(new_c)
-
-                        for role in db.query(Role).all():
-                            is_admin = (
-                                role.name in [ROLE_ADMINISTRADOR, "Administrador", "Super Administrador", "Admin"]
-                                or "admin" in role.name.lower()
-                            )
-                            if not is_admin:
-                                continue
-                            for t in tables:
-                                if not db.query(RoleTablePermission).filter(
-                                    RoleTablePermission.role_id == role.id,
-                                    RoleTablePermission.connection_id == new_c.id,
-                                    RoleTablePermission.table_name == t
-                                ).first():
-                                    db.add(RoleTablePermission(
-                                        role_id=role.id,
-                                        connection_id=new_c.id,
-                                        schema_name="main",
-                                        table_name=t,
-                                        is_allowed=True
-                                    ))
-                        db.commit()
+        from app.modules.catalog.services.catalog_service import CatalogDomainService
+        first_conn = db.query(CorporateConnection).first()
+        if first_conn:
+            CatalogDomainService.seed_catalog_heuristics_for_connection(db, first_conn.id, first_conn.host)
     except Exception:
         pass
