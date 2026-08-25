@@ -87,6 +87,8 @@ def init_db(db: Session):
         {"username": "juan_ti", "email": "juan@empresa.com", "pwd": "ti123", "is_admin": False, "role": ti_role},
     ]
 
+    from app.core.security import verify_password
+
     for u_info in demo_users:
         existing_user = db.query(User).filter(User.username == u_info["username"]).first()
         if not existing_user:
@@ -100,6 +102,15 @@ def init_db(db: Session):
                 role_id=u_info["role"].id if u_info["role"] else None
             )
             db.add(new_user)
+        else:
+            # Ensure demo accounts always have functional passwords and valid roles
+            if not verify_password(u_info["pwd"], existing_user.hashed_password):
+                existing_user.hashed_password = get_password_hash(u_info["pwd"])
+            if u_info["role"] and existing_user.role_id is None:
+                existing_user.role_id = u_info["role"].id
+            existing_user.is_active = True
+            existing_user.failed_login_attempts = 0
+            existing_user.locked_until = None
     db.commit()
 
     import os
@@ -134,11 +145,17 @@ def init_db(db: Session):
     ]
     all_combined_tables = list(set(all_business_tables + all_tech_tables))
 
-    role_table_mappings = [
-        (admin_role, all_combined_tables),
-        (financiero_role, all_business_tables),
-        (ti_role, all_tech_tables),
-    ]
+    all_admin_roles = db.query(Role).filter(Role.name.in_(["Administrador de Plataforma", "Administrador"])).all()
+    all_financiero_roles = db.query(Role).filter(Role.name.in_(["Analista Financiero & Comercial", "Economista"])).all()
+    all_ti_roles = db.query(Role).filter(Role.name.in_(["Ingeniero de Infraestructura & TI", "TI"])).all()
+
+    role_table_mappings = []
+    for r in all_admin_roles:
+        role_table_mappings.append((r, all_combined_tables))
+    for r in all_financiero_roles:
+        role_table_mappings.append((r, all_business_tables))
+    for r in all_ti_roles:
+        role_table_mappings.append((r, all_tech_tables))
 
     for r_obj, tbl_list in role_table_mappings:
         if r_obj:
