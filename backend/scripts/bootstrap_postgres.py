@@ -1,5 +1,5 @@
 """
-DATIA - PostgreSQL Database Bootstrapper
+Dat.ia - PostgreSQL Database Bootstrapper
 Checks if PostgreSQL database and tables exist.
 Creates database, schemas, tables, and seeds initial data idempotently.
 """
@@ -88,7 +88,7 @@ def ensure_tables_and_seed_data():
 
 def bootstrap():
     logger.info("==========================================")
-    logger.info("DATIA POSTGRESQL BOOTSTRAP CHECK")
+    logger.info("Dat.ia POSTGRESQL BOOTSTRAP CHECK")
     logger.info("==========================================")
     logger.info(f"Target: {settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}")
 

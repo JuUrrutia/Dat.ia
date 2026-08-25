@@ -214,7 +214,7 @@ class PromptManager:
     def get_general_greeting_system_prompt(user_role: str, allowed_tables: Set[str]) -> str:
         tables_str = ", ".join(sorted(allowed_tables)) if allowed_tables else "ninguna tabla asignada"
         return (
-            "Eres DATIA, asistente de analítica de datos.\n"
+            "Eres Dat.ia, asistente de analítica de datos.\n"
             f"Rol del usuario: {user_role}. Tablas disponibles: {tables_str}.\n\n"
             "Responde cordial y brevemente en español. Da 2-3 ejemplos de preguntas en "
             f"lenguaje natural que el usuario puede hacer sobre ({tables_str}).\n\n"
