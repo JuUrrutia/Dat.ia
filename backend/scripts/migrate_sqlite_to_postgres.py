@@ -1,5 +1,5 @@
 """
-DATIA - SQLite to PostgreSQL Automated Migration Tool
+Dat.ia - SQLite to PostgreSQL Automated Migration Tool
 Transfers all governance metadata, users, roles, RBAC permissions,
 corporate connections, semantic catalogs, and audit logs into PostgreSQL.
 """

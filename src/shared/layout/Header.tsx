@@ -6,12 +6,12 @@ import {
   Settings,
   ShieldAlert,
   LogOut,
-  Sparkles,
   LayoutDashboard,
   Menu,
   X,
 } from 'lucide-react';
 import { SystemHealthPopover } from './SystemHealthPopover';
+import logoDatia from '../../pages/Logo_datia_2.png';
 
 export const Header: React.FC = () => {
   const { user, logout } = useAuth();
@@ -53,18 +53,20 @@ export const Header: React.FC = () => {
             setIsMobileMenuOpen(false);
           }}
         >
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/20 shrink-0">
-            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-          </div>
+          <img
+            src={logoDatia}
+            alt="Logo de Dat.ia"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-contain shrink-0"
+          />
           <div className="truncate">
             <h1 className="text-xs sm:text-base font-semibold text-white tracking-tight flex items-center gap-1.5 sm:gap-2">
-              <span>DATIA</span>
+              <span>Dat.ia</span>
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20 font-normal">
                 IA Local
               </span>
             </h1>
-            <p className="text-[10px] sm:text-xs text-gray-400 hidden xs:block truncate">
-              Democratización de Datos
+            <p className="text-[10px] sm:text-xs text-gray-400 truncate">
+              Transformando datos en decisiones
             </p>
           </div>
         </button>

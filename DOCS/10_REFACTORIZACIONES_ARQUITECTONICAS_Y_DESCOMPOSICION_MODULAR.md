@@ -8,7 +8,7 @@
 
 ## 1. Resumen Ejecutivo de la Evolución Arquitectónica
 
-Para garantizar que el sistema DATIA sea mantenible, escalable y resistente a regresiones a medida que crece, se realizó un proceso sistemático de refactorización divido en **4 Fases de Reestructuración**. 
+Para garantizar que el sistema Dat.ia sea mantenible, escalable y resistente a regresiones a medida que crece, se realizó un proceso sistemático de refactorización divido en **4 Fases de Reestructuración**.
 
 Este proceso transformó la arquitectura original desde un esquema monolítico/tipo de archivo (*Flat Architecture by Type*) y archivos gigantes con múltiples responsabilidades (*God Objects*) hacia una arquitectura basada en **Domain-Driven Design (DDD)** en el Backend y **Módulos Basados en Features/Hooks** en el Frontend.
 

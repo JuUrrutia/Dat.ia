@@ -13,7 +13,7 @@ from app.models.catalog import SemanticCatalog
 from app.db.init_db import init_db
 
 def setup_mental_health_catalog():
-    print("=== INTEGRANDO MENTAL_HEALTH.SQLITE EN DATIA ===")
+    print("=== INTEGRANDO MENTAL_HEALTH.SQLITE EN Dat.ia ===")
     
     db_path = settings.SQLITE_DB_PATH
     print(f"Base de datos objetivo: {db_path}")
@@ -106,7 +106,7 @@ def setup_mental_health_catalog():
                 print(f"Catálogo Semántico registrado: `{tbl}.{col}` -> {desc}")
 
         db.commit()
-        print("=== MENTAL_HEALTH.SQLITE REGISTRADA CON ÉXITO EN EL CATÁLOGO DE DATIA ===")
+        print("=== MENTAL_HEALTH.SQLITE REGISTRADA CON ÉXITO EN EL CATÁLOGO DE Dat.ia ===")
 
     except Exception as e:
         db.rollback()

@@ -13,6 +13,27 @@ export interface FullThread {
   results: QueryResult[];
 }
 
+const CHAT_THREADS_KEY_PREFIX = 'datia_chat_threads:v1:';
+const CHAT_SUGGESTIONS_KEY_PREFIX = 'datia_chat_suggestions:v1:';
+
+const loadThreads = (userId: number): FullThread[] => {
+  try {
+    const saved = localStorage.getItem(`${CHAT_THREADS_KEY_PREFIX}${userId}`);
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+};
+
+const loadSuggestionsPreference = (userId: number): boolean => {
+  try {
+    const saved = localStorage.getItem(`${CHAT_SUGGESTIONS_KEY_PREFIX}${userId}`);
+    return saved === null ? true : saved === 'true';
+  } catch {
+    return true;
+  }
+};
+
 export function useChatEngine() {
   const { user, settings } = useAuth();
   const { notify } = useNotifications();
@@ -26,6 +47,9 @@ export function useChatEngine() {
 
   const userRole = user?.role_name || (user?.is_admin ? 'Administrador' : 'Usuario');
   const [promptSuggestions, setPromptSuggestions] = useState<string[]>([]);
+  const [showPromptSuggestions, setShowPromptSuggestions] = useState(() => (
+    user ? loadSuggestionsPreference(user.id) : true
+  ));
 
   const [connectors, setConnectors] = useState<CorporateConnection[]>([]);
 
@@ -61,9 +85,52 @@ export function useChatEngine() {
     }
   };
 
-  const [threads, setThreads] = useState<FullThread[]>([]);
+  const [threads, setThreads] = useState<FullThread[]>(() => (user ? loadThreads(user.id) : []));
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const isHydratingThreadsRef = useRef(false);
+
+  useEffect(() => {
+    if (!user) {
+      setThreads([]);
+      setActiveThreadId(null);
+      setShowPromptSuggestions(true);
+      return;
+    }
+
+    isHydratingThreadsRef.current = true;
+    setThreads(loadThreads(user.id));
+    setActiveThreadId(null);
+    setShowPromptSuggestions(loadSuggestionsPreference(user.id));
+  }, [user?.id]);
+
+  const togglePromptSuggestions = () => {
+    setShowPromptSuggestions((previous) => {
+      const next = !previous;
+      if (user) {
+        try {
+          localStorage.setItem(`${CHAT_SUGGESTIONS_KEY_PREFIX}${user.id}`, String(next));
+        } catch {
+          // Ignore storage failures; the preference remains active for this session.
+        }
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    if (isHydratingThreadsRef.current) {
+      isHydratingThreadsRef.current = false;
+      return;
+    }
+
+    try {
+      localStorage.setItem(`${CHAT_THREADS_KEY_PREFIX}${user.id}`, JSON.stringify(threads));
+    } catch {
+      // Ignore storage failures; the in-memory history remains available.
+    }
+  }, [threads, user?.id]);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -177,6 +244,8 @@ export function useChatEngine() {
     activeConnectionId,
     connectors,
     promptSuggestions,
+    showPromptSuggestions,
+    togglePromptSuggestions,
     threads,
     activeThreadId,
     activeThread,

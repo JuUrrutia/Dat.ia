@@ -145,7 +145,7 @@ export const SystemHealthPopover: React.FC<SystemHealthPopoverProps> = ({
                 <Database className="w-4 h-4 text-brand-400 shrink-0" />
                 <div className="truncate">
                   <div className="text-white font-medium truncate">
-                    {details?.metadata_db.name || 'Base Metadatos (Datia)'}
+                    {details?.metadata_db.name || 'Base Metadatos (Dat.ia)'}
                   </div>
                   <div className="text-[10px] text-gray-400">
                     {details?.metadata_db.latency_ms || 0} ms
