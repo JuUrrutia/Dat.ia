@@ -12,6 +12,13 @@
   body {
     @apply bg-[#0B0F19] text-gray-100 antialiased font-sans overflow-hidden select-none;
   }
+
+  /* Accessibility Focus Visible Rings (WCAG 2.2 AA) */
+  :focus-visible {
+    outline: 2px solid #0c8aff !important;
+    outline-offset: 2px !important;
+    box-shadow: 0 0 0 4px rgba(12, 138, 255, 0.25) !important;
+  }
 }
 
 /* Custom Scrollbar for Dark Theme */
@@ -30,26 +37,45 @@
   background: rgba(107, 114, 128, 0.8);
 }
 
-/* Glassmorphism utility classes */
+/* Glassmorphism & Cyber-Utilitarian Utility Classes */
 .glass-panel {
-  background: rgba(17, 24, 39, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(17, 24, 39, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .glass-card {
-  background: rgba(31, 41, 55, 0.6);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(31, 41, 55, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
-.glass-card:hover {
-  border-color: rgba(59, 130, 246, 0.3);
+.glass-card-interactive {
+  background: rgba(31, 41, 55, 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card-interactive:hover {
+  background: rgba(31, 41, 55, 0.75);
+  border-color: rgba(12, 138, 255, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px -6px rgba(12, 138, 255, 0.15);
 }
 
 /* Shimmer & Glow Effects */
 .glow-brand {
-  box-shadow: 0 0 20px -5px rgba(12, 138, 255, 0.3);
+  box-shadow: 0 0 20px -5px rgba(12, 138, 255, 0.35);
+}
+
+.glow-brand-lg {
+  box-shadow: 0 0 30px -5px rgba(12, 138, 255, 0.45);
+}
+
+.glow-success {
+  box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.35);
 }

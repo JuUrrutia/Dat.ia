@@ -7,10 +7,8 @@ from fastapi.testclient import TestClient
 from main import app
 from app.core.database import SessionLocal
 from app.db.init_db import init_db
-from app.models.user import User
-from app.models.role import Role
-from app.models.audit_log import AuditLog
-from app.models.session import UserSession
+from app.modules.auth.models import User, Role, UserSession
+from app.modules.telemetry_audit.models import AuditLog
 from app.core.security import create_access_token, get_password_hash
 
 SAMPLE_SNAPSHOT_DATA = {

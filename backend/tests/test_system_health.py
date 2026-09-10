@@ -6,8 +6,8 @@ from fastapi.testclient import TestClient
 from main import app
 from app.core.database import SessionLocal
 from app.db.init_db import init_db
-from app.models.user import User
-from app.models.session import UserSession
+from app.modules.auth.models import User, UserSession
+from app.modules.admin_catalog.models import CorporateConnection
 from app.core.security import create_access_token
 from app.core.constants import (
     SYSTEM_STATUS_OPERATIONAL,
@@ -38,8 +38,6 @@ class TestSystemHealth(unittest.TestCase):
         self.db.add(session)
         self.db.commit()
 
-        # Clean up any leftover test connector records with missing files
-        from app.models.connection import CorporateConnection
         self.db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == True).delete()
         self.db.commit()
 
@@ -48,8 +46,8 @@ class TestSystemHealth(unittest.TestCase):
     def tearDown(self):
         self.db.close()
 
-    @patch("app.services.health_service.HealthService.check_db_connectivity")
-    @patch("app.services.health_service.HealthService.check_llm_connectivity", new_callable=AsyncMock)
+    @patch("app.modules.system.health_service.HealthService.check_db_connectivity")
+    @patch("app.modules.system.health_service.HealthService.check_llm_connectivity", new_callable=AsyncMock)
     def test_system_health_operational(self, mock_check_llm, mock_check_db):
         mock_check_llm.return_value = {
             "success": True,
@@ -73,8 +71,8 @@ class TestSystemHealth(unittest.TestCase):
         self.assertEqual(data["metadata_db"]["status"], SYSTEM_STATUS_OPERATIONAL)
         self.assertIn("corporate_connectors", data)
 
-    @patch("app.services.health_service.HealthService.check_db_connectivity")
-    @patch("app.services.health_service.HealthService.check_llm_connectivity", new_callable=AsyncMock)
+    @patch("app.modules.system.health_service.HealthService.check_db_connectivity")
+    @patch("app.modules.system.health_service.HealthService.check_llm_connectivity", new_callable=AsyncMock)
     def test_system_health_with_custom_query_params(self, mock_check_llm, mock_check_db):
         mock_check_llm.return_value = {
             "success": True,
@@ -96,7 +94,7 @@ class TestSystemHealth(unittest.TestCase):
         self.assertEqual(data["status"], SYSTEM_STATUS_OPERATIONAL)
         self.assertIn("llama.cpp", data["llm_engine"]["name"])
 
-    @patch("app.services.health_service.HealthService.check_llm_connectivity", new_callable=AsyncMock)
+    @patch("app.modules.system.health_service.HealthService.check_llm_connectivity", new_callable=AsyncMock)
     def test_system_health_critical_when_llm_down(self, mock_check_llm):
         mock_check_llm.return_value = {
             "success": False,
@@ -116,7 +114,7 @@ class TestSystemHealth(unittest.TestCase):
         response = self.client.get("/api/v1/system/health")
         self.assertEqual(response.status_code, 401)
 
-    @patch("app.services.health_service.HealthService.check_llm_connectivity", new_callable=AsyncMock)
+    @patch("app.modules.system.health_service.HealthService.check_llm_connectivity", new_callable=AsyncMock)
     def test_llm_test_connection_regression(self, mock_check_llm):
         mock_check_llm.return_value = {
             "success": True,
@@ -137,7 +135,7 @@ class TestSystemHealth(unittest.TestCase):
         self.assertEqual(data["latency_ms"], 20)
         self.assertIn("llama3.2:3b", data["available_models"])
 
-    @patch("app.services.health_service.HealthService.check_db_connectivity")
+    @patch("app.modules.system.health_service.HealthService.check_db_connectivity")
     def test_connector_test_regression(self, mock_check_db):
         mock_check_db.return_value = {
             "success": True,

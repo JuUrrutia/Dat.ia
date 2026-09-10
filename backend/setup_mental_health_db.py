@@ -7,9 +7,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.core.config import settings
 from app.core.database import SessionLocal, engine, Base
-from app.models.role import Role
-from app.models.permission import RoleTablePermission
-from app.models.catalog import SemanticCatalog
+from app.modules.auth.models import Role
+from app.modules.admin_catalog.models import RoleTablePermission, SemanticCatalog
 from app.db.init_db import init_db
 
 def setup_mental_health_catalog():

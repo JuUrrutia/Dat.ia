@@ -3,9 +3,8 @@ import sqlite3
 from typing import List, Dict, Set, Any, Optional
 from sqlalchemy.orm import Session
 from app.core.config import settings
-from app.models.permission import RoleTablePermission, RoleColumnPermission, ColumnPermissionType
-from app.models.role import Role
-from app.models.catalog import SemanticCatalog
+from app.modules.admin_catalog.models import RoleTablePermission, RoleColumnPermission, ColumnPermissionType, SemanticCatalog, CorporateConnection, DatabaseType
+from app.modules.auth.models import Role
 
 class DynamicSchemaPruningService:
     """
@@ -19,7 +18,6 @@ class DynamicSchemaPruningService:
         """Resolves target physical SQLite database path for active connection."""
         if db is not None:
             try:
-                from app.models.connection import CorporateConnection, DatabaseType
                 conn = None
                 if connection_id:
                     conn = db.query(CorporateConnection).filter(CorporateConnection.id == connection_id).first()

@@ -9,11 +9,8 @@ from fastapi.testclient import TestClient
 from main import app
 from app.core.database import SessionLocal
 from app.db.init_db import init_db
-from app.models.user import User
-from app.models.role import Role
-from app.models.session import UserSession
-from app.models.connection import CorporateConnection, DatabaseType
-from app.models.catalog import SemanticCatalog
+from app.modules.auth.models import User, Role, UserSession
+from app.modules.admin_catalog.models import CorporateConnection, DatabaseType, SemanticCatalog
 from app.core.security import create_access_token
 
 class TestCatalogAndConnectors(unittest.TestCase):
@@ -94,7 +91,7 @@ class TestCatalogAndConnectors(unittest.TestCase):
         self.assertIn("total_columns", data)
         self.assertIsInstance(data["tables"], list)
 
-    @patch("app.services.llm_service.LLMService.generate_completion", new_callable=AsyncMock)
+    @patch("app.modules.chat_engine.llm_service.LLMService.generate_completion", new_callable=AsyncMock)
     def test_auto_enrich_catalog(self, mock_llm):
         mock_llm.return_value = None  # Use fast heuristic auto-enrichment fallback
         res = self.client.post("/api/v1/catalog/auto-enrich", json={}, headers=self.headers)
@@ -252,7 +249,7 @@ class TestCatalogAndConnectors(unittest.TestCase):
         while strictly keeping unassigned/restricted roles ('Usuario', 'Usuario Consultor') with 0 permissions.
         Response includes requires_permission_review: True and detected_tables list.
         """
-        from app.models.permission import RoleTablePermission
+        from app.modules.admin_catalog.models import RoleTablePermission
         from app.core.constants import ADMIN_ROLES
 
         csv_content = b"id_sensor,ubicacion,temperatura\n1,Servidor-01,23.5\n2,Servidor-02,28.1\n"

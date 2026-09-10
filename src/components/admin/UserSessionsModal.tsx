@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, ShieldAlert, Monitor, Clock, AlertTriangle, RefreshCw } from 'lucide-react';
 import { UserItem } from './AdminUsersTab';
-import { authService } from '../../services/auth_service';
+import { authService } from '../../features/auth/services/auth_service';
 import { UserSession } from '../../types';
 
 interface UserSessionsModalProps {

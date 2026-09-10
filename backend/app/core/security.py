@@ -20,18 +20,10 @@ def _get_fernet_key() -> bytes:
 fernet = Fernet(_get_fernet_key())
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verifies plain password against hashed password (bcrypt / Argon2)."""
+    """Verifies plain password against hashed password (bcrypt)."""
     if not plain_password or not hashed_password:
         return False
     try:
-        if hashed_password.startswith("$argon2"):
-            try:
-                import argon2
-                ph = argon2.PasswordHasher()
-                return ph.verify(hashed_password, plain_password)
-            except Exception:
-                pass
-
         pwd_bytes = plain_password.encode('utf-8')
         hash_bytes = hashed_password.encode('utf-8')
         return bcrypt.checkpw(pwd_bytes, hash_bytes)

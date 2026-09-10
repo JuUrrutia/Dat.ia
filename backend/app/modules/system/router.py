@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.api.deps import get_db, get_current_user
-from app.models.user import User
+from app.modules.auth.models import User
 from app.modules.admin_catalog.models import CorporateConnection, DatabaseType
 from app.core.config import settings
 from app.core.constants import (

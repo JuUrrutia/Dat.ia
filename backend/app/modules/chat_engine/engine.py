@@ -288,7 +288,7 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         conn_record = None
         if db is not None:
             try:
-                from app.models.connection import CorporateConnection, DatabaseType
+                from app.modules.admin_catalog.models import CorporateConnection, DatabaseType
                 conn_record = db.query(CorporateConnection).filter(CorporateConnection.id == connection_id).first()
             except Exception:
                 pass
@@ -418,6 +418,8 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 if llm_exec_report:
                     final_exec_report = llm_exec_report
 
+        if not pres_hints.show_executive_report:
+            final_exec_report = None
         if not pres_hints.show_kpis:
             kpis = []
         if not pres_hints.show_gauges:

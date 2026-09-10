@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, RefreshCw, Database, Table as TableIcon, Eye, Key } from 'lucide-react';
-import { DataDictionaryResponse, DataDictionaryTable } from '../../../services/catalog_service';
+import { DataDictionaryResponse, DataDictionaryTable } from '../../../features/admin/services/catalog_service';
 
 interface DataDictionarySectionProps {
   dataDictionary: DataDictionaryResponse | null;

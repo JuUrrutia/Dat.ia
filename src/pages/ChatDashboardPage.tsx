@@ -195,6 +195,10 @@ export const ChatDashboardPage: React.FC = () => {
               setPromptInput={setPromptInput}
               isGenerating={isGenerating}
               userRole={userRole}
+              activeDatabaseName={activeDatabaseName}
+              activeConnectionId={activeConnectionId}
+              connectors={connectors}
+              onSelectConnection={handleSelectConnection}
               onSubmit={() => handleSendPrompt(promptInput)}
             />
           </div>
