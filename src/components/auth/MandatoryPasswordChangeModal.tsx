@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldAlert, KeyRound, Check, AlertTriangle, RefreshCw } from 'lucide-react';
-import { authService } from '../../services/auth_service';
+import { authService } from '../../features/auth/services/auth_service';
 
 interface MandatoryPasswordChangeModalProps {
   isOpen: boolean;
