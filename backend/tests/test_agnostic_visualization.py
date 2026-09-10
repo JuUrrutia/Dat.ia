@@ -1,5 +1,5 @@
 import unittest
-from app.services.query_engine import QueryEngine
+from app.modules.chat_engine.engine import QueryEngine
 
 class TestAgnosticVisualization(unittest.TestCase):
 

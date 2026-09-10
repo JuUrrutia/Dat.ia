@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { useAuth } from '../../../context/AuthContext';
+import { useAuth } from '../../auth/context/AuthContext';
 import { useNotifications } from '../../../context/NotificationContext';
 import { QueryResult } from '../../../types';
 import { ChatThread } from '../../../components/chat/SidebarChatHistory';
 import { queryService } from '../services/query_service';
-import { connectorService, CorporateConnection } from '../../../services/connector_service';
+import { connectorService, CorporateConnection } from '../../admin/services/connector_service';
 
 export interface FullThread {
   id: string;

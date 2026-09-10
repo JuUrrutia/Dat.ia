@@ -1,4 +1,7 @@
-import app.models  # Ensures all SQLAlchemy models are registered
+import app.modules.auth.models
+import app.modules.admin_catalog.models
+import app.modules.telemetry_audit.models
+import app.modules.chat_engine.models
 from sqlalchemy.orm import Session
 from app.core.database import Base, engine
 from app.core.security import get_password_hash

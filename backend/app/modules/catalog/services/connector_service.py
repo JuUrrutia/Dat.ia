@@ -17,7 +17,7 @@ from app.modules.admin_catalog.schemas import (
 )
 from app.modules.admin_catalog.tabular_importer import convert_uploaded_file_to_sqlite
 from app.modules.catalog.services.catalog_service import CatalogDomainService
-from app.services.health_service import HealthService
+from app.modules.system.health_service import HealthService
 
 class ConnectorDomainService:
     """

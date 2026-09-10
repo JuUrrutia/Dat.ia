@@ -1,5 +1,5 @@
 import unittest
-from app.services.ast_validator import ASTValidator, ASTValidationError
+from app.modules.chat_engine.ast_validator import ASTValidator, ASTValidationError
 
 class TestASTValidator(unittest.TestCase):
 
