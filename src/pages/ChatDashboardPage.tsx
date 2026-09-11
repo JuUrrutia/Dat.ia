@@ -5,7 +5,7 @@ import { ChatMessageItem } from '../components/chat/ChatMessageItem';
 import { ChatEmptyState } from '../components/chat/ChatEmptyState';
 import { ChatPromptInput } from '../components/chat/ChatPromptInput';
 import { TraceabilityModal } from '../components/traceability/TraceabilityModal';
-import { History, Database, User as UserIcon, Bot, Lightbulb, LightbulbOff } from 'lucide-react';
+import { History, Database, User as UserIcon, Bot } from 'lucide-react';
 
 export const ChatDashboardPage: React.FC = () => {
   const {
@@ -22,8 +22,6 @@ export const ChatDashboardPage: React.FC = () => {
     activeConnectionId,
     connectors,
     promptSuggestions,
-    showPromptSuggestions,
-    togglePromptSuggestions,
     activeThread,
     sidebarThreads,
     activeThreadId,
@@ -91,21 +89,6 @@ export const ChatDashboardPage: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={togglePromptSuggestions}
-              title={showPromptSuggestions ? 'Deshabilitar sugerencias' : 'Habilitar sugerencias'}
-              aria-label={showPromptSuggestions ? 'Deshabilitar sugerencias de preguntas' : 'Habilitar sugerencias de preguntas'}
-              aria-pressed={showPromptSuggestions}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${
-                showPromptSuggestions
-                  ? 'border-amber-500/20 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
-                  : 'border-slate-700 bg-slate-900/70 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              {showPromptSuggestions ? <Lightbulb size={13} /> : <LightbulbOff size={13} />}
-              <span className="hidden sm:inline">Sugerencias</span>
-            </button>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
               Perfil: {userRole}
@@ -117,7 +100,7 @@ export const ChatDashboardPage: React.FC = () => {
         <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6 scrollbar-thin scrollbar-thumb-slate-800">
           {(!activeThread || activeThread.results.length === 0) && !pendingPrompt ? (
             <ChatEmptyState
-              promptSuggestions={showPromptSuggestions ? promptSuggestions : []}
+              promptSuggestions={promptSuggestions}
               onSelectSuggestion={(sugg) => {
                 setPromptInput(sugg);
                 handleSendPrompt(sugg);
@@ -139,7 +122,7 @@ export const ChatDashboardPage: React.FC = () => {
               {pendingPrompt && (
                 <div className="space-y-4 sm:space-y-6 pt-4 border-t border-dark-border/40 first:border-0 first:pt-0 animate-fadeIn">
                   {/* User Question Bubble */}
-                  <div className="flex items-start space-x-2 sm:space-x-3 justify                  git remote remove origin-end">
+                  <div className="flex items-start space-x-2 sm:space-x-3 justify-end">
                     <div className="bg-brand-600/20 border border-brand-500/30 rounded-2xl rounded-tr-sm p-3.5 sm:p-4 max-w-[85%] sm:max-w-2xl shadow-md">
                       <div className="flex items-center space-x-1.5 text-[10px] text-brand-400 font-semibold mb-1">
                         <UserIcon className="w-3 h-3" />
@@ -162,7 +145,7 @@ export const ChatDashboardPage: React.FC = () => {
                     <div className="bg-slate-900/90 border border-slate-700/60 rounded-2xl rounded-tl-sm p-4 max-w-[85%] sm:max-w-2xl space-y-2.5 shadow-xl">
                       <div className="flex items-center space-x-2 text-[10px] text-cyan-400 font-semibold">
                         <Bot className="w-3 h-3" />
-                        <span>Dat.ia</span>
+                        <span>DATIA IA</span>
                         <span className="text-slate-500">•</span>
                         <span className="text-slate-400 font-normal flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
@@ -195,6 +178,10 @@ export const ChatDashboardPage: React.FC = () => {
               setPromptInput={setPromptInput}
               isGenerating={isGenerating}
               userRole={userRole}
+              activeDatabaseName={activeDatabaseName}
+              activeConnectionId={activeConnectionId}
+              connectors={connectors}
+              onSelectConnection={handleSelectConnection}
               onSubmit={() => handleSendPrompt(promptInput)}
             />
           </div>

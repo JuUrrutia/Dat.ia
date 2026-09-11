@@ -3,9 +3,8 @@ import sqlite3
 from typing import List, Dict, Set, Any, Optional
 from sqlalchemy.orm import Session
 from app.core.config import settings
-from app.models.permission import RoleTablePermission, RoleColumnPermission, ColumnPermissionType
-from app.models.role import Role
-from app.models.catalog import SemanticCatalog
+from app.modules.admin_catalog.models import RoleTablePermission, RoleColumnPermission, ColumnPermissionType, SemanticCatalog, CorporateConnection, DatabaseType
+from app.modules.auth.models import Role
 
 class DynamicSchemaPruningService:
     """
@@ -19,7 +18,6 @@ class DynamicSchemaPruningService:
         """Resolves target physical SQLite database path for active connection."""
         if db is not None:
             try:
-                from app.models.connection import CorporateConnection, DatabaseType
                 conn = None
                 if connection_id:
                     conn = db.query(CorporateConnection).filter(CorporateConnection.id == connection_id).first()
@@ -37,10 +35,30 @@ class DynamicSchemaPruningService:
         return settings.SQLITE_DB_PATH
 
     @classmethod
-    def get_physical_db_tables(cls, db_path: Optional[str] = None) -> Set[str]:
-        """Inspects active SQLite database file to retrieve physically existing data tables."""
+    def get_physical_db_tables(cls, target: Any = None) -> Set[str]:
+        """Inspects active PostgreSQL connection or SQLite database to retrieve physically existing data tables."""
+        ignored_metadata = {
+            "sqlite_sequence", "roles", "domains", "corporate_connections",
+            "users", "role_domain_links", "role_table_permissions",
+            "role_column_permissions", "semantic_catalog", "audit_logs",
+            "user_sessions", "alembic_version"
+        }
+
+        # Case 1: PostgreSQL CorporateConnection object
+        if hasattr(target, "db_type") and (target.db_type == DatabaseType.POSTGRESQL or str(target.db_type).lower() == "postgresql"):
+            try:
+                from sqlalchemy import inspect as sa_inspect
+                from app.core.database import build_engine_for_connector
+                eng = build_engine_for_connector(target)
+                inspector = sa_inspect(eng)
+                raw_tables = [t.lower() for t in inspector.get_table_names(schema="public")]
+                return {t for t in raw_tables if t not in ignored_metadata}
+            except Exception:
+                return set()
+
+        # Case 2: SQLite database file path
         try:
-            target_path = db_path or settings.SQLITE_DB_PATH
+            target_path = target if (isinstance(target, str) and target) else settings.SQLITE_DB_PATH
             if not target_path or not os.path.exists(target_path):
                 return set()
             conn = sqlite3.connect(target_path)
@@ -49,31 +67,70 @@ class DynamicSchemaPruningService:
                 raw_tables = [r[0].lower() for r in cursor.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()]
             finally:
                 conn.close()
-            ignored_metadata = {
-                "sqlite_sequence", "roles", "domains", "corporate_connections",
-                "users", "role_domain_links", "role_table_permissions",
-                "role_column_permissions", "semantic_catalog", "audit_logs"
-            }
             return {t for t in raw_tables if t not in ignored_metadata}
         except Exception:
             return set()
 
     @classmethod
-    def get_physical_table_columns(cls, table_name: str, db_path: Optional[str] = None, include_samples: bool = True) -> List[Dict[str, Any]]:
+    def get_physical_table_columns(cls, table_name: str, db_path: Any = None, include_samples: bool = True) -> List[Dict[str, Any]]:
         """
-        Inspects active SQLite database file to retrieve real physical columns, data types,
-        and representative sample values for automatic profiling of cryptic/numbered tables.
+        Inspects active PostgreSQL connection or SQLite database file to retrieve real physical columns, data types,
+        and representative sample values for automatic profiling of tables.
         """
+        clean_table = "".join(c for c in table_name if c.isalnum() or c == "_")
+        if not clean_table:
+            return []
+
+        # Case 1: PostgreSQL CorporateConnection object
+        if hasattr(db_path, "db_type") and (db_path.db_type == DatabaseType.POSTGRESQL or str(db_path.db_type).lower() == "postgresql"):
+            try:
+                from sqlalchemy import inspect as sa_inspect, text
+                from app.core.database import build_engine_for_connector
+                eng = build_engine_for_connector(db_path)
+                inspector = sa_inspect(eng)
+                cols_info = inspector.get_columns(clean_table, schema="public")
+                pk_info = inspector.get_pk_constraint(clean_table, schema="public")
+                pk_cols = set(pk_info.get("constrained_columns", [])) if pk_info else set()
+
+                col_samples_map: Dict[str, List[str]] = {}
+                if include_samples:
+                    try:
+                        with eng.connect() as connection:
+                            res = connection.execute(text(f'SELECT * FROM "{clean_table}" LIMIT 20'))
+                            for row in res.mappings():
+                                for k, val in row.items():
+                                    if val is not None and str(val).strip():
+                                        s_list = col_samples_map.setdefault(k, [])
+                                        val_str = str(val)[:35]
+                                        if val_str not in s_list and len(s_list) < 3:
+                                            s_list.append(val_str)
+                    except Exception:
+                        pass
+
+                result = []
+                for col in cols_info:
+                    col_name = col["name"]
+                    col_type = str(col["type"])
+                    is_pk = col_name in pk_cols
+                    samples = col_samples_map.get(col_name, [])
+                    result.append({
+                        "name": col_name,
+                        "type": col_type,
+                        "is_pk": is_pk,
+                        "samples": samples
+                    })
+                return result
+            except Exception:
+                return []
+
+        # Case 2: SQLite database file
         try:
-            target_path = db_path or settings.SQLITE_DB_PATH
+            target_path = db_path if (isinstance(db_path, str) and db_path) else settings.SQLITE_DB_PATH
             if not target_path or not os.path.exists(target_path):
                 return []
             conn = sqlite3.connect(target_path)
             try:
                 cursor = conn.cursor()
-                clean_table = "".join(c for c in table_name if c.isalnum() or c == "_")
-                if not clean_table:
-                    return []
                 rows = cursor.execute(
                     "SELECT cid, name, type, [notnull], dflt_value, pk FROM pragma_table_info(?)",
                     (clean_table,)
@@ -121,7 +178,7 @@ class DynamicSchemaPruningService:
         cls,
         db: Session,
         role_id: Optional[int] = None,
-        connection_id: int = 1,
+        connection_id: Optional[int] = None,
         is_admin: bool = False,
         user_role: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -130,8 +187,25 @@ class DynamicSchemaPruningService:
         plus semantic descriptions, and sets of allowed_tables & blocked_columns for AST validation.
         Prunes tables that do not exist physically in the currently active database.
         """
-        target_db_path = cls.resolve_db_path(db, connection_id)
-        physical_tables = cls.get_physical_db_tables(target_db_path)
+        conn_record = None
+        if db is not None:
+            try:
+                if connection_id:
+                    conn_record = db.query(CorporateConnection).filter(CorporateConnection.id == connection_id).first()
+                    if not conn_record:
+                        conn_record = db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == False).first()
+                if not conn_record:
+                    conn_record = db.query(CorporateConnection).filter(CorporateConnection.is_active == True).order_by(CorporateConnection.id.desc()).first()
+                if not conn_record:
+                    conn_record = db.query(CorporateConnection).order_by(CorporateConnection.id.desc()).first()
+            except Exception:
+                pass
+
+        effective_conn_id = conn_record.id if conn_record else (connection_id or 1)
+
+        is_pg = conn_record is not None and (conn_record.db_type == DatabaseType.POSTGRESQL or str(conn_record.db_type).lower() == "postgresql")
+        target_db_target = conn_record if is_pg else cls.resolve_db_path(db, effective_conn_id)
+        physical_tables = cls.get_physical_db_tables(target_db_target)
 
         # Determine effective role_id and permissions
         effective_role_id = role_id
@@ -145,7 +219,7 @@ class DynamicSchemaPruningService:
 
         if is_admin:
             catalog_entries = db.query(SemanticCatalog).filter(
-                SemanticCatalog.connection_id == connection_id
+                SemanticCatalog.connection_id == effective_conn_id
             ).all()
 
             raw_catalog_tables = {e.table_name.lower() for e in catalog_entries if e.table_name}
@@ -161,7 +235,7 @@ class DynamicSchemaPruningService:
         else:
             table_perms = db.query(RoleTablePermission).filter(
                 RoleTablePermission.role_id == effective_role_id,
-                RoleTablePermission.connection_id == connection_id,
+                RoleTablePermission.connection_id == effective_conn_id,
                 RoleTablePermission.is_allowed == True
             ).all() if effective_role_id is not None else []
 
@@ -174,7 +248,7 @@ class DynamicSchemaPruningService:
 
             col_perms = db.query(RoleColumnPermission).filter(
                 RoleColumnPermission.role_id == effective_role_id,
-                RoleColumnPermission.connection_id == connection_id
+                RoleColumnPermission.connection_id == effective_conn_id
             ).all() if effective_role_id is not None else []
 
             for cp in col_perms:
@@ -184,7 +258,7 @@ class DynamicSchemaPruningService:
                     blocked_columns.add(cp.column_name.lower())
 
             catalog_entries = db.query(SemanticCatalog).filter(
-                SemanticCatalog.connection_id == connection_id
+                SemanticCatalog.connection_id == effective_conn_id
             ).all()
 
         catalog_desc_map: Dict[str, str] = {}
@@ -197,7 +271,7 @@ class DynamicSchemaPruningService:
         table_columns_map: Dict[str, List[str]] = {}
 
         for tbl in sorted(list(allowed_tables)):
-            phys_cols = cls.get_physical_table_columns(tbl, target_db_path)
+            phys_cols = cls.get_physical_table_columns(tbl, target_db_target)
             table_columns_map[tbl] = []
 
             col_lines = []

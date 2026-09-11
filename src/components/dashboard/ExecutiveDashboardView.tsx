@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { QueryResult } from '../../types';
 import { DataGridTable } from '../datagrid/DataGridTable';
 import { ExecutiveReportView } from './ExecutiveReportView';
-import { ExecutiveStudioView } from './ExecutiveStudioView';
 import { ExecutiveAssistantView } from './ExecutiveAssistantView';
 import { KPISection } from '../../features/dashboard/components/KPISection';
 import { ChartSection } from '../../features/dashboard/components/ChartSection';
@@ -17,98 +16,22 @@ interface ExecutiveDashboardViewProps {
 
 type ViewMode = 'assistant' | 'studio' | 'report' | 'table';
 
-interface ExecutiveDashboardHeaderProps {
-  viewMode: ViewMode;
-  setViewMode: (mode: ViewMode) => void;
-  hasConversationalResponse: boolean;
-  dataRowsCount: number;
-  onOpenTraceability?: () => void;
-}
-
-const ExecutiveDashboardHeader: React.FC<ExecutiveDashboardHeaderProps> = ({
-  viewMode,
-  setViewMode,
-  hasConversationalResponse,
-  dataRowsCount,
-  onOpenTraceability,
-}) => {
-  return (
-    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-zinc-900/90 border border-white/10 p-3.5 rounded-2xl shadow-xl backdrop-blur-md">
-      <div className="flex items-center space-x-1.5 overflow-x-auto scrollbar-none pb-1 sm:pb-0">
-        {hasConversationalResponse && (
-          <button
-            onClick={() => setViewMode('assistant')}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-              viewMode === 'assistant'
-                ? 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-500/20'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Respuesta IA</span>
-          </button>
-        )}
-
-        <button
-          onClick={() => setViewMode('studio')}
-          className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-            viewMode === 'studio'
-              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-          }`}
-        >
-          <BarChart3 className="w-3.5 h-3.5" />
-          <span>Studio Visual</span>
-        </button>
-
-        <button
-          onClick={() => setViewMode('report')}
-          className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-            viewMode === 'report'
-              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-          }`}
-        >
-          <FileText className="w-3.5 h-3.5" />
-          <span>Informe Ejecutivo</span>
-        </button>
-
-        <button
-          onClick={() => setViewMode('table')}
-          className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-            viewMode === 'table'
-              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-          }`}
-        >
-          <TableIcon className="w-3.5 h-3.5" />
-          <span>Datos ({dataRowsCount})</span>
-        </button>
-      </div>
-    </div>
-  );
-};
-
 export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
   result,
   onOpenTraceability,
 }) => {
   const [colorTheme, setColorTheme] = useState<ColorTheme>('indigo');
 
-  const hasConversationalResponse = Boolean(result.conversational_response);
+  const hasConversationalResponse = Boolean(result.conversational_response || result.summary_text);
+  const hasDataRows = Boolean(result.data_rows && result.data_rows.length > 0);
+  const hasChart = Boolean(result.chart_type && result.chart_type !== 'none' && result.chart_option);
 
   const initialMode = useMemo<ViewMode>(() => {
-    if (result.presentation_hints?.preferred_view === 'assistant' && hasConversationalResponse) {
-      return 'assistant';
-    }
     if (result.presentation_hints?.preferred_view === 'table') {
       return 'table';
     }
-    if (hasConversationalResponse) {
-      return 'assistant';
-    }
-    return 'studio';
-  }, [result, hasConversationalResponse]);
+    return 'assistant';
+  }, [result]);
 
   const [viewMode, setViewMode] = useState<ViewMode>(initialMode);
 
@@ -132,15 +55,69 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
   }
 
   return (
-    <div className="w-full space-y-6 animate-fadeIn">
-      {/* Header Selector Tabs */}
-      <ExecutiveDashboardHeader
-        viewMode={viewMode}
-        setViewMode={setViewMode}
-        hasConversationalResponse={hasConversationalResponse}
-        dataRowsCount={result.data_rows?.length || 0}
-        onOpenTraceability={onOpenTraceability}
-      />
+    <div className="w-full space-y-4 animate-fadeIn font-sans">
+      {/* Optional Mode Switcher Tabs (Only if there are multiple data views available and user switched view) */}
+      {(hasChart || hasDataRows || result.executive_report) && (
+        <div className="flex items-center space-x-1.5 bg-dark-base/80 p-1 rounded-xl border border-dark-border/80 w-fit">
+          <button
+            type="button"
+            onClick={() => setViewMode('assistant')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              (viewMode as string) === 'assistant'
+                ? 'bg-brand-600 text-white shadow-md'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Conversación IA</span>
+          </button>
+
+          {hasChart && (
+            <button
+              type="button"
+              onClick={() => setViewMode('studio')}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                viewMode === 'studio'
+                  ? 'bg-brand-600 text-white shadow-md'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>Studio Visual</span>
+            </button>
+          )}
+
+          {result.executive_report && (
+            <button
+              type="button"
+              onClick={() => setViewMode('report')}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                viewMode === 'report'
+                  ? 'bg-brand-600 text-white shadow-md'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Informe</span>
+            </button>
+          )}
+
+          {hasDataRows && (
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                viewMode === 'table'
+                  ? 'bg-brand-600 text-white shadow-md'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <TableIcon className="w-3.5 h-3.5" />
+              <span>Datos ({result.data_rows?.length || 0})</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Main View Switching */}
       {viewMode === 'assistant' && (
@@ -153,7 +130,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
       )}
 
       {viewMode === 'studio' && (
-        <div className="space-y-6">
+        <div className="space-y-5">
           <KPISection
             kpis={result.kpis}
             gauges={result.gauges}

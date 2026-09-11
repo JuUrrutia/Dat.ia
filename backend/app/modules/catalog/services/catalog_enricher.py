@@ -74,7 +74,13 @@ class CatalogEnricher:
         }
 
     @classmethod
-    def seed_catalog_heuristics_for_connection(cls, db: Session, connection_id: int, db_path: Optional[str] = None) -> int:
+    def seed_catalog_heuristics_for_connection(
+        cls,
+        db: Session,
+        connection_id: int,
+        db_path: Optional[str] = None,
+        only_tables: Optional[List[str]] = None
+    ) -> int:
         """
         Inspects the physical database and automatically generates initial heuristic semantic catalog
         entries for all tables and columns that don't already have catalog entries for this connection.
@@ -83,6 +89,10 @@ class CatalogEnricher:
         tables_meta = SchemaInspector.introspect_connection_metadata(conn_obj, db_path)
         if not tables_meta:
             return 0
+
+        if only_tables:
+            only_lower = {t.lower() for t in only_tables}
+            tables_meta = [t for t in tables_meta if t["table_name"].lower() in only_lower]
 
         seeded_count = 0
         for tbl_info in tables_meta:

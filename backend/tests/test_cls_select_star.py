@@ -1,9 +1,9 @@
 import os
 import unittest
 from unittest.mock import patch, MagicMock
-from app.services.ast_validator import ASTValidator, ASTValidationError
-from app.services.query_engine import QueryEngine
-from app.models.connection import DatabaseType
+from app.modules.chat_engine.ast_validator import ASTValidator, ASTValidationError
+from app.modules.chat_engine.engine import QueryEngine
+from app.modules.admin_catalog.models import DatabaseType
 
 class TestCLSSelectStar(unittest.IsolatedAsyncioTestCase):
     """

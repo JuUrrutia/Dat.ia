@@ -72,7 +72,7 @@ class ResponseBuilder:
         allowed_tables: Set[str],
         conversational: Optional[str] = None
     ) -> QueryResponse:
-        summary_text = "Asistente Dat.ia listo para responder tus consultas sobre la base de datos activa."
+        summary_text = "Asistente DATIA listo para responder tus consultas sobre la base de datos activa."
         return QueryResponse(
             question=question,
             summary_text=summary_text,

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { AppSettings } from '../../../types';
-import { llmClientService, LLMConnectionTestResult, LLMCompletionTestResult } from '../../../services/llm_service';
-import { apiClient } from '../../../services/api_client';
+import { llmClientService, LLMConnectionTestResult, LLMCompletionTestResult } from '../../chat/services/llm_service';
+import { apiClient } from '../../../shared/api/api_client';
 import { DEFAULT_OLLAMA_URL, DEFAULT_LLM_MODEL, DEFAULT_LLM_PROVIDER } from '../../../constants';
 
 type LLMProvider = AppSettings['llm_provider'];

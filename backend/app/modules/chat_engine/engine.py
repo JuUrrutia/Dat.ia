@@ -32,7 +32,7 @@ class QueryEngine:
         is_admin: bool,
         db: Optional[Session] = None,
         role_id: Optional[int] = None,
-        connection_id: int = 1
+        connection_id: Optional[int] = None
     ) -> Set[str]:
         if is_admin or user_role in ADMIN_ROLES:
             is_admin = True
@@ -230,16 +230,29 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         # 2. INTENT CLASSIFICATION
         response_type = await IntentClassifier.classify_intent(question)
 
-        if not os.path.exists(DEMO_DB_PATH):
-            from setup_demo_db import setup_demo_sqlite
-            setup_demo_sqlite()
+        # Resolve active connection and dialect
+        conn_record = None
+        if db is not None:
+            try:
+                from app.modules.admin_catalog.models import CorporateConnection, DatabaseType
+                if connection_id:
+                    conn_record = db.query(CorporateConnection).filter(CorporateConnection.id == connection_id).first()
+                if not conn_record:
+                    conn_record = db.query(CorporateConnection).filter(CorporateConnection.is_active == True).order_by(CorporateConnection.id.desc()).first()
+                if not conn_record:
+                    conn_record = db.query(CorporateConnection).order_by(CorporateConnection.id.desc()).first()
+            except Exception:
+                pass
 
+        is_pg = conn_record is not None and (conn_record.db_type == DatabaseType.POSTGRESQL or str(conn_record.db_type).lower() == "postgresql")
+        engine_dialect = "postgres" if is_pg else "sqlite"
         target_db_path = DynamicSchemaPruningService.resolve_db_path(db, connection_id)
+        exec_target = conn_record if is_pg else target_db_path
 
         table_columns_map: Dict[str, List[str]] = {}
         for tbl in allowed_tables:
             phys_cols_info = DynamicSchemaPruningService.get_physical_table_columns(
-                tbl, db_path=target_db_path, include_samples=False
+                tbl, db_path=exec_target, include_samples=False
             )
             table_columns_map[tbl.lower()] = [c["name"] for c in phys_cols_info if "name" in c]
 
@@ -258,7 +271,7 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             try:
                 _, secured_sql, meta = ASTValidator.validate_and_secure_sql(
                     grounding_sql,
-                    dialect="sqlite",
+                    dialect=engine_dialect,
                     allowed_tables=allowed_tables,
                     blocked_columns=blocked_columns,
                     table_columns=table_columns_map
@@ -268,7 +281,7 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 meta = {"tables_used": list(allowed_tables)}
 
             try:
-                rows = SQLExecutor.execute_raw_sql(target_db_path, secured_sql)
+                rows = SQLExecutor.execute_raw_sql(exec_target, secured_sql, dialect=engine_dialect)
             except Exception:
                 rows = []
 
@@ -285,17 +298,6 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             )
 
         # BRANCH B: DATA ANALYSIS / REPORT / HYBRID
-        conn_record = None
-        if db is not None:
-            try:
-                from app.models.connection import CorporateConnection, DatabaseType
-                conn_record = db.query(CorporateConnection).filter(CorporateConnection.id == connection_id).first()
-            except Exception:
-                pass
-
-        is_pg = conn_record is not None and (conn_record.db_type == DatabaseType.POSTGRESQL or str(conn_record.db_type).lower() == "postgresql")
-        engine_dialect = "postgres" if is_pg else "sqlite"
-        exec_target = conn_record if is_pg else target_db_path
 
         q_strip = question.strip().rstrip(';')
         if q_strip.upper().startswith(("SELECT", "WITH", "DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "TRUNCATE", "CREATE")):
@@ -328,33 +330,33 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             except Exception:
                 pass
 
-        few_shots = SQLExecutor.retrieve_few_shot_memories(db, question, connection_id)
-        try:
-            system_prompt = PromptManager.get_text_to_sql_system_prompt(user_role, allowed_tables)
-            prompt_llm = PromptManager.get_text_to_sql_user_prompt(
-                question, user_role, schema_context, allowed_tables, few_shots
-            )
+            few_shots = SQLExecutor.retrieve_few_shot_memories(db, question, connection_id)
+            try:
+                system_prompt = PromptManager.get_text_to_sql_system_prompt(user_role, allowed_tables)
+                prompt_llm = PromptManager.get_text_to_sql_user_prompt(
+                    question, user_role, schema_context, allowed_tables, few_shots
+                )
 
-            llm_response_text = await LLMService.generate_completion(
-                prompt_llm,
-                system_prompt=system_prompt,
-                temperature=0.05,
-                max_tokens=200
-            )
+                llm_response_text = await LLMService.generate_completion(
+                    prompt_llm,
+                    system_prompt=system_prompt,
+                    temperature=0.05,
+                    max_tokens=200
+                )
 
-            if llm_response_text:
-                is_llm_active = True
-                sql_match = re.search(r'```sql\s*(.*?)\s*```', llm_response_text, re.DOTALL | re.IGNORECASE)
-                if sql_match:
-                    extracted = sql_match.group(1).strip()
-                    if "SELECT" in extracted.upper():
-                        candidate_sql = extracted
-                elif "SELECT" in llm_response_text.upper():
-                    select_match = re.search(r'(SELECT\s+.*?(?:;|$))', llm_response_text, re.DOTALL | re.IGNORECASE)
-                    if select_match:
-                        candidate_sql = select_match.group(1).strip().rstrip(';')
-        except Exception:
-            is_llm_active = False
+                if llm_response_text:
+                    is_llm_active = True
+                    sql_match = re.search(r'```sql\s*(.*?)\s*```', llm_response_text, re.DOTALL | re.IGNORECASE)
+                    if sql_match:
+                        extracted = sql_match.group(1).strip()
+                        if "SELECT" in extracted.upper():
+                            candidate_sql = extracted
+                    elif "SELECT" in llm_response_text.upper():
+                        select_match = re.search(r'(SELECT\s+.*?(?:;|$))', llm_response_text, re.DOTALL | re.IGNORECASE)
+                        if select_match:
+                            candidate_sql = select_match.group(1).strip().rstrip(';')
+            except Exception:
+                is_llm_active = False
 
         if not candidate_sql or not is_llm_active:
             exec_time_ms = int((time.time() - start_time) * 1000)
@@ -418,6 +420,8 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 if llm_exec_report:
                     final_exec_report = llm_exec_report
 
+        if not pres_hints.show_executive_report:
+            final_exec_report = None
         if not pres_hints.show_kpis:
             kpis = []
         if not pres_hints.show_gauges:

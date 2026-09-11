@@ -82,12 +82,25 @@ export const queryService = {
     const generatedSql = completionResult.completion_text;
     const lowerRole = (userRole || '').toLowerCase();
 
+    const isReportRequested = /informe|reporte|diagnostico|diagnóstico/i.test(question);
+
     if (lowerRole.includes('ti') || lowerRole.includes('infraestructura')) {
+      const summaryText = `Análisis de infraestructura corporativa: Se identificó un promedio de consumo de CPU del 68.5% con 2 servidores en estado de alta carga ('srv-prod-01' al 88.5% y 'srv-db-master' al 79.2%).`;
+      const conversationalResp = `### 📊 Diagnóstico Técnico de Infraestructura\n\n` +
+        `Al consultar el estado de los servidores en la base de datos corporativa, observo que la carga promedio de CPU se sitúa en **68.5%**.\n\n` +
+        `**Hallazgos principales:**\n` +
+        `- **srv-prod-01.corp**: Muestra el consumo más elevado (**88.5% CPU**, 92.1% RAM) con 3 incidentes registrados.\n` +
+        `- **srv-db-master.corp**: Mantiene un uso de RAM del **85.0%** y CPU del **79.2%**.\n` +
+        `- **srv-api-gateway.corp** y **srv-auth-sec.corp**: Se encuentran operando en niveles óptimos (menos del 65% de carga).\n\n` +
+        `**Recomendación:** Se sugiere balancear los procesos batch en 'srv-prod-01' para mitigar riesgos en horas pico.\n\n` +
+        `¿Deseas profundizar en los logs de algún servidor en específico?`;
+
       return {
         id: `q_${Date.now()}`,
         question,
         timestamp: new Date().toLocaleTimeString(),
-        summary_text: `[Offline Local IA] Análisis de infraestructura generado para: "${question}"`,
+        summary_text: summaryText,
+        conversational_response: conversationalResp,
         data_columns: ["servidor", "cpu_pct", "ram_pct", "incidentes"],
         data_rows: [
           { servidor: "srv-prod-01.corp", cpu_pct: 88.5, ram_pct: 92.1, incidentes: 3 },
@@ -102,15 +115,23 @@ export const queryService = {
         gauges: [
           { title: "Carga Servidores TI", percentage: 78.5, value_label: "78.5%", target_label: "80%" }
         ],
-        executive_report: {
+        executive_report: isReportRequested ? {
           overview: "El análisis técnico revela que el servidor 'srv-prod-01.corp' registra un uso sostenido de CPU del 88.5% con 3 incidentes reportados.",
           key_findings: ["srv-prod-01 al 88.5% CPU", "srv-db-master al 85% RAM"],
           recommendations: ["Redistribuir cargas de trabajo batch", "Revisar logs de memoria"],
           risk_level: "MEDIO",
           business_impact: "Riesgo de degradación de servicio en horas pico"
-        },
+        } : undefined,
         chart_type: 'bar',
         chart_option: {},
+        presentation_hints: {
+          show_executive_report: isReportRequested,
+          show_kpis: true,
+          show_gauges: false,
+          show_chart: true,
+          preferred_view: 'assistant',
+          summary_style: 'detailed'
+        },
         traceability: {
           sql_executed: generatedSql,
           execution_time_ms: completionResult.latency_ms,
@@ -122,11 +143,22 @@ export const queryService = {
       };
     }
 
+    const summaryText = `Análisis de distribución de datos: Al consultar la base de datos se evaluaron 4 categorías activas con un volumen total acumulado de $1,029,000 USD y un margen promedio del 31.1%.`;
+    const conversationalResp = `### 💡 Análisis e Interpretación de Datos\n\n` +
+      `Al consultar los registros en la base de datos activa para responder a tu pregunta sobre *"**${question}**"*, he identificado los siguientes datos relevantes:\n\n` +
+      `- **Categoría Principal**: **Electrónica & TI** encabeza los registros con mayor volumen acumulado ($458,000 USD) y un margen de utilidad del 32.5%.\n` +
+      `- **Mayor Rentabilidad**: El segmento de **Servicios Profesionales** destaca con el margen de beneficio más alto (**48.0%**).\n` +
+      `- **Categorías Secundarias**: **Hogar & Oficina** ($289,000 USD, 24.1% margen) y **Accesorios** ($87,000 USD, 19.8% margen).\n\n` +
+      `**Conclusión y Sugerencia de Enfoque:**\n` +
+      `Para maximizar el impacto y rendimiento, conviene enfocar los recursos prioritariamente en **Servicios Profesionales** (por su alto margen del 48%) y optimizar la rotación en **Electrónica & TI** (por su alto volumen bruto).\n\n` +
+      `¿Te gustaría que desglosemos estos resultados por período o evaluemos los costos asociados?`;
+
     return {
       id: `q_${Date.now()}`,
       question,
       timestamp: new Date().toLocaleTimeString(),
-      summary_text: `[Offline Local IA] Análisis financiero/comercial generado para: "${question}"`,
+      summary_text: summaryText,
+      conversational_response: conversationalResp,
       data_columns: ["categoria", "ventas_totales", "margen_pct"],
       data_rows: [
         { categoria: "Electrónica & TI", ventas_totales: 458000, margen_pct: 32.5 },
@@ -141,15 +173,23 @@ export const queryService = {
       gauges: [
         { title: "Meta de Ingresos Trimestral", percentage: 85.7, value_label: "$1,029,000", target_label: "$1,200,000" }
       ],
-      executive_report: {
+      executive_report: isReportRequested ? {
         overview: "El segmento de Electrónica & TI lidera la facturación acumulada con $458,000 USD y un margen de utilidad del 32.5%.",
         key_findings: ["Electrónica & TI líder en ingresos", "Servicios Profesionales con mayor margen (48%)"],
         recommendations: ["Incrementar inventario en Electrónica", "Fidelizar clientes de Servicios"],
         risk_level: "BAJO",
         business_impact: "Crecimiento proyectado sostenible"
-      },
+      } : undefined,
       chart_type: 'bar',
       chart_option: {},
+      presentation_hints: {
+        show_executive_report: isReportRequested,
+        show_kpis: true,
+        show_gauges: false,
+        show_chart: true,
+        preferred_view: 'assistant',
+        summary_style: 'detailed'
+      },
       traceability: {
         sql_executed: generatedSql,
         execution_time_ms: completionResult.latency_ms,

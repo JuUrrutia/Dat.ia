@@ -3,8 +3,7 @@ from fastapi.testclient import TestClient
 from main import app
 from app.core.database import SessionLocal
 from app.db.init_db import init_db
-from app.models.user import User
-from app.models.session import UserSession
+from app.modules.auth.models import User, UserSession
 
 class TestSessions(unittest.TestCase):
 

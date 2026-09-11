@@ -9,7 +9,7 @@ import {
   RefreshCw,
   ChevronDown,
 } from 'lucide-react';
-import { reportService } from '../../../services/report_service';
+import { reportService } from '../../../features/dashboard/services/report_service';
 
 interface ReportExportToolbarProps {
   result: QueryResult;

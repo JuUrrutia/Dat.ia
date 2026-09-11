@@ -3,10 +3,9 @@ from fastapi.testclient import TestClient
 from main import app
 from app.core.database import SessionLocal, Base, engine
 from app.db.init_db import init_db
-from app.models.audit_log import AuditLog
-from app.models.user import User
+from app.modules.telemetry_audit.models import AuditLog
+from app.modules.auth.models import User, UserSession
 from app.core.security import create_access_token
-from app.models.session import UserSession
 import uuid
 
 class TestAuditLog(unittest.TestCase):
