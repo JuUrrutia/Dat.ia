@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { auditService } from '../../../services/audit_service';
+import { auditService } from '../services/audit_service';
 import { AuditLog, AuditFilterParams } from '../../../types';
 
 export function useAdminAudit() {

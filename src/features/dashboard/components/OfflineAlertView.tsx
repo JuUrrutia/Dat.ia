@@ -81,7 +81,7 @@ export const OfflineAlertView: React.FC<OfflineAlertViewProps> = ({
       <div className="bg-zinc-950/60 border border-white/5 rounded-2xl p-5 space-y-3">
         <div className="flex items-center space-x-2 text-xs font-bold text-amber-400">
           <Lightbulb className="w-4 h-4" />
-          <span>Diagnóstico del Sistema Dat.ia</span>
+          <span>Diagnóstico del Sistema DATIA</span>
         </div>
         <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed font-mono">
           {result.summary_text || result.traceability?.explanation || 'No se pudo completar la consulta sobre la fuente relacional.'}

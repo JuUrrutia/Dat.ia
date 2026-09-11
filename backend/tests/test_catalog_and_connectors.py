@@ -9,11 +9,8 @@ from fastapi.testclient import TestClient
 from main import app
 from app.core.database import SessionLocal
 from app.db.init_db import init_db
-from app.models.user import User
-from app.models.role import Role
-from app.models.session import UserSession
-from app.models.connection import CorporateConnection, DatabaseType
-from app.models.catalog import SemanticCatalog
+from app.modules.auth.models import User, Role, UserSession
+from app.modules.admin_catalog.models import CorporateConnection, DatabaseType, SemanticCatalog
 from app.core.security import create_access_token
 
 class TestCatalogAndConnectors(unittest.TestCase):
@@ -94,7 +91,7 @@ class TestCatalogAndConnectors(unittest.TestCase):
         self.assertIn("total_columns", data)
         self.assertIsInstance(data["tables"], list)
 
-    @patch("app.services.llm_service.LLMService.generate_completion", new_callable=AsyncMock)
+    @patch("app.modules.chat_engine.llm_service.LLMService.generate_completion", new_callable=AsyncMock)
     def test_auto_enrich_catalog(self, mock_llm):
         mock_llm.return_value = None  # Use fast heuristic auto-enrichment fallback
         res = self.client.post("/api/v1/catalog/auto-enrich", json={}, headers=self.headers)
@@ -171,17 +168,25 @@ class TestCatalogAndConnectors(unittest.TestCase):
             conn_id = upload_data["id"]
             self.assertTrue(upload_data["is_uploaded"])
 
-            # Verify tables in SQLite
+            # Verify tables in database (PostgreSQL or SQLite)
             conn_record = self.db.query(CorporateConnection).filter(CorporateConnection.id == conn_id).first()
             self.assertIsNotNone(conn_record)
-            sqlite_file = conn_record.host
-            self.assertTrue(os.path.exists(sqlite_file))
-
-            sq_conn = sqlite3.connect(sqlite_file)
-            cur = sq_conn.cursor()
-            rows = cur.execute("SELECT * FROM ventas_importadas;").fetchall()
-            self.assertEqual(len(rows), 3)
-            sq_conn.close()
+            if conn_record.db_type == DatabaseType.POSTGRESQL or str(conn_record.db_type).lower() == "postgresql":
+                from app.core.database import build_engine_for_connector
+                from sqlalchemy import text
+                eng = build_engine_for_connector(conn_record)
+                with eng.connect() as pg_c:
+                    rows = pg_c.execute(text("SELECT * FROM ventas_importadas;")).fetchall()
+                    self.assertEqual(len(rows), 3)
+                eng.dispose()
+            else:
+                sqlite_file = conn_record.host
+                self.assertTrue(os.path.exists(sqlite_file))
+                sq_conn = sqlite3.connect(sqlite_file)
+                cur = sq_conn.cursor()
+                rows = cur.execute("SELECT * FROM ventas_importadas;").fetchall()
+                self.assertEqual(len(rows), 3)
+                sq_conn.close()
         finally:
             if conn_id:
                 self.client.delete(f"/api/v1/connectors/{conn_id}", headers=self.headers)
@@ -227,16 +232,26 @@ class TestCatalogAndConnectors(unittest.TestCase):
 
             conn_record = self.db.query(CorporateConnection).filter(CorporateConnection.id == conn_id).first()
             self.assertIsNotNone(conn_record)
-            sqlite_file = conn_record.host
-            self.assertTrue(os.path.exists(sqlite_file))
-
-            sq_conn = sqlite3.connect(sqlite_file)
-            cur = sq_conn.cursor()
-            fact_rows = cur.execute("SELECT * FROM facturas;").fetchall()
-            client_rows = cur.execute("SELECT * FROM clientes;").fetchall()
-            self.assertEqual(len(fact_rows), 2)
-            self.assertEqual(len(client_rows), 2)
-            sq_conn.close()
+            if conn_record.db_type == DatabaseType.POSTGRESQL or str(conn_record.db_type).lower() == "postgresql":
+                from app.core.database import build_engine_for_connector
+                from sqlalchemy import text
+                eng = build_engine_for_connector(conn_record)
+                with eng.connect() as pg_c:
+                    fact_rows = pg_c.execute(text("SELECT * FROM facturas;")).fetchall()
+                    client_rows = pg_c.execute(text("SELECT * FROM clientes;")).fetchall()
+                    self.assertEqual(len(fact_rows), 2)
+                    self.assertEqual(len(client_rows), 2)
+                eng.dispose()
+            else:
+                sqlite_file = conn_record.host
+                self.assertTrue(os.path.exists(sqlite_file))
+                sq_conn = sqlite3.connect(sqlite_file)
+                cur = sq_conn.cursor()
+                fact_rows = cur.execute("SELECT * FROM facturas;").fetchall()
+                client_rows = cur.execute("SELECT * FROM clientes;").fetchall()
+                self.assertEqual(len(fact_rows), 2)
+                self.assertEqual(len(client_rows), 2)
+                sq_conn.close()
         finally:
             if conn_id:
                 self.client.delete(f"/api/v1/connectors/{conn_id}", headers=self.headers)
@@ -252,7 +267,7 @@ class TestCatalogAndConnectors(unittest.TestCase):
         while strictly keeping unassigned/restricted roles ('Usuario', 'Usuario Consultor') with 0 permissions.
         Response includes requires_permission_review: True and detected_tables list.
         """
-        from app.models.permission import RoleTablePermission
+        from app.modules.admin_catalog.models import RoleTablePermission
         from app.core.constants import ADMIN_ROLES
 
         csv_content = b"id_sensor,ubicacion,temperatura\n1,Servidor-01,23.5\n2,Servidor-02,28.1\n"
@@ -356,8 +371,10 @@ class TestCatalogAndConnectors(unittest.TestCase):
             self.assertEqual(res_enrich.status_code, 200)
             self.assertTrue(res_enrich.json()["success"])
 
-            # 4. Verify connection 1's dictionary is distinct from connection 2
-            res_dict_conn1 = self.client.get("/api/v1/catalog/data-dictionary?connection_id=1", headers=self.headers)
+            # 4. Verify main connection's dictionary is distinct from connection 2
+            main_conn = self.db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == False).first()
+            main_conn_id = main_conn.id if main_conn else 1
+            res_dict_conn1 = self.client.get(f"/api/v1/catalog/data-dictionary?connection_id={main_conn_id}", headers=self.headers)
             self.assertEqual(res_dict_conn1.status_code, 200)
             tbl_names_conn1 = [t["table_name"] for t in res_dict_conn1.json()["tables"]]
             self.assertNotIn("clientes_nuevos", tbl_names_conn1)

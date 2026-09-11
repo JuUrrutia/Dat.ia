@@ -1,27 +1,24 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Users, Database, BookOpen, Server, Key, FileText } from 'lucide-react';
-import { CorporateConnection, connectorService, DEFAULT_CONNECTORS } from '../services/connector_service';
-import { ConnectorModal } from '../components/admin/ConnectorModal';
+import React, { useState, useEffect } from 'react';
+import { ShieldAlert, Users, Database, BookOpen, Server, Key, FileText, Sparkles } from 'lucide-react';
+import { CorporateConnection, connectorService, DEFAULT_CONNECTORS } from '../features/admin/services/connector_service';
+import { AdminAuditTab } from '../components/admin/AdminAuditTab';
+import { AdminCatalogTab } from '../components/admin/AdminCatalogTab';
 import { AdminConnectorsTab } from '../components/admin/AdminConnectorsTab';
 import { AdminUsersTab } from '../components/admin/AdminUsersTab';
-import { AdminCatalogTab } from '../components/admin/AdminCatalogTab';
-import { AdminAuditTab } from '../components/admin/AdminAuditTab';
-import { authService } from '../services/auth_service';
+import { ConnectorModal } from '../components/admin/ConnectorModal';
+import { authService } from '../features/auth/services/auth_service';
 import { User } from '../types';
-
-const INITIAL_USERS: Array<{ id: number; name: string; username?: string; email: string; role: string; is_admin: boolean }> = [];
 
 export const AdminPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'connectors' | 'users' | 'catalog' | 'audit'>('connectors');
 
   // Connectors State
   const [connectors, setConnectors] = useState<CorporateConnection[]>(DEFAULT_CONNECTORS);
-  const isLoadingConnectorsRef = useRef(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingConnector, setEditingConnector] = useState<CorporateConnection | null>(null);
 
   // Users State
-  const [dbUsers, setDbUsers] = useState<Array<{ id: number; name: string; username?: string; email: string; role: string; is_admin: boolean }>>(INITIAL_USERS);
+  const [dbUsers, setDbUsers] = useState<Array<{ id: number; name: string; username?: string; email: string; role: string; is_admin: boolean }>>([]);
 
   const fetchUsers = async () => {
     try {
@@ -44,18 +41,11 @@ export const AdminPage: React.FC = () => {
   };
 
   const fetchConnectors = async () => {
-    isLoadingConnectorsRef.current = true;
     try {
       const data = await connectorService.getConnectors();
-      if (data && data.length > 0) {
-        setConnectors(data);
-      } else {
-        setConnectors(DEFAULT_CONNECTORS);
-      }
+      setConnectors(data && data.length > 0 ? data : DEFAULT_CONNECTORS);
     } catch {
       setConnectors(DEFAULT_CONNECTORS);
-    } finally {
-      isLoadingConnectorsRef.current = false;
     }
   };
 
@@ -97,56 +87,60 @@ export const AdminPage: React.FC = () => {
   const activeCount = connectors.filter((c) => c.is_active).length;
 
   return (
-    <div className="w-full h-full flex-1 bg-dark-base overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar pb-28">
+    <div className="w-full h-full flex-1 bg-dark-base overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar pb-28 font-sans">
       {/* Header Banner */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 glass-panel p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-white/10">
-        <div className="space-y-1">
-          <h1 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2.5">
-            <ShieldAlert className="w-5 h-5 text-purple-400 shrink-0" />
-            <span>Panel de Gobernanza & Fuentes BD Corporativas</span>
-          </h1>
-          <p className="text-xs text-gray-400">
-            Administración centralizada de conexiones a SQLite, PostgreSQL, SQL Server y MySQL con cifrado AES-256
-          </p>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 glass-panel p-5 rounded-2xl border border-white/10 shadow-2xl">
+        <div className="flex items-center space-x-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-purple-500/25 shrink-0">
+            <ShieldAlert className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-lg sm:text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
+              <span>Panel de Gobernanza & Fuentes BD Corporativas</span>
+            </h1>
+            <p className="text-xs text-gray-400">
+              Administración centralizada de conexiones a SQLite, PostgreSQL, SQL Server y MySQL con cifrado AES-256
+            </p>
+          </div>
         </div>
 
         {/* Quick Stats Badges */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-          <div className="bg-dark-base/80 border border-dark-border px-3.5 py-2 rounded-xl flex items-center space-x-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="bg-dark-base/80 border border-dark-border/80 px-4 py-2.5 rounded-xl flex items-center space-x-3 shadow-inner">
             <Server className="w-4 h-4 text-purple-400 shrink-0" />
             <div className="truncate">
-              <div className="text-[10px] text-gray-400 uppercase font-semibold">Fuentes BD</div>
-              <div className="text-white font-bold">{connectors.length} ({activeCount} activas)</div>
+              <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Fuentes BD</div>
+              <div className="text-white font-bold text-xs">{connectors.length} ({activeCount} activas)</div>
             </div>
           </div>
 
-          <div className="bg-dark-base/80 border border-dark-border px-3.5 py-2 rounded-xl flex items-center space-x-2">
+          <div className="bg-dark-base/80 border border-dark-border/80 px-4 py-2.5 rounded-xl flex items-center space-x-3 shadow-inner">
             <Users className="w-4 h-4 text-emerald-400 shrink-0" />
             <div className="truncate">
-              <div className="text-[10px] text-gray-400 uppercase font-semibold">Usuarios RBAC</div>
-              <div className="text-white font-bold">{dbUsers.length} Perfiles</div>
+              <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Usuarios RBAC</div>
+              <div className="text-white font-bold text-xs">{dbUsers.length} Perfiles</div>
             </div>
           </div>
 
-          <div className="bg-dark-base/80 border border-dark-border px-3.5 py-2 rounded-xl flex items-center space-x-2">
+          <div className="bg-dark-base/80 border border-dark-border/80 px-4 py-2.5 rounded-xl flex items-center space-x-3 shadow-inner">
             <Key className="w-4 h-4 text-cyan-400 shrink-0" />
             <div className="truncate">
-              <div className="text-[10px] text-gray-400 uppercase font-semibold">Seguridad</div>
-              <div className="text-emerald-400 font-bold">AES-256 + CLS</div>
+              <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Seguridad</div>
+              <div className="text-emerald-400 font-bold text-xs">AES-256 + CLS</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Navigation Tabs (Smooth Responsive Horizontal Scroll) */}
-      <div className="flex items-center space-x-2 border-b border-dark-border pb-1 overflow-x-auto custom-scrollbar">
+      {/* Executive Navigation Tabs */}
+      <div className="flex items-center space-x-2 border-b border-dark-border/80 pb-1 overflow-x-auto custom-scrollbar">
         <button
           type="button"
           onClick={() => setActiveTab('connectors')}
-          className={`flex items-center space-x-2 px-3.5 sm:px-4 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+          className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold transition-all whitespace-nowrap rounded-t-xl ${
             activeTab === 'connectors'
-              ? 'border-purple-500 text-purple-400 font-bold bg-purple-500/10 rounded-t-xl'
-              : 'border-transparent text-gray-400 hover:text-white hover:bg-dark-card/50 rounded-t-xl'
+              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 glow-brand'
+              : 'text-gray-400 hover:text-white hover:bg-dark-card/60'
           }`}
         >
           <Database className="w-4 h-4" />
@@ -156,23 +150,23 @@ export const AdminPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('users')}
-          className={`flex items-center space-x-2 px-3.5 sm:px-4 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+          className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold transition-all whitespace-nowrap rounded-t-xl ${
             activeTab === 'users'
-              ? 'border-purple-500 text-purple-400 font-bold bg-purple-500/10 rounded-t-xl'
-              : 'border-transparent text-gray-400 hover:text-white hover:bg-dark-card/50 rounded-t-xl'
+              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 glow-brand'
+              : 'text-gray-400 hover:text-white hover:bg-dark-card/60'
           }`}
         >
           <Users className="w-4 h-4" />
-          <span>Usuarios & Roles ({dbUsers.length})</span>
+          <span>Usuarios & Roles RBAC ({dbUsers.length})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('catalog')}
-          className={`flex items-center space-x-2 px-3.5 sm:px-4 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+          className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold transition-all whitespace-nowrap rounded-t-xl ${
             activeTab === 'catalog'
-              ? 'border-purple-500 text-purple-400 font-bold bg-purple-500/10 rounded-t-xl'
-              : 'border-transparent text-gray-400 hover:text-white hover:bg-dark-card/50 rounded-t-xl'
+              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 glow-brand'
+              : 'text-gray-400 hover:text-white hover:bg-dark-card/60'
           }`}
         >
           <BookOpen className="w-4 h-4" />
@@ -182,10 +176,10 @@ export const AdminPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('audit')}
-          className={`flex items-center space-x-2 px-3.5 sm:px-4 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+          className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold transition-all whitespace-nowrap rounded-t-xl ${
             activeTab === 'audit'
-              ? 'border-purple-500 text-purple-400 font-bold bg-purple-500/10 rounded-t-xl'
-              : 'border-transparent text-gray-400 hover:text-white hover:bg-dark-card/50 rounded-t-xl'
+              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 glow-brand'
+              : 'text-gray-400 hover:text-white hover:bg-dark-card/60'
           }`}
         >
           <FileText className="w-4 h-4" />

@@ -15,9 +15,13 @@ from app.modules.admin_catalog.schemas import (
     CorporateConnectionCreate, CorporateConnectionUpdate, CorporateConnectionOut,
     ConnectionTestRequest, ConnectionTestResult
 )
-from app.modules.admin_catalog.tabular_importer import convert_uploaded_file_to_sqlite
+from app.core.database import engine as app_engine
+from app.modules.admin_catalog.tabular_importer import (
+    convert_uploaded_file_to_sqlite,
+    convert_uploaded_file_to_postgres,
+)
 from app.modules.catalog.services.catalog_service import CatalogDomainService
-from app.services.health_service import HealthService
+from app.modules.system.health_service import HealthService
 
 class ConnectorDomainService:
     """
@@ -96,35 +100,62 @@ class ConnectorDomainService:
                 detail=f"Error al guardar el archivo en el servidor: {str(e)}"
             )
 
-        sqlite_db_name = f"{int(time.time())}_{os.path.splitext(clean_filename)[0]}.sqlite"
-        target_path = os.path.join(ds_dir, sqlite_db_name)
-
-        if ext in [".sqlite", ".db", ".sqlite3"]:
-            target_path = os.path.join(ds_dir, f"{int(time.time())}_{clean_filename}")
-            shutil.move(raw_target_path, target_path)
-
+        is_postgres_active = app_engine.dialect.name == "postgresql"
         detected_tables = []
-        try:
-            detected_tables = convert_uploaded_file_to_sqlite(
-                source_path=target_path if ext in [".sqlite", ".db", ".sqlite3"] else raw_target_path,
-                ext=ext,
-                target_sqlite_path=target_path
-            )
-        except Exception as err:
-            if os.path.exists(raw_target_path):
-                try: os.remove(raw_target_path)
-                except Exception: pass
-            if os.path.exists(target_path):
-                try: os.remove(target_path)
-                except Exception: pass
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Error al procesar e importar archivo '{original_filename}': {str(err)}"
-            )
-        finally:
-            if raw_target_path != target_path and os.path.exists(raw_target_path):
-                try: os.remove(raw_target_path)
-                except Exception: pass
+        target_path = None
+
+        if is_postgres_active:
+            from sqlalchemy import create_engine
+            business_url = f"postgresql+psycopg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}/democratizacion_empresa"
+            pg_engine = create_engine(business_url, pool_pre_ping=True)
+            try:
+                detected_tables = convert_uploaded_file_to_postgres(
+                    source_path=raw_target_path,
+                    ext=ext,
+                    target_engine=pg_engine
+                )
+            except Exception as err:
+                if os.path.exists(raw_target_path):
+                    try: os.remove(raw_target_path)
+                    except Exception: pass
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Error al procesar e importar archivo en PostgreSQL '{original_filename}': {str(err)}"
+                )
+            finally:
+                pg_engine.dispose()
+                if os.path.exists(raw_target_path):
+                    try: os.remove(raw_target_path)
+                    except Exception: pass
+        else:
+            sqlite_db_name = f"{int(time.time())}_{os.path.splitext(clean_filename)[0]}.sqlite"
+            target_path = os.path.join(ds_dir, sqlite_db_name)
+
+            if ext in [".sqlite", ".db", ".sqlite3"]:
+                target_path = os.path.join(ds_dir, f"{int(time.time())}_{clean_filename}")
+                shutil.move(raw_target_path, target_path)
+
+            try:
+                detected_tables = convert_uploaded_file_to_sqlite(
+                    source_path=target_path if ext in [".sqlite", ".db", ".sqlite3"] else raw_target_path,
+                    ext=ext,
+                    target_sqlite_path=target_path
+                )
+            except Exception as err:
+                if os.path.exists(raw_target_path):
+                    try: os.remove(raw_target_path)
+                    except Exception: pass
+                if os.path.exists(target_path):
+                    try: os.remove(target_path)
+                    except Exception: pass
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Error al procesar e importar archivo '{original_filename}': {str(err)}"
+                )
+            finally:
+                if raw_target_path != target_path and os.path.exists(raw_target_path):
+                    try: os.remove(raw_target_path)
+                    except Exception: pass
 
         base_display_name = name.strip() if (name and name.strip()) else os.path.splitext(original_filename)[0]
         final_name = base_display_name
@@ -133,21 +164,35 @@ class ConnectorDomainService:
             final_name = f"{base_display_name}_{counter}"
             counter += 1
 
-        new_conn = CorporateConnection(
-            name=final_name,
-            db_type=DatabaseType.SQLITE,
-            host=target_path,
-            port=0,
-            database_name=original_filename,
-            username="admin",
-            encrypted_password="",
-            is_active=True,
-            is_uploaded=True
-        )
+        if is_postgres_active:
+            new_conn = CorporateConnection(
+                name=final_name,
+                db_type=DatabaseType.POSTGRESQL,
+                host=settings.POSTGRES_SERVER,
+                port=settings.POSTGRES_PORT,
+                database_name="democratizacion_empresa",
+                username=settings.POSTGRES_USER,
+                encrypted_password=encrypt_credential(settings.POSTGRES_PASSWORD),
+                is_active=True,
+                is_uploaded=True
+            )
+        else:
+            new_conn = CorporateConnection(
+                name=final_name,
+                db_type=DatabaseType.SQLITE,
+                host=target_path,
+                port=0,
+                database_name=original_filename,
+                username="admin",
+                encrypted_password="",
+                is_active=True,
+                is_uploaded=True
+            )
         db.add(new_conn)
         db.commit()
         db.refresh(new_conn)
 
+        schema_name = "public" if is_postgres_active else "main"
         all_roles = db.query(Role).all()
         for role in all_roles:
             # Exclude unassigned/restricted base user roles
@@ -167,7 +212,7 @@ class ConnectorDomainService:
                     db.add(RoleTablePermission(
                         role_id=role.id,
                         connection_id=new_conn.id,
-                        schema_name="main",
+                        schema_name=schema_name,
                         table_name=tbl,
                         is_allowed=True
                     ))
@@ -176,7 +221,9 @@ class ConnectorDomainService:
         db.refresh(new_conn)
 
         # Automatically seed heuristic semantic descriptions & data dictionary definitions
-        CatalogDomainService.seed_catalog_heuristics_for_connection(db, new_conn.id, target_path)
+        CatalogDomainService.seed_catalog_heuristics_for_connection(
+            db, new_conn.id, target_path if not is_postgres_active else None, only_tables=detected_tables
+        )
 
         return CorporateConnectionOut(
             id=new_conn.id,
@@ -252,10 +299,26 @@ class ConnectorDomainService:
                 detail="Conexión de base de datos no encontrada."
             )
 
+        # If it was an uploaded dataset in PostgreSQL, clean up created tables from PostgreSQL
+        if conn.is_uploaded and (conn.db_type == DatabaseType.POSTGRESQL or str(conn.db_type).lower() == "postgresql"):
+            try:
+                perms = db.query(RoleTablePermission).filter(RoleTablePermission.connection_id == conn_id).all()
+                table_names = list({p.table_name for p in perms if p.table_name})
+                if table_names:
+                    from app.core.database import build_engine_for_connector
+                    from sqlalchemy import text
+                    eng = build_engine_for_connector(conn)
+                    with eng.begin() as pg_conn:
+                        for tbl in table_names:
+                            pg_conn.execute(text(f'DROP TABLE IF EXISTS "{tbl}" CASCADE;'))
+                    eng.dispose()
+            except Exception:
+                pass
+
         db.query(SemanticCatalog).filter(SemanticCatalog.connection_id == conn_id).delete()
         db.query(RoleTablePermission).filter(RoleTablePermission.connection_id == conn_id).delete()
 
-        if conn.is_uploaded and conn.host and os.path.exists(conn.host):
+        if conn.is_uploaded and conn.host and os.path.exists(conn.host) and (conn.db_type == DatabaseType.SQLITE or str(conn.db_type).lower() == "sqlite"):
             try: os.remove(conn.host)
             except Exception: pass
 

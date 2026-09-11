@@ -4,8 +4,8 @@ from typing import Union, Tuple
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.user import User
-from app.models.audit_log import AuditLog
+from app.modules.auth.models import User
+from app.modules.telemetry_audit.models import AuditLog
 from app.modules.admin_catalog.schemas import ReportExportData, ReportExportRequest
 from app.modules.reports.pdf_exporter import PDFExporter
 from app.modules.reports.excel_exporter import ExcelExporter

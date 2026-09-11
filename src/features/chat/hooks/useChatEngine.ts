@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { useAuth } from '../../../context/AuthContext';
+import { useAuth } from '../../auth/context/AuthContext';
 import { useNotifications } from '../../../context/NotificationContext';
 import { QueryResult } from '../../../types';
 import { ChatThread } from '../../../components/chat/SidebarChatHistory';
 import { queryService } from '../services/query_service';
-import { connectorService, CorporateConnection } from '../../../services/connector_service';
+import { connectorService, CorporateConnection } from '../../admin/services/connector_service';
 
 export interface FullThread {
   id: string;
@@ -12,27 +12,6 @@ export interface FullThread {
   timestamp: string;
   results: QueryResult[];
 }
-
-const CHAT_THREADS_KEY_PREFIX = 'datia_chat_threads:v1:';
-const CHAT_SUGGESTIONS_KEY_PREFIX = 'datia_chat_suggestions:v1:';
-
-const loadThreads = (userId: number): FullThread[] => {
-  try {
-    const saved = localStorage.getItem(`${CHAT_THREADS_KEY_PREFIX}${userId}`);
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    return [];
-  }
-};
-
-const loadSuggestionsPreference = (userId: number): boolean => {
-  try {
-    const saved = localStorage.getItem(`${CHAT_SUGGESTIONS_KEY_PREFIX}${userId}`);
-    return saved === null ? true : saved === 'true';
-  } catch {
-    return true;
-  }
-};
 
 export function useChatEngine() {
   const { user, settings } = useAuth();
@@ -47,9 +26,6 @@ export function useChatEngine() {
 
   const userRole = user?.role_name || (user?.is_admin ? 'Administrador' : 'Usuario');
   const [promptSuggestions, setPromptSuggestions] = useState<string[]>([]);
-  const [showPromptSuggestions, setShowPromptSuggestions] = useState(() => (
-    user ? loadSuggestionsPreference(user.id) : true
-  ));
 
   const [connectors, setConnectors] = useState<CorporateConnection[]>([]);
 
@@ -85,52 +61,9 @@ export function useChatEngine() {
     }
   };
 
-  const [threads, setThreads] = useState<FullThread[]>(() => (user ? loadThreads(user.id) : []));
+  const [threads, setThreads] = useState<FullThread[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
-  const isHydratingThreadsRef = useRef(false);
-
-  useEffect(() => {
-    if (!user) {
-      setThreads([]);
-      setActiveThreadId(null);
-      setShowPromptSuggestions(true);
-      return;
-    }
-
-    isHydratingThreadsRef.current = true;
-    setThreads(loadThreads(user.id));
-    setActiveThreadId(null);
-    setShowPromptSuggestions(loadSuggestionsPreference(user.id));
-  }, [user?.id]);
-
-  const togglePromptSuggestions = () => {
-    setShowPromptSuggestions((previous) => {
-      const next = !previous;
-      if (user) {
-        try {
-          localStorage.setItem(`${CHAT_SUGGESTIONS_KEY_PREFIX}${user.id}`, String(next));
-        } catch {
-          // Ignore storage failures; the preference remains active for this session.
-        }
-      }
-      return next;
-    });
-  };
-
-  useEffect(() => {
-    if (!user) return;
-    if (isHydratingThreadsRef.current) {
-      isHydratingThreadsRef.current = false;
-      return;
-    }
-
-    try {
-      localStorage.setItem(`${CHAT_THREADS_KEY_PREFIX}${user.id}`, JSON.stringify(threads));
-    } catch {
-      // Ignore storage failures; the in-memory history remains available.
-    }
-  }, [threads, user?.id]);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -244,8 +177,6 @@ export function useChatEngine() {
     activeConnectionId,
     connectors,
     promptSuggestions,
-    showPromptSuggestions,
-    togglePromptSuggestions,
     threads,
     activeThreadId,
     activeThread,

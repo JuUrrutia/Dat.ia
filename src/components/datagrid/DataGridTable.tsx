@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, ArrowUpDown, Download, ChevronLeft, ChevronRight, Table, FileSpreadsheet, RefreshCw } from 'lucide-react';
-import { reportService } from '../../services/report_service';
+import { reportService } from '../../features/dashboard/services/report_service';
 
 interface DataGridTableProps {
   columns: string[];

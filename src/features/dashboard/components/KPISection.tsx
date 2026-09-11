@@ -31,18 +31,18 @@ export const KPISection: React.FC<KPISectionProps> = ({
             return (
               <div
                 key={kpi.title || idx}
-                className="bg-zinc-900/90 border border-white/10 rounded-2xl p-4 shadow-lg backdrop-blur-md flex flex-col justify-between hover:border-white/20 transition-all group"
+                className="glass-card-interactive rounded-2xl p-4 shadow-lg flex flex-col justify-between group"
               >
-                <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+                <div className="flex items-center justify-between text-[11px] font-semibold text-gray-300 uppercase tracking-wider">
                   <span className="truncate">{kpi.title}</span>
                   {kpi.change_direction && (
                     <span
                       className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                         isPositive
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
                           : isNegative
-                          ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                          : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                          ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                          : 'bg-dark-base text-gray-400 border-dark-border'
                       }`}
                     >
                       {isPositive ? '↑ Elevado' : isNegative ? '↓ Reducido' : '• Estable'}
@@ -55,7 +55,7 @@ export const KPISection: React.FC<KPISectionProps> = ({
                     {displayVal}
                   </div>
                   {kpi.subtitle && (
-                    <p className="text-[11px] text-zinc-400 mt-1 truncate">
+                    <p className="text-[11px] text-gray-400 mt-1 truncate">
                       {kpi.subtitle}
                     </p>
                   )}

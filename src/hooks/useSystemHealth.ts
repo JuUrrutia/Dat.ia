@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { apiClient } from '../services/api_client';
+import { apiClient } from '../shared/api/api_client';
 import { SystemHealthResponse } from '../types';
 import { useNotifications } from '../context/NotificationContext';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../features/auth/context/AuthContext';
 
 export const DEFAULT_POLLING_INTERVAL_MS = 60000;
 
@@ -55,7 +55,7 @@ export const useSystemHealth = (pollingIntervalMs: number = DEFAULT_POLLING_INTE
       // Backend offline
       const fallbackStatus = 'CRITICO';
       if (prevStatusRef.current !== fallbackStatus && prevStatusRef.current !== null) {
-        notify('error', 'No se pudo contactar al servidor Backend de Dat.ia.');
+        notify('error', 'No se pudo contactar al servidor Backend de Datia.');
       }
       prevStatusRef.current = fallbackStatus;
     } finally {

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.api.deps import get_db, get_current_user
-from app.models.user import User
+from app.modules.auth.models import User
 from app.modules.admin_catalog.models import CorporateConnection, DatabaseType
 from app.core.config import settings
 from app.core.constants import (
@@ -75,7 +75,7 @@ async def get_system_health(
         meta_msg = f"Error en base de datos de metadatos: {str(e)}"
 
     meta_comp = ComponentHealth(
-        name="Metadata Store (Dat.ia DB)",
+        name="Metadata Store (Datia DB)",
         type="metadata_db",
         status=SYSTEM_STATUS_OPERATIONAL if meta_ok else SYSTEM_STATUS_DEGRADED,
         latency_ms=meta_latency,

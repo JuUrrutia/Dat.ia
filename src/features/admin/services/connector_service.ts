@@ -120,11 +120,7 @@ export const connectorService = {
     if (name) {
       formData.append('name', name);
     }
-    const res = await apiClient.post<CorporateConnection>('/connectors/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    const res = await apiClient.post<CorporateConnection>('/connectors/upload', formData);
     const current = this.getStoredConnectors();
     const updated = [res.data, ...current.filter((c) => c.id !== res.data.id)];
     this.saveConnectorsToStorage(updated);

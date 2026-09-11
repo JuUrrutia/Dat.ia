@@ -9,7 +9,7 @@
 
 ## 🎯 1. Contexto y Justificación del Checkpoint
 
-El proyecto **Dat.ia** (*Democratización de Datos Corporativos con IA Local*) ha alcanzado un estado de madurez donde se integran:
+El proyecto **DATIA** (*Democratización de Datos Corporativos con IA Local*) ha alcanzado un estado de madurez donde se integran:
 - Frontend 100% responsivo para cualquier dispositivo (escritorio, tabletas y teléfonos).
 - Panel de Gobernanza y fuentes de base de datos corporativas con importación y eliminación física en tiempo real.
 - Catálogo semántico y diccionario técnico de datos sin hardcoding.

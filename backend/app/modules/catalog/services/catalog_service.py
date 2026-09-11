@@ -2,7 +2,7 @@ from typing import List, Optional, Any, Dict, Tuple
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.modules.admin_catalog.models import SemanticCatalog, CorporateConnection
+from app.modules.admin_catalog.models import SemanticCatalog, CorporateConnection, DatabaseType
 from app.modules.admin_catalog.schemas import (
     SemanticCatalogCreate, SemanticCatalogUpdate,
     DataDictionaryResponse, DataDictionaryTable, DataDictionaryColumn,
@@ -30,8 +30,14 @@ class CatalogDomainService:
         return CatalogEnricher.heuristic_enrich(table_name, col_name, col_type, samples)
 
     @classmethod
-    def seed_catalog_heuristics_for_connection(cls, db: Session, connection_id: int, db_path: Optional[str] = None) -> int:
-        return CatalogEnricher.seed_catalog_heuristics_for_connection(db, connection_id, db_path)
+    def seed_catalog_heuristics_for_connection(
+        cls,
+        db: Session,
+        connection_id: int,
+        db_path: Optional[str] = None,
+        only_tables: Optional[List[str]] = None
+    ) -> int:
+        return CatalogEnricher.seed_catalog_heuristics_for_connection(db, connection_id, db_path, only_tables=only_tables)
 
     @classmethod
     def list_catalog(
@@ -49,9 +55,23 @@ class CatalogDomainService:
 
     @classmethod
     def create_catalog_item(cls, db: Session, item_in: SemanticCatalogCreate) -> SemanticCatalog:
+        target_conn_id = item_in.connection_id
+        target_schema = item_in.schema_name
+        conn_record = db.query(CorporateConnection).filter(CorporateConnection.id == target_conn_id).first()
+        if not conn_record:
+            conn_record = db.query(CorporateConnection).filter(CorporateConnection.is_active == True).order_by(CorporateConnection.id.desc()).first()
+            if not conn_record:
+                conn_record = db.query(CorporateConnection).order_by(CorporateConnection.id.desc()).first()
+            if conn_record:
+                target_conn_id = conn_record.id
+
+        if conn_record and (conn_record.db_type == DatabaseType.POSTGRESQL or str(conn_record.db_type).lower() == "postgresql"):
+            if target_schema == "main":
+                target_schema = "public"
+
         existing = db.query(SemanticCatalog).filter(
-            SemanticCatalog.connection_id == item_in.connection_id,
-            SemanticCatalog.schema_name == item_in.schema_name,
+            SemanticCatalog.connection_id == target_conn_id,
+            SemanticCatalog.schema_name == target_schema,
             SemanticCatalog.table_name == item_in.table_name,
             SemanticCatalog.column_name == item_in.column_name
         ).first()
@@ -67,9 +87,9 @@ class CatalogDomainService:
             return existing
 
         new_item = SemanticCatalog(
-            connection_id=item_in.connection_id,
+            connection_id=target_conn_id,
             domain_id=item_in.domain_id,
-            schema_name=item_in.schema_name,
+            schema_name=target_schema,
             table_name=item_in.table_name,
             column_name=item_in.column_name,
             friendly_name=item_in.friendly_name,

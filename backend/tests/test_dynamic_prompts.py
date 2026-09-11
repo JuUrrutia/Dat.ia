@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import MagicMock
-from app.services.query_engine import QueryEngine
+from app.modules.chat_engine.engine import QueryEngine
 from app.core.prompts import PromptManager
 
 class TestDynamicPrompts(unittest.TestCase):
@@ -20,14 +20,14 @@ class TestDynamicPrompts(unittest.TestCase):
         self.assertEqual(RESPONSE_GENERATION_CONFIG[ResponseType.ADVISORY].temperature, 0.2)
 
         expl_prompt = PromptManager.get_conversational_system_prompt(ResponseType.EXPLANATION)
-        self.assertIn("gobernanza", expl_prompt.lower())
-        self.assertEqual(RESPONSE_GENERATION_CONFIG[ResponseType.EXPLANATION].temperature, 0.1)
+        self.assertIn("pedagógica", expl_prompt.lower())
+        self.assertEqual(RESPONSE_GENERATION_CONFIG[ResponseType.EXPLANATION].temperature, 0.2)
 
     def test_prompt_manager_data_analysis_conversational(self):
         """Verifica que el prompt de interpretación de datos genere instrucciones directas y fluidas."""
         prompt = PromptManager.get_data_analysis_conversational_system_prompt("Economista")
         self.assertIn("Economista", prompt)
-        self.assertIn("directamente", prompt.lower())
+        self.assertIn("inteligente", prompt.lower())
 
     def test_prompt_manager_greeting(self):
         """Verifica que el prompt de saludo reconozca las tablas autorizadas del rol."""

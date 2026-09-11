@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { connectorService } from '../../../services/connector_service';
+import { connectorService } from '../services/connector_service';
 
 export function useDatabaseUpload(onUploadSuccess: () => void, onClose: () => void) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);

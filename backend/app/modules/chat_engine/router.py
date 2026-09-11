@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user, get_current_user_optional
-from app.models.user import User
-from app.models.audit_log import AuditLog
-from app.models.connection import CorporateConnection
+from app.modules.auth.models import User
+from app.modules.telemetry_audit.models import AuditLog
+from app.modules.admin_catalog.models import CorporateConnection
 from app.modules.chat_engine.schemas import (
     QueryRequest, QueryResponse, SuggestionsResponse
 )

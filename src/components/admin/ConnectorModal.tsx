@@ -1,5 +1,5 @@
 import React from 'react';
-import { CorporateConnection } from '../../services/connector_service';
+import { CorporateConnection } from '../../features/admin/services/connector_service';
 import { Database, RefreshCw, CheckCircle2, AlertCircle, Save, X } from 'lucide-react';
 import { ConnectorFormFields } from './ConnectorFormFields';
 import { useConnectorForm } from '../../features/admin/hooks/useConnectorForm';

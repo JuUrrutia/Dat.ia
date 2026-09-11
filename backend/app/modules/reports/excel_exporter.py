@@ -36,7 +36,7 @@ class ExcelExporter:
 
         ws_summary.merge_cells("A1:F2")
         title_cell = ws_summary["A1"]
-        title_cell.value = "Dat.ia - INFORME EJECUTIVO DE NEGOCIO"
+        title_cell.value = "DATIA - INFORME EJECUTIVO DE NEGOCIO"
         title_cell.font = font_title
         title_cell.fill = fill_header
         title_cell.alignment = Alignment(horizontal="center", vertical="center")
