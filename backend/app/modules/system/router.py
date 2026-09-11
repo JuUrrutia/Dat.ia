@@ -87,23 +87,16 @@ async def get_system_health(
     healthy_count = 0
 
     for c in active_conns:
-        if c.db_type == DatabaseType.SQLITE:
-            db_path = c.database_name
-            exists = os.path.exists(db_path) if db_path else True
-            conn_ok = exists
-            conn_msg = f"Archivo SQLite '{db_path}' verificado." if exists else f"Archivo SQLite '{db_path}' no encontrado."
-            conn_latency = 1
-        else:
-            res = HealthService.check_db_connectivity(
-                host=c.host,
-                port=c.port,
-                timeout=2.0,
-                db_type=c.db_type.value,
-                database_name=c.database_name
-            )
-            conn_ok = res["success"]
-            conn_msg = res["message"]
-            conn_latency = res["latency_ms"]
+        res = HealthService.check_db_connectivity(
+            host=c.host,
+            port=c.port,
+            timeout=2.0,
+            db_type=c.db_type.value if hasattr(c.db_type, 'value') else str(c.db_type),
+            database_name=c.database_name
+        )
+        conn_ok = res["success"]
+        conn_msg = res["message"]
+        conn_latency = res["latency_ms"]
 
         if conn_ok:
             healthy_count += 1
