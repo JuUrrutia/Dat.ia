@@ -121,6 +121,19 @@ def init_db(db: Session):
     from app.core.config import settings
     from app.core.security import encrypt_credential
 
+    if engine.dialect.name != "postgresql":
+        db_path = settings.SQLITE_DB_PATH
+        if not os.path.exists(db_path):
+            try:
+                import sys
+                backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                if backend_dir not in sys.path:
+                    sys.path.insert(0, backend_dir)
+                from setup_demo_db import setup_demo_sqlite
+                setup_demo_sqlite()
+            except Exception:
+                pass
+
     existing_conn = db.query(CorporateConnection).first()
     if not existing_conn:
         if engine.dialect.name == "postgresql":
