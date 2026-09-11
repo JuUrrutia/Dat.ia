@@ -231,7 +231,11 @@ class DynamicSchemaPruningService:
             elif physical_tables:
                 allowed_tables = set(physical_tables)
             else:
-                allowed_tables = set()
+                table_perms = db.query(RoleTablePermission).filter(
+                    RoleTablePermission.connection_id == effective_conn_id,
+                    RoleTablePermission.is_allowed == True
+                ).all()
+                allowed_tables = {tp.table_name.lower() for tp in table_perms}
         else:
             table_perms = db.query(RoleTablePermission).filter(
                 RoleTablePermission.role_id == effective_role_id,

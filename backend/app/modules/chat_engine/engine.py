@@ -216,7 +216,20 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 "Tu cuenta se encuentra registrada con el perfil inicial 'Usuario'. Un Administrador debe asignarte un rol (Economista o TI) para acceder a los datos corporativos."
             )
 
+        # 2. INTENT CLASSIFICATION
+        response_type = await IntentClassifier.classify_intent(question)
+
         allowed_tables = cls.get_allowed_tables_for_role(user_role, is_admin, db=db, role_id=role_id, connection_id=connection_id)
+
+        # BRANCH 0: GREETING / GENERAL CONVERSATION
+        if response_type == "greeting":
+            conversational = await IntentClassifier.generate_conversational_response(
+                question, user_role, "greeting", columns=list(allowed_tables), is_llm_active=True
+            )
+            return ResponseBuilder.build_greeting_response(
+                question, user_role, allowed_tables, conversational
+            )
+
         if not allowed_tables:
             return ResponseBuilder.build_rbac_denied_response(
                 question,
@@ -226,9 +239,6 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         blocked_columns = cls.get_blocked_columns_for_role(user_role, is_admin, db=db, role_id=role_id, connection_id=connection_id)
         start_time = time.time()
         is_llm_active = False
-
-        # 2. INTENT CLASSIFICATION
-        response_type = await IntentClassifier.classify_intent(question)
 
         # Resolve active connection and dialect
         conn_record = None
@@ -255,15 +265,6 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 tbl, db_path=exec_target, include_samples=False
             )
             table_columns_map[tbl.lower()] = [c["name"] for c in phys_cols_info if "name" in c]
-
-        # BRANCH 0: GREETING / GENERAL CONVERSATION
-        if response_type == "greeting":
-            conversational = await IntentClassifier.generate_conversational_response(
-                question, user_role, "greeting", columns=list(allowed_tables), is_llm_active=True
-            )
-            return ResponseBuilder.build_greeting_response(
-                question, user_role, allowed_tables, conversational
-            )
 
         # BRANCH A: CONVERSATIONAL ASSISTANT
         if response_type == "conversational":
