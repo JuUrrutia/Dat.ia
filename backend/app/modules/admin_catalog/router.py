@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user, get_current_admin
-from app.models.user import User
+from app.modules.auth.models import User
 from app.modules.admin_catalog.schemas import (
     SemanticCatalogCreate, SemanticCatalogUpdate, SemanticCatalogOut,
     DataDictionaryResponse, AutoEnrichRequest, AutoEnrichResponse,
@@ -18,7 +18,7 @@ from app.modules.admin_catalog.schemas import (
 from app.modules.catalog.services.catalog_service import CatalogDomainService
 from app.modules.catalog.services.connector_service import ConnectorDomainService
 from app.modules.reports.generator import ReportGeneratorService
-from app.services.health_service import HealthService
+from app.modules.system.health_service import HealthService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

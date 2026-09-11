@@ -4,7 +4,7 @@ const fs = require('fs');
 
 const rootDir = path.join(__dirname, '..');
 const backendDir = path.join(rootDir, 'backend');
-const scriptPath = path.join(backendDir, 'scripts', 'bootstrap_postgres.py');
+const scriptPath = path.join(backendDir, 'scripts', 'setup_postgres_full.py');
 
 // 1. Check local virtual environment paths
 const candidates = [

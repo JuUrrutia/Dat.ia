@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, UserPlus } from 'lucide-react';
 import { UserItem } from './AdminUsersTab';
-import { authService } from '../../services/auth_service';
+import { authService } from '../../features/auth/services/auth_service';
 import { CORPORATE_ROLES } from '../../constants';
 
 interface UserAddModalProps {
