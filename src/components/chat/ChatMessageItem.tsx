@@ -45,7 +45,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
     <div className="space-y-4 sm:space-y-6 pt-4 border-t border-dark-border/40 first:border-0 first:pt-0">
       {/* User Question Bubble */}
       <div className="flex items-start space-x-2 sm:space-x-3 justify-end">
-        <div className="bg-brand-600/20 border border-brand-500/30 rounded-2xl rounded-tr-sm p-3.5 sm:p-4 max-w-[85%] sm:max-w-2xl">
+        <div className="chat-user-bubble bg-brand-600/20 border border-brand-500/30 rounded-2xl rounded-tr-sm p-3.5 sm:p-4 max-w-[85%] sm:max-w-2xl">
           <div className="flex items-center space-x-1.5 text-[10px] text-brand-400 font-semibold mb-1">
             <UserIcon className="w-3 h-3" />
             <span>
@@ -65,7 +65,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
           <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
         </div>
 
-        <div className="flex-1 space-y-3 sm:space-y-4 max-w-4xl min-w-0">
+        <div className="flex-1 space-y-3 sm:space-y-4 max-w-4xl min-w-0 chat-bot-response">
           {/* Badge / Status Bar */}
           <div className="flex flex-wrap items-center gap-2">
             <PipelineBadge source={result.pipeline_source} />

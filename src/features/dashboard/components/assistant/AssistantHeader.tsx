@@ -37,7 +37,7 @@ export const AssistantHeader: React.FC<AssistantHeaderProps> = ({
   const hasSupportData = Boolean(result.data_rows && result.data_rows.length > 0);
 
   return (
-    <div className="bg-gradient-to-r from-zinc-900/95 via-zinc-900/70 to-zinc-950/95 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl">
+    <div className="assistant-response-header bg-gradient-to-r from-zinc-900/95 via-zinc-900/70 to-zinc-950/95 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-start sm:items-center space-x-3.5">
           <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500/20 to-amber-500/5 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-lg shadow-amber-500/10 shrink-0">

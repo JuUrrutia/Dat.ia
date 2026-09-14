@@ -103,13 +103,19 @@ export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
     <div className="space-y-6 animate-fadeIn">
       {/* Executive Diagnosis Summary Banner */}
       {showDiagnosis && (
-        <div className="bg-gradient-to-r from-zinc-900/90 via-zinc-900/60 to-zinc-950/90 border border-white/10 rounded-2xl p-4.5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div
+          className="studio-diagnosis-card border rounded-2xl p-4.5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+          style={{
+            backgroundColor: '#ffffff',
+            borderColor: '#e2e8f0',
+          }}
+        >
           <div className="space-y-1">
-            <div className="flex items-center space-x-2 text-[11px] font-bold text-amber-400 uppercase tracking-wider">
+            <div className="flex items-center space-x-2 text-[11px] font-bold text-amber-500 uppercase tracking-wider">
               <Sparkles className="w-3.5 h-3.5" />
               <span>Diagnóstico Ejecutivo de Negocio</span>
             </div>
-            <p className="text-xs text-zinc-200 leading-relaxed font-normal">
+            <p className="text-xs text-slate-700 leading-relaxed font-normal">
               {result.executive_report?.overview || result.summary_text}
             </p>
           </div>
@@ -140,9 +146,15 @@ export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
 
       {/* Main Chart Card */}
       {showChart && (
-        <div className="bg-gradient-to-br from-zinc-900/90 via-zinc-900/50 to-zinc-950/90 border border-white/10 rounded-3xl p-4 sm:p-6 shadow-2xl space-y-5">
+        <div
+          className="studio-main-chart-card border rounded-3xl p-4 sm:p-6 shadow-2xl space-y-5"
+          style={{
+            backgroundColor: '#ffffff',
+            borderColor: '#e2e8f0',
+          }}
+        >
           {/* Chart Header & Chart Type Selector */}
-          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-4 border-b border-white/5">
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-4 border-b border-slate-200">
             <div className="flex items-center space-x-3">
               <div
                 className="w-9 h-9 rounded-xl flex items-center justify-center border shadow-sm shrink-0"
@@ -155,17 +167,23 @@ export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
                 <BarChart3 className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm sm:text-base font-bold text-white tracking-tight">
+                <h3 className="text-sm sm:text-base font-bold text-slate-800 tracking-tight">
                   Visualizador Dinámico de Datos
                 </h3>
-                <p className="text-[11px] text-zinc-400">
+                <p className="text-[11px] text-slate-600">
                   Explora proyecciones, paletas, líneas de tendencia y descarga en HD
                 </p>
               </div>
             </div>
 
             {/* Scrollable / Responsive Chart Type Selector Pills */}
-            <div className="flex items-center gap-1.5 bg-zinc-950/90 p-1.5 rounded-2xl border border-white/5 overflow-x-auto custom-scrollbar">
+            <div
+              className="flex items-center gap-1.5 p-1.5 rounded-2xl border overflow-x-auto custom-scrollbar"
+              style={{
+                backgroundColor: '#f8fafc',
+                borderColor: '#e2e8f0',
+              }}
+            >
               {CHART_TYPES.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeChartType === item.type;
@@ -174,15 +192,20 @@ export const ExecutiveStudioView: React.FC<ExecutiveStudioViewProps> = ({
                     key={item.type}
                     type="button"
                     onClick={() => setActiveChartType(item.type)}
-                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
-                      isActive
-                        ? 'bg-zinc-800 text-white border shadow-md'
-                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
-                    }`}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap border"
                     style={
                       isActive
-                        ? { borderColor: `${currentTheme.primary}50`, color: currentTheme.primary }
-                        : undefined
+                        ? {
+                            backgroundColor: '#ffffff',
+                            borderColor: `${currentTheme.primary}50`,
+                            color: currentTheme.primary,
+                            boxShadow: '0 0 0 1px rgba(255,255,255,0.3)',
+                          }
+                        : {
+                            backgroundColor: '#ffffff',
+                            borderColor: 'transparent',
+                            color: '#475467',
+                          }
                     }
                   >
                     <Icon className="w-3.5 h-3.5 shrink-0" />

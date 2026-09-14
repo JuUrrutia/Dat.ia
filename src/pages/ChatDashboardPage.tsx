@@ -140,7 +140,7 @@ export const ChatDashboardPage: React.FC = () => {
                 <div className="space-y-4 sm:space-y-6 pt-4 border-t border-dark-border/40 first:border-0 first:pt-0 animate-fadeIn">
                   {/* User Question Bubble */}
                   <div className="flex items-start space-x-2 sm:space-x-3 justify-end">
-                    <div className="bg-brand-600/20 border border-brand-500/30 rounded-2xl rounded-tr-sm p-3.5 sm:p-4 max-w-[85%] sm:max-w-2xl shadow-md">
+                    <div className="chat-user-bubble bg-brand-600/20 border border-brand-500/30 rounded-2xl rounded-tr-sm p-3.5 sm:p-4 max-w-[85%] sm:max-w-2xl shadow-md">
                       <div className="flex items-center space-x-1.5 text-[10px] text-brand-400 font-semibold mb-1">
                         <UserIcon className="w-3 h-3" />
                         <span>
@@ -159,21 +159,21 @@ export const ChatDashboardPage: React.FC = () => {
                     <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-cyan-600/20">
                       <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-pulse" />
                     </div>
-                    <div className="bg-slate-900/90 border border-slate-700/60 rounded-2xl rounded-tl-sm p-4 max-w-[85%] sm:max-w-2xl space-y-2.5 shadow-xl">
-                      <div className="flex items-center space-x-2 text-[10px] text-cyan-400 font-semibold">
-                        <Bot className="w-3 h-3" />
+                    <div className="chat-bot-response bg-white/95 border border-slate-200/80 rounded-2xl rounded-tl-sm p-4 max-w-[85%] sm:max-w-2xl space-y-2.5 shadow-xl">
+                      <div className="flex items-center space-x-2 text-[10px] text-cyan-600 font-semibold">
+                        <Bot className="w-3 h-3 text-cyan-600" />
                         <span>Dat.ia</span>
                         <span className="text-slate-500">•</span>
-                        <span className="text-slate-400 font-normal flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+                        <span className="text-slate-600 font-normal flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-ping" />
                           Traduciendo a SQL con IA Local...
                         </span>
                       </div>
-                      <div className="flex items-center space-x-2 text-xs text-slate-300">
-                        <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-bounce" />
-                        <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-bounce [animation-delay:0.2s]" />
-                        <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-bounce [animation-delay:0.4s]" />
-                        <span className="text-slate-400 text-xs pl-1">
+                      <div className="flex items-center space-x-2 text-xs text-slate-700">
+                        <span className="inline-block w-2 h-2 rounded-full bg-cyan-500 animate-bounce" />
+                        <span className="inline-block w-2 h-2 rounded-full bg-cyan-500 animate-bounce [animation-delay:0.2s]" />
+                        <span className="inline-block w-2 h-2 rounded-full bg-cyan-500 animate-bounce [animation-delay:0.4s]" />
+                        <span className="text-slate-600 text-xs pl-1">
                           Generando consulta SQL y preparando visualizaciones...
                         </span>
                       </div>
