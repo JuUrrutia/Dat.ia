@@ -7,7 +7,6 @@ from fastapi import HTTPException, status, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.constants import ADMIN_ROLES
 from app.core.security import encrypt_credential
 from app.modules.admin_catalog.models import CorporateConnection, DatabaseType, SemanticCatalog, RoleTablePermission
 from app.modules.auth.models import Role
@@ -48,6 +47,23 @@ class ConnectorDomainService:
             )
 
         encrypted_pwd = encrypt_credential(conn_in.password) if conn_in.password else ""
+
+        # Ensure dedicated individual PostgreSQL database exists on host if local server
+        if (conn_in.db_type == DatabaseType.POSTGRESQL or str(conn_in.db_type).lower() == "postgresql") and conn_in.host in ("localhost", "127.0.0.1", settings.POSTGRES_SERVER):
+            try:
+                import re
+                from sqlalchemy import create_engine, text
+                clean_db = re.sub(r'[^a-zA-Z0-9_]', '_', conn_in.database_name.lower()).strip('_')
+                if clean_db:
+                    maint_url = f"postgresql+psycopg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}/postgres"
+                    m_engine = create_engine(maint_url, isolation_level="AUTOCOMMIT", pool_pre_ping=True)
+                    with m_engine.connect() as m_conn:
+                        exists = m_conn.execute(text("SELECT 1 FROM pg_database WHERE datname = :dbname"), {"dbname": clean_db}).scalar()
+                        if not exists:
+                            m_conn.execute(text(f'CREATE DATABASE "{clean_db}" OWNER "{settings.POSTGRES_USER}"'))
+                    m_engine.dispose()
+            except Exception:
+                pass
 
         new_conn = CorporateConnection(
             name=conn_in.name,
@@ -100,13 +116,41 @@ class ConnectorDomainService:
                 detail=f"Error al guardar el archivo en el servidor: {str(e)}"
             )
 
+        base_display_name = name.strip() if (name and name.strip()) else os.path.splitext(original_filename)[0]
+        final_name = base_display_name
+        counter = 1
+        while db.query(CorporateConnection).filter(CorporateConnection.name == final_name).first():
+            final_name = f"{base_display_name}_{counter}"
+            counter += 1
+
         is_postgres_active = app_engine.dialect.name == "postgresql"
         detected_tables = []
         target_path = None
+        pg_target_db_name = None
 
         if is_postgres_active:
-            from sqlalchemy import create_engine
-            business_url = f"postgresql+psycopg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}/democratizacion_empresa"
+            import re
+            from sqlalchemy import create_engine, text
+
+            # Sanitize database name for PostgreSQL (lowercase alphanumeric and underscores)
+            clean_db_name = re.sub(r'[^a-zA-Z0-9_]', '_', final_name.lower()).strip('_')
+            if not clean_db_name or clean_db_name[0].isdigit():
+                clean_db_name = f"db_{clean_db_name}"
+            clean_db_name = clean_db_name[:50]
+            pg_target_db_name = clean_db_name
+
+            # Create dedicated PostgreSQL database if not exists
+            maint_url = f"postgresql+psycopg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}/postgres"
+            m_engine = create_engine(maint_url, isolation_level="AUTOCOMMIT", pool_pre_ping=True)
+            try:
+                with m_engine.connect() as m_conn:
+                    exists = m_conn.execute(text("SELECT 1 FROM pg_database WHERE datname = :dbname"), {"dbname": pg_target_db_name}).scalar()
+                    if not exists:
+                        m_conn.execute(text(f'CREATE DATABASE "{pg_target_db_name}" OWNER "{settings.POSTGRES_USER}"'))
+            finally:
+                m_engine.dispose()
+
+            business_url = f"postgresql+psycopg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}/{pg_target_db_name}"
             pg_engine = create_engine(business_url, pool_pre_ping=True)
             try:
                 detected_tables = convert_uploaded_file_to_postgres(
@@ -157,20 +201,13 @@ class ConnectorDomainService:
                     try: os.remove(raw_target_path)
                     except Exception: pass
 
-        base_display_name = name.strip() if (name and name.strip()) else os.path.splitext(original_filename)[0]
-        final_name = base_display_name
-        counter = 1
-        while db.query(CorporateConnection).filter(CorporateConnection.name == final_name).first():
-            final_name = f"{base_display_name}_{counter}"
-            counter += 1
-
         if is_postgres_active:
             new_conn = CorporateConnection(
                 name=final_name,
                 db_type=DatabaseType.POSTGRESQL,
                 host=settings.POSTGRES_SERVER,
                 port=settings.POSTGRES_PORT,
-                database_name="democratizacion_empresa",
+                database_name=pg_target_db_name,
                 username=settings.POSTGRES_USER,
                 encrypted_password=encrypt_credential(settings.POSTGRES_PASSWORD),
                 is_active=True,
@@ -299,21 +336,32 @@ class ConnectorDomainService:
                 detail="Conexión de base de datos no encontrada."
             )
 
-        # If it was an uploaded dataset in PostgreSQL, clean up created tables from PostgreSQL
+        # If it was an uploaded dataset in PostgreSQL, clean up created tables or drop dedicated database
         if conn.is_uploaded and (conn.db_type == DatabaseType.POSTGRESQL or str(conn.db_type).lower() == "postgresql"):
-            try:
-                perms = db.query(RoleTablePermission).filter(RoleTablePermission.connection_id == conn_id).all()
-                table_names = list({p.table_name for p in perms if p.table_name})
-                if table_names:
-                    from app.core.database import build_engine_for_connector
-                    from sqlalchemy import text
-                    eng = build_engine_for_connector(conn)
-                    with eng.begin() as pg_conn:
-                        for tbl in table_names:
-                            pg_conn.execute(text(f'DROP TABLE IF EXISTS "{tbl}" CASCADE;'))
-                    eng.dispose()
-            except Exception:
-                pass
+            if conn.database_name and conn.database_name not in ["democratizacion_empresa", "democratizacion_metadatos", "postgres"]:
+                try:
+                    from sqlalchemy import create_engine, text
+                    maint_url = f"postgresql+psycopg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}/postgres"
+                    m_engine = create_engine(maint_url, isolation_level="AUTOCOMMIT", pool_pre_ping=True)
+                    with m_engine.connect() as m_conn:
+                        m_conn.execute(text(f'DROP DATABASE IF EXISTS "{conn.database_name}" WITH (FORCE);'))
+                    m_engine.dispose()
+                except Exception:
+                    pass
+            else:
+                try:
+                    perms = db.query(RoleTablePermission).filter(RoleTablePermission.connection_id == conn_id).all()
+                    table_names = list({p.table_name for p in perms if p.table_name})
+                    if table_names:
+                        from app.core.database import build_engine_for_connector
+                        from sqlalchemy import text
+                        eng = build_engine_for_connector(conn)
+                        with eng.begin() as pg_conn:
+                            for tbl in table_names:
+                                pg_conn.execute(text(f'DROP TABLE IF EXISTS "{tbl}" CASCADE;'))
+                        eng.dispose()
+                except Exception:
+                    pass
 
         db.query(SemanticCatalog).filter(SemanticCatalog.connection_id == conn_id).delete()
         db.query(RoleTablePermission).filter(RoleTablePermission.connection_id == conn_id).delete()

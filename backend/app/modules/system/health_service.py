@@ -1,7 +1,7 @@
 import time
 import socket
 import httpx
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from app.core.config import settings
 
 class HealthService:

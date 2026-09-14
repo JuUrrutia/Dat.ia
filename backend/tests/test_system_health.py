@@ -38,9 +38,6 @@ class TestSystemHealth(unittest.TestCase):
         self.db.add(session)
         self.db.commit()
 
-        self.db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == True).delete()
-        self.db.commit()
-
         self.headers = {"Authorization": f"Bearer {self.token}"}
 
     def tearDown(self):

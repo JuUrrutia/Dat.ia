@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../features/auth/context/AuthContext';
-import { Sparkles, ShieldCheck, Database, Lock, KeyRound, Mail, UserPlus, LogIn, ArrowRight, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Database, Lock, KeyRound, Mail, UserPlus, LogIn, ArrowRight, AlertCircle } from 'lucide-react';
 
 const PRESET_USERS = [
   { name: 'Administrador', username: 'admin', password: 'admin123', role: 'Administrador', is_admin: true },

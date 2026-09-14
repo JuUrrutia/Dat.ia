@@ -1,6 +1,13 @@
 import { apiClient } from '../../../shared/api/api_client';
 import { QueryResult } from '../../../types';
 
+export interface ExportReportOptions {
+  chartBase64?: string;
+  custom_title?: string;
+  custom_notes?: string;
+  include_raw_data?: boolean;
+}
+
 export const reportService = {
   async captureChartAsBase64(): Promise<string | undefined> {
     try {
@@ -48,15 +55,26 @@ export const reportService = {
     }
   },
 
-  async exportExecutiveReportPdf(result: QueryResult | { audit_log_id?: number }, chartBase64?: string): Promise<void> {
+  async exportExecutiveReportPdf(
+    result: QueryResult | { audit_log_id?: number },
+    optionsOrChartBase64?: string | ExportReportOptions
+  ): Promise<void> {
     const auditId = (result as any).audit_log_id || (result as QueryResult).traceability?.audit_log_id;
     if (!auditId) {
       throw new Error('No se encontró el identificador de auditoría para generar la exportación.');
     }
 
+    const options: ExportReportOptions =
+      typeof optionsOrChartBase64 === 'string'
+        ? { chartBase64: optionsOrChartBase64 }
+        : optionsOrChartBase64 || {};
+
     const payload = {
       audit_log_id: auditId,
-      chart_image_base64: chartBase64,
+      chart_image_base64: options.chartBase64,
+      custom_title: options.custom_title || undefined,
+      custom_notes: options.custom_notes || undefined,
+      include_raw_data: options.include_raw_data ?? true,
     };
 
     const res = await apiClient.post('/reports/export/pdf', payload, {
@@ -78,7 +96,10 @@ export const reportService = {
     }
   },
 
-  async exportExecutiveReportExcel(result: QueryResult | { audit_log_id?: number }): Promise<void> {
+  async exportExecutiveReportExcel(
+    result: QueryResult | { audit_log_id?: number },
+    options?: ExportReportOptions
+  ): Promise<void> {
     const auditId = (result as any).audit_log_id || (result as QueryResult).traceability?.audit_log_id;
     if (!auditId) {
       throw new Error('No se encontró el identificador de auditoría para generar la exportación.');
@@ -86,6 +107,9 @@ export const reportService = {
 
     const payload = {
       audit_log_id: auditId,
+      custom_title: options?.custom_title || undefined,
+      custom_notes: options?.custom_notes || undefined,
+      include_raw_data: options?.include_raw_data ?? true,
     };
 
     const res = await apiClient.post('/reports/export/excel', payload, {

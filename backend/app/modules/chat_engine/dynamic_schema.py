@@ -322,11 +322,21 @@ class DynamicSchemaPruningService:
                 cols2 = {c.lower(): c for c in table_columns_map[t2]}
                 common = set(cols1.keys()).intersection(set(cols2.keys()))
                 for c in common:
-                    if c.endswith("id") or c == "id" or "key" in c:
+                    if c.endswith("id") or c == "id" or "key" in c or c in {"belnr", "vbeln", "ebeln", "matnr", "kunnr", "lifnr", "bukrs", "posnr"}:
                         relationships.append(f"{t1}.{cols1[c]} = {t2}.{cols2[c]}")
 
         if relationships:
             schema_text_lines.append("\nRelaciones (JOIN) detectadas entre tablas:\n  - " + "\n  - ".join(relationships))
+
+        # Collect explicit business formulas
+        formula_lines = []
+        for entry in catalog_entries:
+            if entry.business_formula:
+                lbl = entry.friendly_name or entry.column_name or entry.table_name
+                formula_lines.append(f"Métrica '{lbl}': {entry.business_formula} (Usa obligatoriamente este cálculo en el SELECT)")
+
+        if formula_lines:
+            schema_text_lines.append("\nFórmulas de Negocio Corporativas Oficiales:\n  - " + "\n  - ".join(formula_lines))
 
         return {
             "schema_prompt": "\n\n".join(schema_text_lines) if schema_text_lines else "Esquema de la base de datos activa.",
