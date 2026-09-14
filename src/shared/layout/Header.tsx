@@ -70,6 +70,10 @@ export const Header: React.FC = () => {
           <img
             src={theme === 'dark' ? logoDatiaDark : logoDatiaLight}
             alt="Logo de Dat.ia"
+            onError={(e) => {
+              const nextSrc = theme === 'dark' ? logoDatiaLight : logoDatiaDark;
+              e.currentTarget.src = nextSrc;
+            }}
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-contain shrink-0"
           />
           <div className="truncate">

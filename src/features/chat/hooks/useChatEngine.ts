@@ -148,9 +148,19 @@ export function useChatEngine() {
     setActiveThreadId(id);
   };
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   const handleNewThread = () => {
-    setActiveThreadId(null);
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
+    setIsGenerating(false);
+    setPromptInput('');
     setPendingPrompt(null);
+    setActiveTraceability(null);
+    setActiveThreadId(null);
   };
 
   const handleDeleteThread = (id: string, e: React.MouseEvent) => {
@@ -160,8 +170,6 @@ export function useChatEngine() {
       setActiveThreadId(null);
     }
   };
-
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   const handleSendPrompt = async (text: string) => {
     const trimmed = text.trim();
