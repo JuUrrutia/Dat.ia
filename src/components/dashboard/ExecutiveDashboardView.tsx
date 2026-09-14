@@ -33,7 +33,7 @@ const ExecutiveDashboardHeader: React.FC<ExecutiveDashboardHeaderProps> = ({
   onOpenTraceability,
 }) => {
   return (
-    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-zinc-900/90 border border-white/10 p-3.5 rounded-2xl shadow-xl backdrop-blur-md">
+    <div className="executive-dashboard-header flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-zinc-900/90 border border-white/10 p-3.5 rounded-2xl shadow-xl backdrop-blur-md">
       <div className="flex items-center space-x-1.5 overflow-x-auto scrollbar-none pb-1 sm:pb-0">
         {hasConversationalResponse && (
           <button
