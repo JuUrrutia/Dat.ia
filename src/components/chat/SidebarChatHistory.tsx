@@ -1,5 +1,5 @@
-import React from 'react';
-import { Plus, MessageSquare, History, Trash2, X, Database } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, MessageSquare, History, Trash2, X, Database, Search } from 'lucide-react';
 
 export interface ChatThread {
   id: string;
@@ -12,6 +12,7 @@ interface SidebarChatHistoryProps {
   activeId: string | null;
   activeDatabaseName?: string;
   isOpenMobile?: boolean;
+  searchInputRef?: React.RefObject<HTMLInputElement>;
   onCloseMobile?: () => void;
   onSelectThread: (id: string) => void;
   onNewThread: () => void;
@@ -23,11 +24,18 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
   activeId,
   activeDatabaseName = 'BD Corporativa Local (SQLite)',
   isOpenMobile = false,
+  searchInputRef,
   onCloseMobile,
   onSelectThread,
   onNewThread,
   onDeleteThread,
 }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredThreads = threads.filter((t) =>
+    t.title.toLowerCase().includes(searchQuery.toLowerCase().trim())
+  );
+
   const sidebarContent = (
     <div className="w-72 bg-dark-surface/95 border-r border-dark-border flex flex-col h-full shrink-0 select-none">
       {/* New Query Button & Mobile Close Header */}
@@ -42,6 +50,7 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
         >
           <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
           <span>Nueva Consulta</span>
+          <span className="text-[10px] opacity-60 font-mono hidden sm:inline ml-1">Ctrl+N</span>
         </button>
 
         {onCloseMobile && (
@@ -56,16 +65,50 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
         )}
       </div>
 
+      {/* Real-time Search Input */}
+      <div className="px-3 pt-2 pb-1">
+        <div className="relative flex items-center">
+          <Search className="w-3.5 h-3.5 text-gray-500 absolute left-2.5 pointer-events-none" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar historial... (Ctrl+K)"
+            aria-label="Buscar en historial de consultas"
+            className="w-full bg-dark-base/90 border border-dark-border/80 text-xs text-white placeholder-gray-500 rounded-xl pl-8 pr-7 py-1.5 focus:outline-none focus:border-brand-500 transition-colors font-sans"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2 text-gray-400 hover:text-white p-0.5"
+              aria-label="Limpiar búsqueda"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Threads List */}
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
         <div>
-          <div className="flex items-center space-x-1.5 px-2 mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-            <History className="w-3 h-3 text-brand-400" />
-            <span>Historial de Consultas</span>
+          <div className="flex items-center justify-between px-2 mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+            <div className="flex items-center space-x-1.5">
+              <History className="w-3 h-3 text-brand-400" />
+              <span>Historial de Consultas</span>
+            </div>
+            {searchQuery && (
+              <span className="text-[9px] text-brand-400 bg-brand-500/10 px-1.5 py-0.5 rounded border border-brand-500/20 font-mono">
+                {filteredThreads.length} {filteredThreads.length === 1 ? 'coincidencia' : 'coincidencias'}
+              </span>
+            )}
           </div>
 
+
           <div className="space-y-1">
-            {threads.map((t) => {
+            {filteredThreads.map((t) => {
               const isActive = t.id === activeId;
               return (
                 <div
@@ -108,7 +151,14 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
                 No hay conversaciones previas. Haz clic en "Nueva Consulta" para iniciar una.
               </div>
             )}
+
+            {threads.length > 0 && filteredThreads.length === 0 && (
+              <div className="text-center py-8 text-xs text-gray-500 px-2">
+                No se encontraron consultas para "{searchQuery}".
+              </div>
+            )}
           </div>
+
         </div>
       </div>
 

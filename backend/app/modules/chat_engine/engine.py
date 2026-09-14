@@ -1,4 +1,3 @@
-import os
 import time
 import re
 from typing import Dict, Any, List, Set, Optional
@@ -206,8 +205,10 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         is_admin: bool = False,
         db: Optional[Session] = None,
         role_id: Optional[int] = None,
-        connection_id: int = 1
+        connection_id: int = 1,
+        conversation_history: Optional[List[Dict[str, Any]]] = None
     ) -> QueryResponse:
+
 
         # 1. RBAC check for unassigned "Usuario" role
         if not is_admin and (user_role == ROLE_USUARIO or not user_role):
@@ -332,11 +333,13 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 pass
 
             few_shots = SQLExecutor.retrieve_few_shot_memories(db, question, connection_id)
+            conv_context = PromptManager.format_conversation_context(conversation_history) if conversation_history else ""
             try:
                 system_prompt = PromptManager.get_text_to_sql_system_prompt(user_role, allowed_tables)
                 prompt_llm = PromptManager.get_text_to_sql_user_prompt(
-                    question, user_role, schema_context, allowed_tables, few_shots
+                    question, user_role, schema_context, allowed_tables, few_shots, conversation_context=conv_context
                 )
+
 
                 llm_response_text = await LLMService.generate_completion(
                     prompt_llm,
@@ -395,7 +398,7 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             question, response_type, rows, columns
         )
 
-        kpis, chart_type, chart_option, fallback_summary, fallback_exec_report, gauges = KPICalculator.build_dynamic_visualization(
+        kpis, chart_type, chart_option, fallback_summary, fallback_exec_report = KPICalculator.build_dynamic_visualization(
             question, columns, rows, user_role
         )
 
@@ -425,8 +428,6 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             final_exec_report = None
         if not pres_hints.show_kpis:
             kpis = []
-        if not pres_hints.show_gauges:
-            gauges = []
         if not pres_hints.show_chart:
             chart_type = "none"
             chart_option = {"series": []}
@@ -463,7 +464,6 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             is_llm_active=is_llm_active,
             pres_hints=pres_hints,
             kpis=kpis,
-            gauges=gauges,
             chart_type=chart_type,
             chart_option=chart_option,
             final_summary=final_summary,

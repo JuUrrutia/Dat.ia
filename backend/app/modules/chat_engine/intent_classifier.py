@@ -1,6 +1,6 @@
 import json
 import re
-from typing import List, Dict, Any, Optional, Set, Tuple
+from typing import List, Dict, Any, Optional
 from app.core.constants import (
     DATA_REQUEST_KEYWORDS, GREETING_KEYWORDS, ADVISORY_KEYWORDS, EXPLANATION_KEYWORDS,
     HYBRID_KEYWORDS, REPORT_KEYWORDS, LIST_KEYWORDS, COUNT_KEYWORDS
@@ -66,7 +66,6 @@ class IntentClassifier:
             return PresentationHints(
                 show_executive_report=False,
                 show_kpis=False,
-                show_gauges=False,
                 show_chart=False,
                 preferred_view="assistant",
                 summary_style="detailed"
@@ -92,12 +91,14 @@ class IntentClassifier:
                 json_match = re.search(r'\{[\s\S]*\}', resp)
                 if json_match:
                     data = json.loads(json_match.group(0))
+                    pref_v = str(data.get("preferred_view", "assistant"))
+                    if pref_v == "studio":
+                        pref_v = "assistant"
                     return PresentationHints(
                         show_executive_report=bool(data.get("show_executive_report", True)),
                         show_kpis=bool(data.get("show_kpis", True)),
-                        show_gauges=bool(data.get("show_gauges", True)),
                         show_chart=bool(data.get("show_chart", True)),
-                        preferred_view=str(data.get("preferred_view", "studio")),
+                        preferred_view=pref_v,
                         summary_style=str(data.get("summary_style", "detailed"))
                     )
         except Exception:
@@ -120,28 +121,28 @@ class IntentClassifier:
         if response_type == "report" or is_report_requested:
             return PresentationHints(
                 show_executive_report=True, show_kpis=True,
-                show_gauges=True, show_chart=True,
+                show_chart=True,
                 preferred_view="report", summary_style="executive"
             )
 
         if response_type == "hybrid":
             return PresentationHints(
                 show_executive_report=False, show_kpis=True,
-                show_gauges=False, show_chart=True,
+                show_chart=True,
                 preferred_view="assistant", summary_style="detailed"
             )
 
         if any(k in q_lower for k in COUNT_KEYWORDS):
             return PresentationHints(
                 show_executive_report=False, show_kpis=True,
-                show_gauges=False, show_chart=False,
+                show_chart=False,
                 preferred_view="table", summary_style="concise"
             )
 
         if any(k in q_lower for k in LIST_KEYWORDS):
             return PresentationHints(
                 show_executive_report=False, show_kpis=False,
-                show_gauges=False, show_chart=False,
+                show_chart=False,
                 preferred_view="table", summary_style="concise"
             )
 
@@ -157,14 +158,14 @@ class IntentClassifier:
         if has_numeric and len(rows) > 1:
             return PresentationHints(
                 show_executive_report=False, show_kpis=True,
-                show_gauges=False, show_chart=True,
-                preferred_view="studio", summary_style="detailed"
+                show_chart=True,
+                preferred_view="assistant", summary_style="detailed"
             )
 
         return PresentationHints(
             show_executive_report=False, show_kpis=False,
-            show_gauges=False, show_chart=True if has_numeric else False,
-            preferred_view="studio" if has_numeric else "table",
+            show_chart=True if has_numeric else False,
+            preferred_view="assistant" if has_numeric else "table",
             summary_style="concise"
         )
 

@@ -15,7 +15,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
-  const pageSize = 5;
+  const [pageSize, setPageSize] = useState<number>(10);
 
   // Filter rows
   const filteredRows = rows.filter((row) =>
@@ -42,9 +42,11 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
       : String(valB).localeCompare(String(valA));
   });
 
-  // Pagination
-  const totalPages = Math.ceil(sortedRows.length / pageSize) || 1;
-  const paginatedRows = sortedRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  // Pagination calculation
+  const effectivePageSize = pageSize === -1 ? Math.max(sortedRows.length, 1) : pageSize;
+  const totalPages = Math.ceil(sortedRows.length / effectivePageSize) || 1;
+  const paginatedRows = sortedRows.slice((currentPage - 1) * effectivePageSize, currentPage * effectivePageSize);
+
 
   const handleSort = (col: string) => {
     if (sortColumn === col) {
@@ -204,12 +206,51 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
       </div>
 
       {/* Pagination Footer */}
-      <div className="flex items-center justify-between text-xs text-gray-400 pt-1">
-        <div>
-          Página {currentPage} de {totalPages}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-gray-400 pt-1">
+        <div className="flex items-center space-x-3 flex-wrap gap-y-1">
+          <span>
+            {sortedRows.length > 0 ? (
+              <>
+                Mostrando{' '}
+                <strong className="text-gray-200">
+                  {(currentPage - 1) * effectivePageSize + 1}-
+                  {Math.min(currentPage * effectivePageSize, sortedRows.length)}
+                </strong>{' '}
+                de <strong className="text-gray-200">{sortedRows.length}</strong> registros
+              </>
+            ) : (
+              '0 registros'
+            )}
+          </span>
+
+          {/* Page Size Selector */}
+          <div className="flex items-center space-x-1 pl-2 border-l border-dark-border">
+            <span className="text-[11px] text-gray-500 font-medium">Filas:</span>
+            {[5, 10, 25, 50, -1].map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => {
+                  setPageSize(size);
+                  setCurrentPage(1);
+                }}
+                className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors ${
+                  pageSize === size
+                    ? 'bg-brand-600/30 text-brand-300 border border-brand-500/40 font-semibold'
+                    : 'bg-dark-base text-gray-400 hover:text-white border border-dark-border'
+                }`}
+              >
+                {size === -1 ? 'Todas' : size}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 self-end sm:self-auto">
+          <span className="text-[11px] text-gray-500">
+            Página {currentPage} de {totalPages}
+          </span>
+
           <button
             type="button"
             onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
@@ -231,6 +272,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
           </button>
         </div>
       </div>
+
     </div>
   );
 };

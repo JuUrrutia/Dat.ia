@@ -122,19 +122,19 @@ class ConnectionTestResult(BaseModel):
     message: str
     latency_ms: int = 0
 
+class MetadataDBTestRequest(BaseModel):
+    server: str
+    port: int
+    db_name: str
+    user: Optional[str] = None
+    password: Optional[str] = None
+
 # --- Report Schemas ---
 class KPICardData(BaseModel):
     title: str
     value: str
     subtitle: Optional[str] = None
     change_direction: Optional[str] = None
-
-class MetricGaugeData(BaseModel):
-    title: str
-    percentage: float = 0.0
-    value_label: str = ""
-    target_label: str = ""
-    color: Optional[str] = None
 
 class ExecutiveReportData(BaseModel):
     overview: Optional[str] = ""
@@ -155,15 +155,18 @@ class ReportExportRequest(BaseModel):
     audit_log_id: int
     chart_image_base64: Optional[str] = None
     custom_notes: Optional[str] = None
+    custom_title: Optional[str] = None
+    include_raw_data: bool = True
 
 class ReportExportData(BaseModel):
     question: str
     summary_text: Optional[str] = None
     executive_report: Optional[ExecutiveReportData] = None
     kpis: List[KPICardData] = []
-    gauges: List[MetricGaugeData] = []
     data_columns: List[str] = []
     data_rows: List[Dict[str, Any]] = []
     traceability: Optional[TraceabilityAuditData] = None
     chart_image_base64: Optional[str] = None
     target_database: Optional[str] = None
+    custom_notes: Optional[str] = None
+    include_raw_data: bool = True

@@ -99,6 +99,21 @@ class PDFExporter:
         story.append(q_table)
         story.append(Spacer(1, 8))
 
+        # 2b. Custom Notes (if provided)
+        if getattr(data, 'custom_notes', None):
+            notes_p = Paragraph(f"<b>Notas Ejecutivas & Contexto:</b><br/>{data.custom_notes}", body_style)
+            notes_table = Table([[notes_p]], colWidths=[540])
+            notes_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#EEF2FF")),
+                ('BOX', (0, 0), (-1, -1), 0.75, colors.HexColor("#C7D2FE")),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ]))
+            story.append(notes_table)
+            story.append(Spacer(1, 8))
+
         # 3. KPI Cards Grid
         if data.kpis:
             kpi_cols = min(len(data.kpis), 4)

@@ -104,12 +104,35 @@ class PromptManager:
         )
 
     @staticmethod
+    def format_conversation_context(history: list) -> str:
+        if not history:
+            return ""
+        turns = []
+        for i, turn in enumerate(history[-2:], 1):
+            q = (turn.get("question") or "").strip()
+            sql = (turn.get("sql") or "").strip()
+            if q:
+                turn_str = f"Turno {i}:\n- Pregunta previa: \"{q}\""
+                if sql:
+                    turn_str += f"\n- SQL ejecutado: \"{sql}\""
+                turns.append(turn_str)
+        if not turns:
+            return ""
+        return (
+            "<conversacion_previa>\n"
+            + "\n\n".join(turns)
+            + "\n</conversacion_previa>\n"
+            + "INSTRUCCIÓN MULTI-TURNO: Si la pregunta actual es una continuación, refinamiento o filtro sobre el turno anterior (ej: 'y de esos cuáles...', 'filtra solo por...', 'ordena por...', 'top 3'), aprovecha y adapta el SQL anterior ajustando las condiciones WHERE, GROUP BY o LIMIT en lugar de reiniciar desde cero."
+        )
+
+    @staticmethod
     def get_text_to_sql_user_prompt(
         question: str,
         user_role: str,
         schema_context: str,
         allowed_tables: Set[str],
         few_shot_examples: str = "",
+        conversation_context: str = "",
     ) -> str:
         tables_str = ", ".join(sorted(allowed_tables)) if allowed_tables else "Ninguna"
         parts = [
@@ -117,6 +140,8 @@ class PromptManager:
             _wrap_user_input("user_question", question),
             schema_context,
         ]
+        if conversation_context:
+            parts.append(conversation_context)
         if few_shot_examples:
             parts.append(few_shot_examples)
         parts.append(
@@ -124,6 +149,7 @@ class PromptManager:
             "Formato de salida obligatorio: ```sql\n<consulta>\n```"
         )
         return "\n\n".join(parts)
+
 
     # -----------------------------------------------------------------
     # 2. Intent Classification Prompt
@@ -161,15 +187,14 @@ class PromptManager:
             "{\n"
             '  "show_executive_report": true/false,\n'
             '  "show_kpis": true/false,\n'
-            '  "show_gauges": true/false,\n'
             '  "show_chart": true/false,\n'
-            '  "preferred_view": "assistant" | "studio" | "report" | "table",\n'
+            '  "preferred_view": "assistant" | "report" | "table",\n'
             '  "summary_style": "concise" | "detailed" | "executive"\n'
             "}\n\n"
             "Guía:\n"
             "- Conversacional/general -> preferred_view=assistant, show_kpis=false, show_chart=false\n"
             "- Análisis de datos estándar -> preferred_view=assistant, show_kpis=true, show_chart=true, summary_style=detailed\n"
-            "- Informe ejecutivo explícito -> preferred_view=report, show_kpis=true, show_gauges=true, "
+            "- Informe ejecutivo explícito -> preferred_view=report, show_kpis=true, "
             "show_executive_report=true, show_chart=true, summary_style=executive\n"
             "No inventes datos."
         )

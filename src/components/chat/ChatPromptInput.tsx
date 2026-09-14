@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Database, ShieldCheck, ChevronDown, Check, Cpu } from 'lucide-react';
-import { CorporateConnection } from '../../features/admin/services/connector_service';
+import { Send, Database, ShieldCheck, Cpu, Wand2, X, Check } from 'lucide-react';
 
 interface ChatPromptInputProps {
   promptInput: string;
@@ -8,9 +7,7 @@ interface ChatPromptInputProps {
   isGenerating: boolean;
   userRole: string;
   activeDatabaseName?: string;
-  activeConnectionId?: number | null;
-  connectors?: CorporateConnection[];
-  onSelectConnection?: (id: number) => void;
+  textareaRef?: React.RefObject<HTMLTextAreaElement>;
   onSubmit: () => void;
 }
 
@@ -20,37 +17,25 @@ export const ChatPromptInput: React.FC<ChatPromptInputProps> = ({
   isGenerating,
   userRole,
   activeDatabaseName = 'BD Corporativa Local',
-  activeConnectionId,
-  connectors = [],
-  onSelectConnection,
+  textareaRef: externalTextareaRef,
   onSubmit,
 }) => {
-  const [isDbDropdownOpen, setIsDbDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const activeTextareaRef = externalTextareaRef || internalTextareaRef;
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsDbDropdownOpen(false);
-      }
-    };
-    if (isDbDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isDbDropdownOpen]);
+  // Smart Query Builder state
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [metric, setMetric] = useState('ventas totales');
+  const [dimension, setDimension] = useState('por mes');
+  const [period, setPeriod] = useState('este año');
 
   // Auto-resize textarea height
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 180)}px`;
+    if (activeTextareaRef.current) {
+      activeTextareaRef.current.style.height = 'auto';
+      activeTextareaRef.current.style.height = `${Math.min(activeTextareaRef.current.scrollHeight, 180)}px`;
     }
-  }, [promptInput]);
+  }, [promptInput, activeTextareaRef]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -61,12 +46,134 @@ export const ChatPromptInput: React.FC<ChatPromptInputProps> = ({
     }
   };
 
+  const handleApplyBuilder = () => {
+    const generated = `Muestra las ${metric} agrupadas ${dimension} para ${period} con análisis detallado y gráfico`;
+    setPromptInput(generated);
+    setShowBuilder(false);
+    if (activeTextareaRef.current) {
+      activeTextareaRef.current.focus();
+    }
+  };
+
   return (
     <div className="glass-panel rounded-2xl sm:rounded-3xl p-3 border border-white/10 shadow-2xl space-y-2.5 font-sans relative group transition-all">
-      {/* Auto-resizing Textarea (Kokonut UI Style) */}
+      {/* Collapsible Smart Query Builder */}
+      {showBuilder && (
+        <div className="p-3 rounded-2xl bg-zinc-900/95 border border-indigo-500/30 shadow-xl space-y-3 animate-fadeIn">
+          <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+            <div className="flex items-center space-x-2 text-indigo-300 text-xs font-semibold">
+              <Wand2 className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Smart Query Builder (Asistente Guiado en 3 Pasos)</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowBuilder(false)}
+              className="p-1 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="space-y-2 text-xs">
+            {/* Step 1: Metric */}
+            <div>
+              <span className="text-zinc-400 text-[11px] font-medium mr-2">1. Métrica:</span>
+              <div className="inline-flex flex-wrap gap-1.5 mt-1">
+                {[
+                  { label: 'Ventas', val: 'ventas totales' },
+                  { label: 'Margen de Utilidad', val: 'margen de utilidad' },
+                  { label: 'Costos Operativos', val: 'costos operativos' },
+                  { label: 'Incidentes TI', val: 'incidentes de infraestructura' },
+                  { label: 'Carga de Servidores', val: 'consumo de CPU y memoria RAM de servidores' },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => setMetric(item.val)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                      metric === item.val
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 hover:text-white'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Step 2: Dimension */}
+            <div>
+              <span className="text-zinc-400 text-[11px] font-medium mr-2">2. Agrupación:</span>
+              <div className="inline-flex flex-wrap gap-1.5 mt-1">
+                {[
+                  { label: 'Por Mes', val: 'por mes' },
+                  { label: 'Por Categoría', val: 'por categoría de producto' },
+                  { label: 'Por Sucursal / Datacenter', val: 'por sucursal' },
+                  { label: 'Por Cliente', val: 'por cliente principal' },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => setDimension(item.val)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                      dimension === item.val
+                        ? 'bg-cyan-600 text-white shadow-xs'
+                        : 'bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 hover:text-white'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Step 3: Period */}
+            <div>
+              <span className="text-zinc-400 text-[11px] font-medium mr-2">3. Período:</span>
+              <div className="inline-flex flex-wrap gap-1.5 mt-1">
+                {[
+                  { label: 'Este Año (2024)', val: 'el año 2024' },
+                  { label: 'Últimos 90 Días', val: 'los últimos 90 días' },
+                  { label: 'Todo el Histórico', val: 'todo el histórico' },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => setPeriod(item.val)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                      period === item.val
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 hover:text-white'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-zinc-800 text-[11px]">
+            <span className="text-zinc-400 truncate max-w-sm">
+              Previa: <i className="text-zinc-300">"Muestra las {metric} {dimension} para {period}..."</i>
+            </span>
+            <button
+              type="button"
+              onClick={handleApplyBuilder}
+              className="flex items-center space-x-1 px-3 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors shadow-md shadow-indigo-600/30"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Insertar en Prompt</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Auto-resizing Textarea */}
       <div className="relative">
         <textarea
-          ref={textareaRef}
+          ref={activeTextareaRef}
           rows={2}
           value={promptInput}
           onChange={(e) => setPromptInput(e.target.value)}
@@ -78,57 +185,31 @@ export const ChatPromptInput: React.FC<ChatPromptInputProps> = ({
         />
       </div>
 
-      {/* Kokonut UI Toolbar & Action Controls */}
+      {/* Toolbar & Action Controls */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-1 pt-1 border-t border-dark-border/60">
-        {/* Left Toolbar Items: Active Database Selector & Model Pill */}
+        {/* Left Items: Active DB Badge & Model Pill */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Database Selector Dropdown */}
-          <div className="relative" ref={dropdownRef}>
-            <button
-              type="button"
-              onClick={() => setIsDbDropdownOpen((prev) => !prev)}
-              className="flex items-center space-x-1.5 px-2.5 py-1 rounded-xl bg-dark-base/90 hover:bg-dark-card border border-dark-border/80 text-[11px] font-medium text-gray-300 hover:text-white transition-all shadow-sm focus-visible:ring-2 focus-visible:ring-brand-500"
-            >
-              <Database className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-              <span className="truncate max-w-[140px] sm:max-w-[180px] font-semibold">{activeDatabaseName}</span>
-              <ChevronDown className={`w-3 h-3 text-gray-400 transition-transform duration-200 ${isDbDropdownOpen ? 'rotate-180' : ''}`} />
-            </button>
+          {/* Smart Builder Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setShowBuilder((prev) => !prev)}
+            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-xl border text-[11px] font-semibold transition-colors shadow-xs ${
+              showBuilder
+                ? 'bg-indigo-600 text-white border-indigo-500'
+                : 'bg-dark-base hover:bg-indigo-950/40 text-indigo-300 border-indigo-500/30 hover:border-indigo-500/50'
+            }`}
+            title="Abrir Asistente Guiado de Consultas en 3 Pasos"
+          >
+            <Wand2 className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Smart Builder</span>
+          </button>
 
-            {/* Dropdown Menu */}
-            {isDbDropdownOpen && connectors.length > 0 && (
-              <div className="absolute left-0 bottom-full mb-2 w-64 rounded-2xl bg-dark-surface border border-dark-border shadow-2xl p-2 z-50 space-y-1 animate-fadeIn">
-                <div className="px-2 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-dark-border/60 mb-1">
-                  Seleccionar Fuente de Datos
-                </div>
-                <div className="max-h-48 overflow-y-auto space-y-1 custom-scrollbar">
-                  {connectors.map((c) => {
-                    const isSelected = c.id === activeConnectionId;
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => {
-                          if (onSelectConnection) onSelectConnection(c.id);
-                          setIsDbDropdownOpen(false);
-                        }}
-                        className={`w-full flex items-center justify-between p-2 rounded-xl text-xs text-left transition-colors ${
-                          isSelected
-                            ? 'bg-brand-600/20 text-brand-300 border border-brand-500/30 font-bold'
-                            : 'text-gray-300 hover:bg-dark-card'
-                        }`}
-                      >
-                        <div className="truncate min-w-0">
-                          <div className="truncate font-semibold">{c.name}</div>
-                          <div className="text-[9px] text-gray-500 font-mono uppercase">{c.db_type}</div>
-                        </div>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-brand-400 shrink-0 ml-1" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+          {/* Active Database Badge */}
+          <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-xl bg-dark-base/90 border border-dark-border/80 text-[11px] font-medium text-gray-300 shadow-xs">
+            <Database className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <span className="truncate max-w-[140px] sm:max-w-[200px] font-semibold">{activeDatabaseName}</span>
           </div>
+
 
           {/* AI Model & Privacy Badge */}
           <span className="hidden sm:flex items-center space-x-1 px-2.5 py-1 rounded-xl bg-purple-500/10 border border-purple-500/20 text-[10px] text-purple-300 font-medium">
