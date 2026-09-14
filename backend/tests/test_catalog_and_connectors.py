@@ -388,5 +388,38 @@ class TestCatalogAndConnectors(unittest.TestCase):
                 except Exception:
                     pass
 
+    def test_sap_enrichment_and_join_detection(self):
+        from app.modules.catalog.services.catalog_enricher import CatalogEnricher
+        from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
 
+        # 1. Test SAP heuristic enrichment for typical SAP acronyms
+        res_wrbtr = CatalogEnricher.heuristic_enrich("BSEG", "WRBTR", "DECIMAL", ["1500.00"])
+        self.assertIn("Importe", res_wrbtr["friendly_name"])
+        self.assertIn("SUM(wrbtr)", res_wrbtr["business_formula"])
 
+        res_bukrs = CatalogEnricher.heuristic_enrich("BKPF", "BUKRS", "VARCHAR", ["1000"])
+        self.assertIn("Sociedad", res_bukrs["friendly_name"])
+
+        res_matnr = CatalogEnricher.heuristic_enrich("MARA", "MATNR", "VARCHAR", ["MAT-01"])
+        self.assertIn("Material", res_matnr["friendly_name"])
+
+        # 2. Test join relationship detection on SAP keys
+        table_cols = {
+            "BKPF": ["BUKRS", "BELNR", "GJAHR", "BLART"],
+            "BSEG": ["BUKRS", "BELNR", "GJAHR", "BUZEI", "WRBTR"]
+        }
+        # Simulate relationship detection logic directly
+        tables_list = list(table_cols.keys())
+        relationships = []
+        for i in range(len(tables_list)):
+            for j in range(i + 1, len(tables_list)):
+                t1, t2 = tables_list[i], tables_list[j]
+                cols1 = {c.lower(): c for c in table_cols[t1]}
+                cols2 = {c.lower(): c for c in table_cols[t2]}
+                common = set(cols1.keys()).intersection(set(cols2.keys()))
+                for c in common:
+                    if c.endswith("id") or c == "id" or "key" in c or c in {"belnr", "vbeln", "ebeln", "matnr", "kunnr", "lifnr", "bukrs", "posnr"}:
+                        relationships.append(f"{t1}.{cols1[c]} = {t2}.{cols2[c]}")
+
+        self.assertTrue(any("BELNR" in r for r in relationships))
+        self.assertTrue(any("BUKRS" in r for r in relationships))

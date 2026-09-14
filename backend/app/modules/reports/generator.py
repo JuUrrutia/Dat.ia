@@ -50,6 +50,15 @@ class ReportGeneratorService:
                 data_dict = json.loads(log_entry.result_snapshot)
                 if req.chart_image_base64:
                     data_dict["chart_image_base64"] = req.chart_image_base64
+                if req.custom_title:
+                    data_dict["question"] = req.custom_title
+                if req.custom_notes:
+                    data_dict["custom_notes"] = req.custom_notes
+                data_dict["include_raw_data"] = req.include_raw_data
+                if not req.include_raw_data:
+                    data_dict["data_rows"] = []
+                    data_dict["data_columns"] = []
+
                 data_obj = ReportExportData(**data_dict)
                 pdf_bytes = PDFExporter.generate_pdf(data_obj)
 
@@ -90,6 +99,15 @@ class ReportGeneratorService:
                 )
             if log_entry.result_snapshot:
                 data_dict = json.loads(log_entry.result_snapshot)
+                if req.custom_title:
+                    data_dict["question"] = req.custom_title
+                if req.custom_notes:
+                    data_dict["custom_notes"] = req.custom_notes
+                data_dict["include_raw_data"] = req.include_raw_data
+                if not req.include_raw_data:
+                    data_dict["data_rows"] = []
+                    data_dict["data_columns"] = []
+
                 data_obj = ReportExportData(**data_dict)
                 excel_bytes = ExcelExporter.generate_excel(data_obj)
 

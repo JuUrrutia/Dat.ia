@@ -64,28 +64,13 @@ class TestChatSecurity(unittest.TestCase):
         # Must be rejected because JWT user is Economista who cannot access dim_servidores (TI domain)
         self.assertTrue("RECHAZADO" in v_status or "ERROR" in v_status)
 
-    def test_query_open_disabled_by_default_returns_403(self):
-        """By default (ALLOW_OPEN_DEMO_ENDPOINT=False), /chat/query-open returns 403 Forbidden."""
-        self.assertFalse(settings.ALLOW_OPEN_DEMO_ENDPOINT)
+    def test_query_open_endpoint_is_removed(self):
+        """The legacy unauthenticated /chat/query-open endpoint has been completely removed (404)."""
         resp = self.client.post(
             "/api/v1/chat/query-open",
-            json={"question": "Total de ventas", "user_role": "Administrador"}
+            json={"question": "Total de ventas"}
         )
-        self.assertEqual(resp.status_code, 403)
-        self.assertIn("deshabilitado", resp.json().get("detail", ""))
-
-    def test_query_open_when_enabled_forces_least_privileged_role(self):
-        """When ALLOW_OPEN_DEMO_ENDPOINT=True, client-provided user_role is ignored and Usuario role is forced."""
-        with patch.object(settings, "ALLOW_OPEN_DEMO_ENDPOINT", True):
-            resp = self.client.post(
-                "/api/v1/chat/query-open",
-                json={"question": "SELECT * FROM fact_ventas", "user_role": "Administrador"}
-            )
-            self.assertEqual(resp.status_code, 200)
-            data = resp.json()
-            v_status = data.get("traceability", {}).get("validation_status", "")
-            # Because role is forced to 'Usuario' (which has no domain permissions), access is rejected
-            self.assertTrue("RECHAZADO" in v_status or "ERROR" in v_status)
+        self.assertEqual(resp.status_code, 404)
 
     def test_suggestions_without_auth_returns_generic_no_tables(self):
         """Without authentication token, /chat/suggestions returns generic suggestions and NO allowed_tables."""
@@ -105,7 +90,7 @@ class TestChatSecurity(unittest.TestCase):
         With authenticated JWT for Economista, /chat/suggestions ignores ?user_role=Administrador
         and returns allowed_tables strictly matching the JWT user role.
         """
-        resp = self.client.get("/api/v1/chat/suggestions?user_role=Administrador", headers=self.headers)
+        resp = self.client.get("/api/v1/chat/suggestions?connection_id=1&user_role=Administrador", headers=self.headers)
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertIn(data.get("user_role"), ["Economista", "Analista Financiero & Comercial"])

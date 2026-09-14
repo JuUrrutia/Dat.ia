@@ -4,15 +4,9 @@ import { CheckCircle2, AlertTriangle } from 'lucide-react';
 
 interface ReportFindingsViewProps {
   result: QueryResult;
-  formatNumber?: (num: number) => string;
-  totalVal?: number;
-  maxValRow?: Record<string, any> | null;
-  catCol?: string;
 }
 
-export const ReportFindingsView: React.FC<ReportFindingsViewProps> = ({
-  result,
-}) => {
+export const ReportFindingsView: React.FC<ReportFindingsViewProps> = ({ result }) => {
   const rowsCount = result.data_rows?.length || 0;
   const colsCount = result.data_columns?.length || 0;
 

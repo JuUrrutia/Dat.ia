@@ -1,7 +1,5 @@
-import logging
 from typing import List, Set, Dict, Tuple, Optional, Any
-import sqlglot
-from sqlglot import exp, parse_one, transpile
+from sqlglot import exp, parse_one
 from app.core.config import settings
 from app.core.logging import logger
 

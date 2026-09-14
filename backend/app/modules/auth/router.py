@@ -10,7 +10,7 @@ from app.core.security import verify_password, get_password_hash, create_access_
 from app.modules.auth.models import User, Role, UserSession
 from app.core.constants import MAX_FAILED_LOGIN_ATTEMPTS, ACCOUNT_LOCKOUT_DURATION_MINUTES
 from app.modules.auth.schemas import (
-    UserLogin, UserSelfRegister, UserCreateByAdmin, UserCreate, UserOut, Token, PasswordChangeRequest,
+    UserLogin, UserSelfRegister, UserOut, Token, PasswordChangeRequest,
     PasswordResetResponse, SessionOut
 )
 

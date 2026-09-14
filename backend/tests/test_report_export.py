@@ -34,9 +34,6 @@ SAMPLE_SNAPSHOT_DATA = {
         {"title": "Unidades", "value": "12,500", "subtitle": "Top 5 productos"},
         {"title": "Margen Bruto", "value": "34.5%", "subtitle": "Estable"}
     ],
-    "gauges": [
-        {"title": "Cumplimiento Meta", "percentage": 88.5, "value_label": "88.5%", "target_label": "100%"}
-    ],
     "data_columns": ["id_producto", "nombre_producto", "unidades_vendidas", "total_ingresos"],
     "data_rows": [
         {"id_producto": 101, "nombre_producto": "Teclado Mecánico RGB", "unidades_vendidas": 4200, "total_ingresos": 42000.0},

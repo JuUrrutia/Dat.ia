@@ -9,7 +9,6 @@ from app.modules.auth.models import User, Role, Domain
 from app.modules.admin_catalog.models import (
     CorporateConnection, DatabaseType, SemanticCatalog, RoleTablePermission
 )
-from app.core.constants import ROLE_ADMINISTRADOR
 
 def init_db(db: Session):
     """
@@ -207,39 +206,39 @@ def init_db(db: Session):
         role_table_mappings.append((r, all_tech_tables))
 
     primary_conn = None
-    if engine.dialect.name == "postgresql":
-        primary_conn = db.query(CorporateConnection).filter(
-            CorporateConnection.db_type == DatabaseType.POSTGRESQL
-        ).first()
-    if not primary_conn:
-        primary_conn = db.query(CorporateConnection).first()
+    standard_connections = db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == False).all()
+    for s_conn in standard_connections:
+        s_schema = "public" if (s_conn.db_type == DatabaseType.POSTGRESQL or str(s_conn.db_type).lower() == "postgresql") else "main"
+        for r_obj, tbl_list in role_table_mappings:
+            if r_obj:
+                for tbl in tbl_list:
+                    existing_perm = db.query(RoleTablePermission).filter(
+                        RoleTablePermission.role_id == r_obj.id,
+                        RoleTablePermission.connection_id == s_conn.id,
+                        RoleTablePermission.table_name == tbl
+                    ).first()
+                    if not existing_perm:
+                        db.add(RoleTablePermission(
+                            role_id=r_obj.id,
+                            connection_id=s_conn.id,
+                            schema_name=s_schema,
+                            table_name=tbl,
+                            is_allowed=True
+                        ))
 
-    primary_conn_id = primary_conn.id if primary_conn else 1
-    default_schema = "public" if engine.dialect.name == "postgresql" else "main"
+    # Ensure financial roles strictly do NOT have access to tech/server infrastructure tables
+    for r_obj in all_financiero_roles:
+        db.query(RoleTablePermission).filter(
+            RoleTablePermission.role_id == r_obj.id,
+            RoleTablePermission.table_name.in_(["dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos"])
+        ).delete(synchronize_session=False)
 
-    for r_obj, tbl_list in role_table_mappings:
-        if r_obj:
-            for tbl in tbl_list:
-                existing_perm = db.query(RoleTablePermission).filter(
-                    RoleTablePermission.role_id == r_obj.id,
-                    RoleTablePermission.connection_id == primary_conn_id,
-                    RoleTablePermission.table_name == tbl
-                ).first()
-                if not existing_perm:
-                    db.add(RoleTablePermission(
-                        role_id=r_obj.id,
-                        connection_id=primary_conn_id,
-                        schema_name=default_schema,
-                        table_name=tbl,
-                        is_allowed=True
-                    ))
-
-    # Also seed permissions for all other registered connections (e.g. uploaded datasets)
+    # Seed permissions for uploaded user datasets (is_uploaded == True)
     from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
-    other_connections = db.query(CorporateConnection).filter(CorporateConnection.id != primary_conn_id).all()
+    uploaded_connections = db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == True).all()
     operational_roles = db.query(Role).filter(~Role.name.in_(["Usuario", "Usuario Consultor"])).all()
 
-    for o_conn in other_connections:
+    for o_conn in uploaded_connections:
         db_path = o_conn.host if (o_conn.host and os.path.exists(o_conn.host)) else (
             o_conn.database_name if (o_conn.database_name and os.path.exists(o_conn.database_name)) else None
         )

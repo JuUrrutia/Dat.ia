@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Users, Database, BookOpen, Server, Key, FileText, Sparkles } from 'lucide-react';
+import { ShieldAlert, Users, Database, BookOpen, Server, Key, FileText } from 'lucide-react';
 import { CorporateConnection, connectorService, DEFAULT_CONNECTORS } from '../features/admin/services/connector_service';
 import { AdminAuditTab } from '../components/admin/AdminAuditTab';
 import { AdminCatalogTab } from '../components/admin/AdminCatalogTab';

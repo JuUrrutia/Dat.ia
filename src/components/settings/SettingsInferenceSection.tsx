@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Play, Code2, CheckCircle2, AlertCircle, Terminal, Zap } from 'lucide-react';
+import { Sparkles, Play, CheckCircle2, AlertCircle, Terminal, Zap } from 'lucide-react';
 import { LLMCompletionTestResult } from '../../features/chat/services/llm_service';
 
 interface SettingsInferenceSectionProps {

@@ -23,7 +23,6 @@ class ResponseBuilder:
                     change_direction="negative"
                 )
             ],
-            gauges=[],
             chart_type="none",
             chart_option={"series": []},
             data_columns=[],
@@ -78,7 +77,6 @@ class ResponseBuilder:
             summary_text=summary_text,
             executive_report=None,
             kpis=[],
-            gauges=[],
             chart_type="none",
             chart_option={"series": []},
             data_columns=[],
@@ -89,7 +87,6 @@ class ResponseBuilder:
             presentation_hints=PresentationHints(
                 show_executive_report=False,
                 show_kpis=False,
-                show_gauges=False,
                 show_chart=False,
                 preferred_view="assistant",
                 summary_style="conversational"
@@ -121,7 +118,6 @@ class ResponseBuilder:
             summary_text=conversational.split("\n\n")[0].replace("#", "").strip(),
             executive_report=None,
             kpis=[],
-            gauges=[],
             chart_type="none",
             chart_option={"series": []},
             data_columns=list(rows[0].keys()) if rows else [],
@@ -132,7 +128,6 @@ class ResponseBuilder:
             presentation_hints=PresentationHints(
                 show_executive_report=False,
                 show_kpis=False,
-                show_gauges=False,
                 show_chart=False,
                 preferred_view="assistant",
                 summary_style="detailed"
@@ -162,7 +157,6 @@ class ResponseBuilder:
         is_llm_active: bool,
         pres_hints: PresentationHints,
         kpis: List[KPICard],
-        gauges: List[Any],
         chart_type: str,
         chart_option: Dict[str, Any],
         final_summary: str,
@@ -175,7 +169,6 @@ class ResponseBuilder:
             summary_text=final_summary,
             executive_report=final_exec_report,
             kpis=kpis,
-            gauges=gauges,
             chart_type=chart_type,
             chart_option=chart_option,
             data_columns=columns,

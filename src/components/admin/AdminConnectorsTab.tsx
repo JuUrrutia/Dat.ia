@@ -1,7 +1,7 @@
-import React from 'react';
-import { Database, Plus, Edit3, Trash2, RefreshCw, CheckCircle2, RotateCcw, Filter, UploadCloud, HardDrive, ShieldCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { Database, Plus, Edit3, Trash2, RefreshCw, CheckCircle2, RotateCcw, Filter, UploadCloud, HardDrive, Sparkles } from 'lucide-react';
 import { CorporateConnection } from '../../features/admin/services/connector_service';
-import { DatabaseUploadModal } from './DatabaseUploadModal';
+import { DatabaseWizardModal } from './DatabaseWizardModal';
 import { useAdminConnectors } from '../../features/admin/hooks/useAdminConnectors';
 
 interface AdminConnectorsTabProps {
@@ -28,11 +28,17 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
     setFilterDbType,
     testingId,
     testResultsMap,
-    isUploadModalOpen,
-    setIsUploadModalOpen,
     handleTestCardConnection,
     filteredConnectors,
   } = useAdminConnectors(connectors);
+
+  const [wizardMode, setWizardMode] = useState<'file' | 'remote'>('file');
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+
+  const handleOpenWizard = (mode: 'file' | 'remote' = 'file') => {
+    setWizardMode(mode);
+    setIsWizardOpen(true);
+  };
 
   const getDbBadgeColor = (dbType: string) => {
     switch (dbType.toLowerCase()) {
@@ -88,27 +94,28 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
             </select>
           </div>
 
-          {/* Import SQLite / Excel / CSV File Button */}
+          {/* Action 1: Import Local File (SQLite / Excel / CSV) */}
           <button
             type="button"
-            onClick={() => setIsUploadModalOpen(true)}
-            className="flex items-center space-x-1.5 text-xs bg-dark-base/90 hover:bg-dark-card text-gray-200 border border-dark-border hover:border-purple-500/40 px-3.5 py-2 rounded-xl transition-all font-semibold shadow-sm focus-visible:ring-2 focus-visible:ring-purple-500"
+            onClick={() => handleOpenWizard('file')}
+            className="flex items-center space-x-1.5 text-xs bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-bold px-4 py-2 rounded-xl shadow-lg shadow-purple-600/30 transition-all glow-brand hover:scale-105 focus-visible:ring-2 focus-visible:ring-purple-500"
           >
-            <UploadCloud className="w-4 h-4 text-purple-400" />
-            <span>Importar BD (SQLite / Excel / CSV)</span>
+            <UploadCloud className="w-4 h-4" />
+            <span>Importar Archivo (SQLite / Excel / CSV)</span>
           </button>
 
-          {/* Register Remote DB Connection Button */}
+          {/* Action 2: Connect Remote DB (PostgreSQL / MSSQL / MySQL) */}
           <button
             type="button"
-            onClick={onOpenCreateModal}
-            className="flex items-center space-x-1.5 text-xs bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold px-4 py-2 rounded-xl shadow-lg shadow-purple-600/30 transition-all glow-brand hover:scale-105 focus-visible:ring-2 focus-visible:ring-purple-500"
+            onClick={() => handleOpenWizard('remote')}
+            className="flex items-center space-x-1.5 text-xs bg-dark-base hover:bg-dark-card text-gray-200 border border-dark-border hover:border-purple-500/40 font-bold px-4 py-2 rounded-xl transition-all hover:scale-105 focus-visible:ring-2 focus-visible:ring-purple-500"
           >
-            <Plus className="w-4 h-4" />
-            <span>+ Registrar Conexión BD</span>
+            <Plus className="w-4 h-4 text-purple-400" />
+            <span>Conectar BD Remota (Postgres / SQL Server)</span>
           </button>
         </div>
       </div>
+
 
       {/* Empty State */}
       {filteredConnectors.length === 0 && (
@@ -133,11 +140,19 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setIsUploadModalOpen(true)}
-              className="flex items-center space-x-1.5 text-xs bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-2 rounded-xl transition-colors shadow-lg shadow-purple-600/30"
+              onClick={() => handleOpenWizard('file')}
+              className="flex items-center space-x-1.5 text-xs bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-bold px-4 py-2 rounded-xl transition-all shadow-lg shadow-purple-600/30"
             >
-              <UploadCloud className="w-3.5 h-3.5" />
-              <span>Importar Archivo BD</span>
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Iniciar Asistente / Wizard BD</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenWizard('file')}
+              className="flex items-center space-x-1.5 text-xs bg-dark-base hover:bg-dark-card text-gray-200 border border-dark-border font-bold px-4 py-2 rounded-xl transition-colors"
+            >
+              <UploadCloud className="w-3.5 h-3.5 text-purple-400" />
+              <span>Importar Archivo</span>
             </button>
           </div>
         </div>
@@ -261,11 +276,12 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
         })}
       </div>
 
-      {/* Database Import Modal */}
-      <DatabaseUploadModal
-        isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        onUploadSuccess={() => {
+      {/* Database Installation Wizard Modal */}
+      <DatabaseWizardModal
+        isOpen={isWizardOpen}
+        initialMode={wizardMode}
+        onClose={() => setIsWizardOpen(false)}
+        onSuccess={() => {
           if (onRefreshConnectors) {
             onRefreshConnectors();
           }

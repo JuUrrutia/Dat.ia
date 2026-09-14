@@ -6,12 +6,12 @@ import { ExecutiveAssistantView } from './ExecutiveAssistantView';
 import { KPISection } from '../../features/dashboard/components/KPISection';
 import { ChartSection } from '../../features/dashboard/components/ChartSection';
 import { OfflineAlertView } from '../../features/dashboard/components/OfflineAlertView';
-import { ColorTheme } from './executiveDashboardUtils';
 import { BarChart3, FileText, Table as TableIcon, Sparkles } from 'lucide-react';
 
 interface ExecutiveDashboardViewProps {
   result: QueryResult;
   onOpenTraceability?: () => void;
+  onFollowUp?: (prompt: string) => void;
 }
 
 type ViewMode = 'assistant' | 'studio' | 'report' | 'table';
@@ -19,8 +19,8 @@ type ViewMode = 'assistant' | 'studio' | 'report' | 'table';
 export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
   result,
   onOpenTraceability,
+  onFollowUp,
 }) => {
-  const [colorTheme, setColorTheme] = useState<ColorTheme>('indigo');
 
   const hasConversationalResponse = Boolean(result.conversational_response || result.summary_text);
   const hasDataRows = Boolean(result.data_rows && result.data_rows.length > 0);
@@ -131,15 +131,11 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
 
       {viewMode === 'studio' && (
         <div className="space-y-5">
-          <KPISection
-            kpis={result.kpis}
-            gauges={result.gauges}
-            colorTheme={colorTheme}
-          />
+          <KPISection kpis={result.kpis} />
           <ChartSection
             result={result}
-            colorTheme={colorTheme}
-            onThemeChange={setColorTheme}
+            onDrillDown={(cat) => onFollowUp?.(`Detalla en profundidad los registros para: ${cat}`)}
+            onTimeFilter={(label) => onFollowUp?.(`Filtra los datos de la consulta anterior para el periodo: ${label}`)}
           />
           {result.data_rows && result.data_rows.length > 0 && (
             <DataGridTable

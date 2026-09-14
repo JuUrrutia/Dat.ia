@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldAlert, KeyRound, Check, AlertTriangle, RefreshCw } from 'lucide-react';
+import { ShieldAlert, KeyRound, AlertTriangle, RefreshCw } from 'lucide-react';
 import { authService } from '../../features/auth/services/auth_service';
 
 interface MandatoryPasswordChangeModalProps {

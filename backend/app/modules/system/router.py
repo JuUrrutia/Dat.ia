@@ -1,14 +1,13 @@
 import time
-import os
 import datetime
-from typing import List, Optional, Dict, Any
+from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.api.deps import get_db, get_current_user
 from app.modules.auth.models import User
-from app.modules.admin_catalog.models import CorporateConnection, DatabaseType
+from app.modules.admin_catalog.models import CorporateConnection
 from app.core.config import settings
 from app.core.constants import (
     SYSTEM_STATUS_OPERATIONAL,
@@ -135,3 +134,74 @@ async def get_system_health(
         total_active_connectors=total_conns,
         healthy_connectors_count=healthy_count
     )
+
+
+@router.get("/anomalies")
+async def get_system_anomalies(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Scans for proactive operational and analytical anomalies:
+    1. Connections requiring permission review
+    2. Repeated AST security blocks in the last 24 hours
+    3. Slow queries (>4000ms)
+    """
+    from app.modules.telemetry_audit.models import AuditLog
+
+    anomalies = []
+
+    # 1. Conexiones con revisión de permisos pendiente
+    pending_conns = db.query(CorporateConnection).filter(CorporateConnection.requires_permission_review == True).all()
+    for c in pending_conns:
+        anomalies.append({
+            "id": f"conn-rev-{c.id}",
+            "type": "security",
+            "severity": "warning",
+            "title": f"Revisión de permisos requerida: {c.name}",
+            "description": f"La base de datos '{c.database_name}' tiene cambios de esquema o tablas pendientes de auditar.",
+            "action_label": "Ir a Conexiones",
+            "action_route": "/admin/connections"
+        })
+
+    # 2. Bloqueos de seguridad AST en últimas 24h
+    cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=24)
+    recent_blocked = db.query(AuditLog).filter(
+        AuditLog.validation_status.like("RECHAZADO%"),
+        AuditLog.timestamp >= cutoff
+    ).count()
+
+    if recent_blocked > 0:
+        anomalies.append({
+            "id": "audit-blocked-24h",
+            "type": "security",
+            "severity": "critical" if recent_blocked >= 5 else "warning",
+            "title": f"{recent_blocked} consultas bloqueadas por seguridad",
+            "description": f"Se registraron {recent_blocked} intentos de consulta rechazados por validación AST en las últimas 24h.",
+            "action_label": "Ver Auditoría",
+            "action_route": "/admin/audit"
+        })
+
+    # 3. Consultas lentas (>4s)
+    slow_queries = db.query(AuditLog).filter(
+        AuditLog.execution_time_ms > 4000,
+        AuditLog.timestamp >= cutoff
+    ).count()
+
+    if slow_queries > 0:
+        anomalies.append({
+            "id": "audit-slow-24h",
+            "type": "performance",
+            "severity": "info",
+            "title": f"{slow_queries} consultas lentas detectadas",
+            "description": "Se detectaron ejecuciones con tiempos superiores a 4s. Podría requerirse optimización o índices.",
+            "action_label": "Ver Auditoría",
+            "action_route": "/admin/audit"
+        })
+
+    return {
+        "count": len(anomalies),
+        "anomalies": anomalies,
+        "has_critical": any(a["severity"] == "critical" for a in anomalies)
+    }
+

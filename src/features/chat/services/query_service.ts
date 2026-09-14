@@ -36,7 +36,8 @@ export const queryService = {
     userRole: string = 'Economista',
     connectionIdOrSettings?: number | AppSettings,
     settingsOrSignal?: AppSettings | AbortSignal,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    conversationHistory?: Array<{ question: string; sql?: string }>
   ): Promise<QueryResult> {
     let connectionId: number | undefined;
     let settings: AppSettings | undefined;
@@ -56,6 +57,9 @@ export const queryService = {
       if (connectionId) {
         payload.connection_id = connectionId;
       }
+      if (conversationHistory && conversationHistory.length > 0) {
+        payload.conversation_history = conversationHistory;
+      }
       const res = await apiClient.post('/chat/query', payload);
       return res.data;
     } catch (err: any) {
@@ -63,6 +67,7 @@ export const queryService = {
         throw new Error(err.response?.data?.detail || 'Acceso denegado por políticas de gobernanza o error en la consulta.');
       }
     }
+
 
     const llmProvider = settings?.llm_provider || DEFAULT_LLM_PROVIDER;
     const llmUrl = settings?.ollama_url || DEFAULT_OLLAMA_URL;
@@ -112,9 +117,7 @@ export const queryService = {
           { title: "Servidores Críticos", value: "2/4", subtitle: "+12.5% vs semana anterior" },
           { title: "Promedio CPU", value: "68.45%", subtitle: "-4.2% optimización" }
         ],
-        gauges: [
-          { title: "Carga Servidores TI", percentage: 78.5, value_label: "78.5%", target_label: "80%" }
-        ],
+
         executive_report: isReportRequested ? {
           overview: "El análisis técnico revela que el servidor 'srv-prod-01.corp' registra un uso sostenido de CPU del 88.5% con 3 incidentes reportados.",
           key_findings: ["srv-prod-01 al 88.5% CPU", "srv-db-master al 85% RAM"],
@@ -127,7 +130,6 @@ export const queryService = {
         presentation_hints: {
           show_executive_report: isReportRequested,
           show_kpis: true,
-          show_gauges: false,
           show_chart: true,
           preferred_view: 'assistant',
           summary_style: 'detailed'
@@ -170,9 +172,7 @@ export const queryService = {
         { title: "Ventas Totales", value: "$1,029,000", subtitle: "+8.4% vs mes anterior" },
         { title: "Margen Promedio", value: "31.1%", subtitle: "+2.1% rentabilidad" }
       ],
-      gauges: [
-        { title: "Meta de Ingresos Trimestral", percentage: 85.7, value_label: "$1,029,000", target_label: "$1,200,000" }
-      ],
+
       executive_report: isReportRequested ? {
         overview: "El segmento de Electrónica & TI lidera la facturación acumulada con $458,000 USD y un margen de utilidad del 32.5%.",
         key_findings: ["Electrónica & TI líder en ingresos", "Servicios Profesionales con mayor margen (48%)"],
@@ -185,7 +185,6 @@ export const queryService = {
       presentation_hints: {
         show_executive_report: isReportRequested,
         show_kpis: true,
-        show_gauges: false,
         show_chart: true,
         preferred_view: 'assistant',
         summary_style: 'detailed'
@@ -206,8 +205,139 @@ export const queryService = {
     userRole: string = 'Economista',
     connectionIdOrSettings?: number | AppSettings,
     settingsOrSignal?: AppSettings | AbortSignal,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    conversationHistory?: Array<{ question: string; sql?: string }>
   ): Promise<QueryResult> {
-    return this.executeQuery(question, userRole, connectionIdOrSettings, settingsOrSignal, signal);
+    return this.executeQuery(question, userRole, connectionIdOrSettings, settingsOrSignal, signal, conversationHistory);
+  },
+
+  async getThreads(): Promise<Array<{ id: string; title: string; connection_id: number; message_count: number; updated_at: string }>> {
+    try {
+      const res = await apiClient.get('/chat/threads');
+      return res.data || [];
+    } catch {
+      return [];
+    }
+  },
+
+  async getThread(id: string): Promise<{ id: string; title: string; connection_id: number; results: QueryResult[]; created_at: string; updated_at: string } | null> {
+    try {
+      const res = await apiClient.get(`/chat/threads/${id}`);
+      return res.data;
+    } catch {
+      return null;
+    }
+  },
+
+  async saveThread(thread: { id: string; title: string; connection_id?: number; results: QueryResult[] }): Promise<boolean> {
+    try {
+      await apiClient.post('/chat/threads', thread);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async deleteThread(id: string): Promise<boolean> {
+    try {
+      await apiClient.delete(`/chat/threads/${id}`);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async clearAllThreads(): Promise<boolean> {
+    try {
+      await apiClient.delete('/chat/threads');
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async sendFeedback(payload: {
+    audit_log_id?: number;
+    question: string;
+    sql?: string;
+    connection_id?: number;
+    rating: 'positive' | 'negative';
+    comment?: string;
+  }): Promise<{ success: boolean; message: string; learning_saved: boolean }> {
+    try {
+      const res = await apiClient.post('/chat/feedback', payload);
+      return res.data;
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.response?.data?.detail || 'Error al registrar calificación.',
+        learning_saved: false,
+      };
+    }
+  },
+
+  async getWidgets(): Promise<Array<{
+    id: number;
+    title: string;
+    connection_id?: number;
+    chart_type?: string;
+    chart_option_json?: string;
+    kpis_json?: string;
+    query_text?: string;
+    created_at: string;
+  }>> {
+    try {
+      const res = await apiClient.get('/chat/widgets');
+      return res.data || [];
+    } catch {
+      return [];
+    }
+  },
+
+  async pinWidget(widget: {
+    title: string;
+    connection_id?: number;
+    chart_type?: string;
+    chart_option_json?: string;
+    kpis_json?: string;
+    query_text?: string;
+  }): Promise<boolean> {
+    try {
+      await apiClient.post('/chat/widgets', widget);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async unpinWidget(widgetId: number): Promise<boolean> {
+    try {
+      await apiClient.delete(`/chat/widgets/${widgetId}`);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async getAnomalies(): Promise<{
+    count: number;
+    anomalies: Array<{
+      id: string;
+      type: string;
+      severity: 'critical' | 'warning' | 'info';
+      title: string;
+      description: string;
+      action_label: string;
+      action_route: string;
+    }>;
+    has_critical: boolean;
+  }> {
+    try {
+      const res = await apiClient.get('/system/anomalies');
+      return res.data || { count: 0, anomalies: [], has_critical: false };
+    } catch {
+      return { count: 0, anomalies: [], has_critical: false };
+    }
   }
 };
+
