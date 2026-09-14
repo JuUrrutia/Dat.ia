@@ -37,7 +37,7 @@ export const ChatDashboardPage: React.FC = () => {
   } = useChatEngine();
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-[#0A0D14]">
+    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-[#0A0D14] chat-shell">
       {/* Sidebar Desktop & Mobile */}
       <SidebarChatHistory
         threads={sidebarThreads}
@@ -51,9 +51,9 @@ export const ChatDashboardPage: React.FC = () => {
       />
 
       {/* Main Container */}
-      <div className="flex-1 flex flex-col min-w-0 h-full relative bg-gradient-to-b from-[#0B0F19] via-[#0A0D14] to-[#07090E]">
+      <div className="flex-1 flex flex-col min-w-0 h-full relative bg-gradient-to-b from-[#0B0F19] via-[#0A0D14] to-[#07090E] chat-shell-panel">
         {/* Top Context Subheader */}
-        <div className="h-12 border-b border-[#1E293B]/60 bg-[#0F172A]/40 backdrop-blur-md px-4 flex items-center justify-between shrink-0">
+        <div className="h-12 border-b border-[#1E293B]/60 bg-[#0F172A]/40 backdrop-blur-md px-4 flex items-center justify-between shrink-0 chat-shell-header">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsMobileHistoryOpen(true)}
@@ -139,7 +139,7 @@ export const ChatDashboardPage: React.FC = () => {
               {pendingPrompt && (
                 <div className="space-y-4 sm:space-y-6 pt-4 border-t border-dark-border/40 first:border-0 first:pt-0 animate-fadeIn">
                   {/* User Question Bubble */}
-                  <div className="flex items-start space-x-2 sm:space-x-3 justify                  git remote remove origin-end">
+                  <div className="flex items-start space-x-2 sm:space-x-3 justify-end">
                     <div className="bg-brand-600/20 border border-brand-500/30 rounded-2xl rounded-tr-sm p-3.5 sm:p-4 max-w-[85%] sm:max-w-2xl shadow-md">
                       <div className="flex items-center space-x-1.5 text-[10px] text-brand-400 font-semibold mb-1">
                         <UserIcon className="w-3 h-3" />
@@ -188,7 +188,7 @@ export const ChatDashboardPage: React.FC = () => {
         </div>
 
         {/* Floating Input Controls */}
-        <div className="p-4 md:p-6 bg-gradient-to-t from-[#07090E] via-[#0A0D14] to-transparent shrink-0">
+        <div className="p-4 md:p-6 bg-gradient-to-t from-[#07090E] via-[#0A0D14] to-transparent shrink-0 chat-shell-input-wrap">
           <div className="max-w-4xl mx-auto">
             <ChatPromptInput
               promptInput={promptInput}
