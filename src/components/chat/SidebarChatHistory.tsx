@@ -40,8 +40,8 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
           }}
           className="flex-1 flex items-center justify-center space-x-2 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white text-xs font-semibold py-2.5 px-4 rounded-xl shadow-lg shadow-brand-500/20 transition-colors group"
         >
-          <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
-          <span>Nueva Consulta</span>
+          <Plus className="w-4 h-4 text-white transition-transform group-hover:rotate-90" />
+          <span className="text-white">Nueva Consulta</span>
         </button>
 
         {onCloseMobile && (
