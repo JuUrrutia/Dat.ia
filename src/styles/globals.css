@@ -7,11 +7,97 @@
     --bg-dark-base: 11 15 25;
     --bg-dark-surface: 17 24 39;
     --bg-dark-card: 31 41 55;
+    --app-bg: #0b0f19;
+    --app-surface: #111827;
+    --app-card: #1f2937;
+    --app-border: #374151;
+    --app-text: #f3f4f6;
+    --app-text-muted: #9ca3af;
+  }
+
+  html.light {
+    --app-bg: #F5F7FB;
+    --app-surface: #FFFFFF;
+    --app-card: #F8FAFC;
+    --app-border: #E5E7EB;
+    --app-text: #111827;
+    --app-text-muted: #475467;
+  }
+
+  html, body, #root {
+    height: 100%;
   }
 
   body {
-    @apply bg-[#0B0F19] text-gray-100 antialiased font-sans overflow-hidden select-none;
+    @apply antialiased font-sans overflow-hidden select-none;
+    background: var(--app-bg);
+    color: var(--app-text);
   }
+}
+
+html.light body {
+  background: #F5F7FB;
+  color: #111827;
+}
+
+html.light [class*='bg-dark-base'] {
+  background-color: #F5F7FB !important;
+}
+
+html.light [class*='bg-dark-surface'] {
+  background-color: #FFFFFF !important;
+}
+
+html.light [class*='bg-dark-card'] {
+  background-color: #F8FAFC !important;
+}
+
+html.light [class*='border-dark-border'] {
+  border-color: #E5E7EB !important;
+}
+
+html.light [class*='text-white'] {
+  color: #111827 !important;
+}
+
+html.light [class*='text-gray-100'],
+html.light [class*='text-gray-200'],
+html.light [class*='text-gray-300'],
+html.light [class*='text-gray-400'],
+html.light [class*='text-gray-500'],
+html.light [class*='text-gray-600'] {
+  color: #475467 !important;
+}
+
+html.light [class*='placeholder-gray-500']::placeholder {
+  color: #667085 !important;
+}
+
+html.light .glass-panel {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+}
+
+html.light .glass-card {
+  background: rgba(248, 250, 252, 0.95) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+html.light .chat-shell {
+  background: #F5F7FB !important;
+}
+
+html.light .chat-shell-panel {
+  background: linear-gradient(180deg, #FFFFFF 0%, #F5F7FB 100%) !important;
+}
+
+html.light .chat-shell-header {
+  background: rgba(255, 255, 255, 0.7) !important;
+  border-color: #E5E7EB !important;
+}
+
+html.light .chat-shell-input-wrap {
+  background: linear-gradient(180deg, rgba(245, 247, 251, 0) 0%, rgba(245, 247, 251, 0.9) 35%, rgba(245, 247, 251, 1) 100%) !important;
 }
 
 /* Custom Scrollbar for Dark Theme */
