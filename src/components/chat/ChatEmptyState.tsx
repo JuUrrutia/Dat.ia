@@ -1,5 +1,6 @@
-import React from 'react';
-import { Sparkles } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import logoDatiaDark from '../../pages/Logo_datia_2.png';
+import logoDatiaLight from '../../pages/Logo_Datia_3.png';
 
 interface ChatEmptyStateProps {
   promptSuggestions: string[];
@@ -10,10 +11,30 @@ export const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
   promptSuggestions,
   onSelectSuggestion,
 }) => {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof document === 'undefined') return 'dark';
+    return document.documentElement.classList.contains('light') ? 'light' : 'dark';
+  });
+
+  useEffect(() => {
+    const syncTheme = () => {
+      const isLight = document.documentElement.classList.contains('light');
+      setTheme(isLight ? 'light' : 'dark');
+    };
+
+    syncTheme();
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
+    return () => observer.disconnect();
+  }, []);
+
+  const currentLogo = theme === 'dark' ? logoDatiaDark : logoDatiaLight;
+
   return (
     <div className="h-full flex flex-col items-center justify-center max-w-2xl mx-auto text-center space-y-5 sm:space-y-6 p-4">
-      <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-xl shadow-brand-500/20 animate-bounce-subtle">
-        <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
+      <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/70 dark:bg-transparent flex items-center justify-center shadow-xl shadow-brand-500/20 animate-bounce-subtle overflow-hidden border border-white/30 dark:border-transparent">
+        <img src={currentLogo} alt="Logo de Dat.ia" className="w-full h-full object-contain p-1" />
       </div>
 
       <div className="space-y-2">
