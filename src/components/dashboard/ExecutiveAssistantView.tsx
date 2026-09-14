@@ -38,7 +38,7 @@ export const ExecutiveAssistantView: React.FC<ExecutiveAssistantViewProps> = ({
   );
 
   return (
-    <div className="w-full space-y-5 animate-fadeIn">
+    <div className="w-full space-y-5 animate-fadeIn assistant-response-shell">
       <AssistantHeader
         result={result}
         canSwitchToStudio={canSwitchToStudio}
@@ -54,7 +54,7 @@ export const ExecutiveAssistantView: React.FC<ExecutiveAssistantViewProps> = ({
       {showSupportData && <AssistantSupportData result={result} />}
 
       {/* Main Content Area */}
-      <div className="bg-gradient-to-br from-zinc-900/95 via-zinc-900/60 to-zinc-950/95 border border-white/10 rounded-3xl p-7 shadow-2xl space-y-6">
+      <div className="assistant-response-card light-ai-primary-card bg-gradient-to-br from-zinc-900/95 via-zinc-900/60 to-zinc-950/95 border border-white/10 rounded-3xl p-7 shadow-2xl space-y-6">
         <AssistantMarkdownBody rawContent={rawContent} />
 
         {/* Footer Technical Metadata & Traceability */}

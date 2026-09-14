@@ -55,11 +55,21 @@ export const StudioChartToolbar: React.FC<StudioChartToolbarProps> = ({
                 key={mode}
                 type="button"
                 onClick={() => setSortOrder(mode)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                className="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors border"
+                style={
                   sortOrder === mode
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold'
-                    : 'bg-zinc-950 text-zinc-400 hover:text-zinc-200 border border-white/5'
-                }`}
+                    ? {
+                        backgroundColor: '#fff7ed',
+                        borderColor: '#fdba74',
+                        color: '#0f172a',
+                        fontWeight: 700,
+                      }
+                    : {
+                        backgroundColor: '#ffffff',
+                        borderColor: '#e2e8f0',
+                        color: '#475467',
+                      }
+                }
               >
                 {mode === 'default' ? 'Natural' : mode === 'desc' ? 'Mayor a Menor' : 'Menor a Mayor'}
               </button>
@@ -72,11 +82,12 @@ export const StudioChartToolbar: React.FC<StudioChartToolbarProps> = ({
           <button
             type="button"
             onClick={() => setShowDataLabels((prev) => !prev)}
-            className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors border ${
-              showDataLabels
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 font-semibold'
-                : 'bg-zinc-950 text-zinc-400 hover:text-zinc-200 border-white/5'
-            }`}
+            className="flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors border"
+            style={{
+              backgroundColor: showDataLabels ? '#ecfdf5' : '#ffffff',
+              borderColor: showDataLabels ? '#a7f3d0' : '#e2e8f0',
+              color: showDataLabels ? '#0f172a' : '#475467',
+            }}
             title="Mostrar etiquetas numéricas en cada punto/barra"
           >
             <Eye className="w-3 h-3" />
@@ -86,11 +97,12 @@ export const StudioChartToolbar: React.FC<StudioChartToolbarProps> = ({
           <button
             type="button"
             onClick={() => setShowAverageLine((prev) => !prev)}
-            className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors border ${
-              showAverageLine
-                ? 'bg-purple-500/20 text-purple-300 border-purple-500/30 font-semibold'
-                : 'bg-zinc-950 text-zinc-400 hover:text-zinc-200 border-white/5'
-            }`}
+            className="flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors border"
+            style={{
+              backgroundColor: showAverageLine ? '#f5f3ff' : '#ffffff',
+              borderColor: showAverageLine ? '#ddd6fe' : '#e2e8f0',
+              color: showAverageLine ? '#0f172a' : '#475467',
+            }}
             title="Mostrar línea de referencia de promedio"
           >
             <TrendingUp className="w-3 h-3" />
@@ -100,11 +112,12 @@ export const StudioChartToolbar: React.FC<StudioChartToolbarProps> = ({
           <button
             type="button"
             onClick={() => setShowDataZoom((prev) => !prev)}
-            className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors border ${
-              showDataZoom
-                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30 font-semibold'
-                : 'bg-zinc-950 text-zinc-400 hover:text-zinc-200 border-white/5'
-            }`}
+            className="flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors border"
+            style={{
+              backgroundColor: showDataZoom ? '#ecfeff' : '#ffffff',
+              borderColor: showDataZoom ? '#a5f3fc' : '#e2e8f0',
+              color: showDataZoom ? '#0f172a' : '#475467',
+            }}
             title="Activar deslizador de zoom temporal"
           >
             <Hash className="w-3 h-3" />
@@ -140,24 +153,34 @@ export const StudioChartToolbar: React.FC<StudioChartToolbarProps> = ({
         </div>
 
         {/* Action: Download PNG */}
-        <div className="flex items-center space-x-1.5 border-l border-white/10 pl-3">
+        <div className="flex items-center space-x-1.5 border-l border-slate-200 pl-3">
           <button
             type="button"
             onClick={onDownloadPng}
-            className="flex items-center space-x-1 text-xs text-zinc-300 hover:text-white bg-zinc-950 hover:bg-zinc-800 border border-white/10 px-3 py-1 rounded-xl transition-colors shadow-sm"
+            className="flex items-center space-x-1 text-xs border px-3 py-1 rounded-xl transition-colors shadow-sm"
+            style={{
+              backgroundColor: '#ffffff',
+              borderColor: '#e2e8f0',
+              color: '#475467',
+            }}
             title="Descargar gráfico en alta resolución PNG"
           >
-            <Download className="w-3.5 h-3.5 text-amber-400" />
+            <Download className="w-3.5 h-3.5 text-amber-500" />
             <span className="hidden sm:inline">Descargar PNG HD</span>
           </button>
 
           <button
             type="button"
             onClick={onViewTable}
-            className="flex items-center space-x-1 text-xs text-zinc-300 hover:text-white bg-zinc-950 hover:bg-zinc-800 border border-white/10 px-3 py-1 rounded-xl transition-colors shadow-sm"
+            className="flex items-center space-x-1 text-xs border px-3 py-1 rounded-xl transition-colors shadow-sm"
+            style={{
+              backgroundColor: '#ffffff',
+              borderColor: '#e2e8f0',
+              color: '#475467',
+            }}
             title="Ver datos en cuadrícula tabular"
           >
-            <TableIcon className="w-3.5 h-3.5 text-cyan-400" />
+            <TableIcon className="w-3.5 h-3.5 text-cyan-600" />
             <span className="hidden sm:inline">Tabla</span>
           </button>
         </div>

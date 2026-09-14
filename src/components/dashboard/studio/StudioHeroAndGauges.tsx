@@ -29,7 +29,11 @@ export const StudioHeroAndGauges: React.FC<StudioHeroAndGaugesProps> = ({
       <div
         className={`${
           hasGauges ? 'lg:col-span-5' : 'lg:col-span-12'
-        } bg-gradient-to-br from-zinc-900/90 via-zinc-900/50 to-zinc-950/90 border border-white/10 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl relative overflow-hidden flex flex-col justify-between`}
+        } studio-hero-card border rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl relative overflow-hidden flex flex-col justify-between`}
+        style={{
+          backgroundColor: '#ffffff',
+          borderColor: '#e2e8f0',
+        }}
       >
         <div
           className="absolute -top-16 -right-16 w-48 h-48 rounded-full blur-3xl pointer-events-none opacity-20"
@@ -37,44 +41,44 @@ export const StudioHeroAndGauges: React.FC<StudioHeroAndGaugesProps> = ({
         />
 
         <div>
-          <div className="flex items-center justify-between text-xs font-semibold text-zinc-400 mb-2">
+          <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-2">
             <span className="uppercase tracking-wider">Métrica Principal</span>
-            <span className="flex items-center space-x-1 text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md text-[11px]">
+            <span className="flex items-center space-x-1 text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md text-[11px]">
               <TrendingUp className="w-3 h-3" />
               <span>Óptimo</span>
             </span>
           </div>
 
           <div className="flex flex-wrap items-baseline gap-2 mt-1">
-            <span className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
+            <span className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
               {formatNumber(totalVal || result.data_rows?.length || 0)}
             </span>
-            <span className="text-xs text-zinc-400 font-medium">
+            <span className="text-xs text-slate-500 font-medium">
               {numCol?.replace(/_/g, ' ') || 'total'}
             </span>
           </div>
 
           {maxValRow && (
-            <div className="mt-3 flex items-center space-x-2 text-xs text-zinc-400 bg-zinc-950/50 border border-white/5 rounded-xl p-2.5">
-              <ArrowUpRight className="w-4 h-4 text-amber-400 shrink-0" />
+            <div className="mt-3 flex items-center space-x-2 text-xs text-slate-600 bg-slate-100 border border-slate-200 rounded-xl p-2.5">
+              <ArrowUpRight className="w-4 h-4 text-amber-500 shrink-0" />
               <span className="truncate">
-                Líder: <strong className="text-zinc-200">{String(maxValRow[catCol] || '')}</strong> (
+                Líder: <strong className="text-slate-800">{String(maxValRow[catCol] || '')}</strong> (
                 {formatNumber(Number(maxValRow[numCol]) || 0)})
               </span>
             </div>
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-3 pt-4 sm:pt-5 mt-4 sm:mt-5 border-t border-white/5">
+        <div className="grid grid-cols-2 gap-3 pt-4 sm:pt-5 mt-4 sm:mt-5 border-t border-slate-200">
           <div>
-            <div className="text-[11px] text-zinc-400 font-medium">Registros Analizados</div>
-            <div className="text-base sm:text-lg font-bold text-white mt-0.5">
+            <div className="text-[11px] text-slate-500 font-medium">Registros Analizados</div>
+            <div className="text-base sm:text-lg font-bold text-slate-900 mt-0.5">
               {result.data_rows?.length || 0} filas
             </div>
           </div>
           <div>
-            <div className="text-[11px] text-zinc-400 font-medium">Latencia IA</div>
-            <div className="text-base sm:text-lg font-bold text-emerald-400 mt-0.5">
+            <div className="text-[11px] text-slate-500 font-medium">Latencia IA</div>
+            <div className="text-base sm:text-lg font-bold text-emerald-600 mt-0.5">
               {(((result.traceability?.execution_time_ms ?? 0)) / 1000).toFixed(2)}s
             </div>
           </div>
@@ -87,10 +91,14 @@ export const StudioHeroAndGauges: React.FC<StudioHeroAndGaugesProps> = ({
           {result.gauges!.map((gauge, gIdx) => (
             <div
               key={gIdx}
-              className="bg-gradient-to-br from-zinc-900/80 via-zinc-900/40 to-zinc-950/80 border border-white/10 rounded-3xl p-6 shadow-2xl flex flex-col justify-between relative overflow-hidden"
+              className="studio-gauge-card border rounded-3xl p-6 shadow-2xl flex flex-col justify-between relative overflow-hidden"
+              style={{
+                backgroundColor: '#ffffff',
+                borderColor: '#e2e8f0',
+              }}
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   {gauge.title}
                 </span>
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: gauge.color || '#F59E0B' }} />
@@ -98,10 +106,10 @@ export const StudioHeroAndGauges: React.FC<StudioHeroAndGaugesProps> = ({
 
               <div className="flex items-center justify-between my-4">
                 <div>
-                  <div className="text-3xl font-extrabold text-white tracking-tight">
+                  <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
                     {gauge.value_label}
                   </div>
-                  <div className="text-xs text-zinc-400 mt-1 font-medium">
+                  <div className="text-xs text-slate-500 mt-1 font-medium">
                     {gauge.target_label}
                   </div>
                 </div>
