@@ -15,7 +15,8 @@ from app.modules.chat_engine.schemas import (
     QueryRequest, QueryResponse, SuggestionsResponse,
     ChatThreadCreate, ChatThreadSummary, ChatThreadDetail,
     ChatFeedbackRequest, ChatFeedbackResponse,
-    DashboardWidgetCreate, DashboardWidgetOut
+    DashboardWidgetCreate, DashboardWidgetOut,
+    GoldenQueryRequest
 )
 from app.modules.chat_engine.engine import QueryEngine
 from app.modules.chat_engine.llm_diagnostic_router import llm_diagnostic_router
@@ -266,6 +267,29 @@ def get_chat_thread(
         updated_at=thread.updated_at.isoformat() if thread.updated_at else ""
     )
 
+@router.get("/threads/shared/{thread_id}", response_model=ChatThreadDetail)
+def get_shared_chat_thread(
+    thread_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """Gets details and all QueryResult messages for a shared conversation thread across team members."""
+    thread = db.query(ChatConversation).filter(ChatConversation.id == thread_id).first()
+    if not thread:
+        raise HTTPException(status_code=404, detail="Hilo de conversación no encontrado")
+    try:
+        results = json.loads(thread.messages_json or "[]")
+    except Exception:
+        results = []
+    return ChatThreadDetail(
+        id=thread.id,
+        title=thread.title,
+        connection_id=thread.connection_id or 1,
+        results=results,
+        created_at=thread.created_at.isoformat() if thread.created_at else "",
+        updated_at=thread.updated_at.isoformat() if thread.updated_at else ""
+    )
+
 @router.post("/threads", response_model=ChatThreadDetail)
 def save_chat_thread(
     thread_in: ChatThreadCreate,
@@ -391,6 +415,8 @@ def submit_query_feedback(
         if existing_mem:
             existing_mem.execution_count = (existing_mem.execution_count or 1) + 5
             existing_mem.successful_sql = feedback_in.sql
+            if feedback_in.is_golden:
+                existing_mem.is_golden = True
         else:
             new_mem = QueryLearningMemory(
                 question_pattern=clean_q,
@@ -398,7 +424,8 @@ def submit_query_feedback(
                 user_role=current_user.role.name if current_user.role else "Usuario",
                 successful_sql=feedback_in.sql,
                 execution_count=5,
-                was_self_healed=False
+                was_self_healed=False,
+                is_golden=bool(feedback_in.is_golden)
             )
             db.add(new_mem)
         db.commit()
@@ -410,6 +437,36 @@ def submit_query_feedback(
         else "Gracias por tu feedback. Lo utilizaremos para mejorar futuras respuestas."
     )
     return ChatFeedbackResponse(success=True, message=msg, learning_saved=learning_saved)
+
+@router.post("/golden-query")
+def toggle_golden_query(
+    item_in: GoldenQueryRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """Marks or unmarks a query as a Golden Sample (highest priority few-shot reference)."""
+    clean_q = item_in.question.strip().lower()
+    mem = db.query(QueryLearningMemory).filter(
+        QueryLearningMemory.connection_id == item_in.connection_id,
+        QueryLearningMemory.question_pattern == clean_q
+    ).first()
+    if mem:
+        mem.is_golden = item_in.is_golden
+        mem.successful_sql = item_in.sql
+    else:
+        mem = QueryLearningMemory(
+            question_pattern=clean_q,
+            connection_id=item_in.connection_id,
+            user_role=current_user.role.name if current_user.role else "Usuario",
+            successful_sql=item_in.sql,
+            execution_count=10,
+            was_self_healed=False,
+            is_golden=item_in.is_golden
+        )
+        db.add(mem)
+    db.commit()
+    msg = "Consulta marcada como Consulta Maestra (Golden Sample)." if item_in.is_golden else "Consulta desmarcada como Consulta Maestra."
+    return {"success": True, "message": msg, "is_golden": item_in.is_golden}
 
 
 # =========================================================================

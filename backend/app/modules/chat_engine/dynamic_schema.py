@@ -266,9 +266,12 @@ class DynamicSchemaPruningService:
             ).all()
 
         catalog_desc_map: Dict[str, str] = {}
+        catalog_synonyms_map: Dict[str, str] = {}
         for entry in catalog_entries:
             key = f"{entry.table_name.lower()}.{entry.column_name.lower() if entry.column_name else '*'}"
             catalog_desc_map[key] = entry.description or entry.business_formula or ""
+            if entry.synonyms and entry.synonyms.strip():
+                catalog_synonyms_map[key] = entry.synonyms.strip()
 
         # Build comprehensive schema definition from physical database inspection
         schema_text_lines = []
@@ -288,6 +291,7 @@ class DynamicSchemaPruningService:
 
                     table_columns_map[tbl].append(c_name)
                     desc = catalog_desc_map.get(f"{tbl}.{c_lower}", "")
+                    syns = catalog_synonyms_map.get(f"{tbl}.{c_lower}", "")
                     is_masked = column_perm_map.get(f"{tbl}.{c_lower}") == "MASKED"
                     samples = pc.get("samples", [])
                     sample_str = f", ej: {', '.join([repr(s) if not s.replace('.', '', 1).isdigit() else s for s in samples])}" if samples else ""
@@ -295,6 +299,8 @@ class DynamicSchemaPruningService:
                     details = f"{c_name} ({pc['type']}{sample_str})"
                     if desc:
                         details += f" - {desc}"
+                    if syns:
+                        details += f" (Sinónimos/Alias: {syns})"
                     if is_masked:
                         details += " [ENMASCARADO]"
                     col_lines.append(details)
@@ -304,13 +310,18 @@ class DynamicSchemaPruningService:
                         c_name = entry.column_name
                         c_lower = c_name.lower()
                         if c_lower not in blocked_columns and column_perm_map.get(f"{tbl}.{c_lower}") != "BLOCKED":
-                            col_lines.append(f"{c_name} - {entry.description or ''}".strip())
+                            line = f"{c_name} - {entry.description or ''}".strip()
+                            if entry.synonyms:
+                                line += f" (Sinónimos: {entry.synonyms})"
+                            col_lines.append(line)
                             table_columns_map[tbl].append(c_name)
 
+            tbl_syns = catalog_synonyms_map.get(f"{tbl}.*", "")
+            tbl_header = f"Tabla `{tbl}`" + (f" (Sinónimos: {tbl_syns})" if tbl_syns else "")
             if col_lines:
-                schema_text_lines.append(f"Tabla `{tbl}`:\n  - " + "\n  - ".join(col_lines))
+                schema_text_lines.append(f"{tbl_header}:\n  - " + "\n  - ".join(col_lines))
             else:
-                schema_text_lines.append(f"Tabla `{tbl}` (Columnas de solo lectura)")
+                schema_text_lines.append(f"{tbl_header} (Columnas de solo lectura)")
 
         # Auto-detect foreign key / join relationships
         relationships = []

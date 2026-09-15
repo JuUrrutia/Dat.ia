@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ArrowUpDown, Download, ChevronLeft, ChevronRight, Table, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { Search, ArrowUpDown, Download, ChevronLeft, ChevronRight, Table, FileSpreadsheet, RefreshCw, Copy, Check } from 'lucide-react';
 import { reportService } from '../../features/dashboard/services/report_service';
 
 interface DataGridTableProps {
@@ -15,6 +15,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [copiedTSV, setCopiedTSV] = useState(false);
   const [pageSize, setPageSize] = useState<number>(10);
 
   // Filter rows
@@ -55,6 +56,17 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
       setSortColumn(col);
       setSortDirection('asc');
     }
+  };
+
+  const handleCopyTSV = () => {
+    if (!rows.length) return;
+    const header = columns.join('\t');
+    const body = sortedRows
+      .map((row) => columns.map((col) => row[col] ?? '').join('\t'))
+      .join('\n');
+    navigator.clipboard.writeText(`${header}\n${body}`);
+    setCopiedTSV(true);
+    setTimeout(() => setCopiedTSV(false), 2000);
   };
 
   const handleExportCSV = () => {
@@ -116,6 +128,28 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
             />
             <Search className="w-3.5 h-3.5 text-gray-500 absolute left-2.5 top-2" />
           </div>
+
+          {/* Copy TSV Button (Compatible with Excel/Sheets Ctrl+V) */}
+          <button
+            type="button"
+            onClick={handleCopyTSV}
+            disabled={rows.length === 0}
+            aria-label="Copiar datos para pegar en Excel o Sheets"
+            className="flex items-center space-x-1 text-xs bg-dark-base hover:bg-dark-border text-gray-300 border border-dark-border px-2.5 py-1.5 rounded-lg transition-colors font-medium disabled:opacity-50 cursor-pointer"
+            title="Copiar datos al portapapeles (compatible con Ctrl+V en Excel y Sheets)"
+          >
+            {copiedTSV ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-400 font-semibold">¡Copiado!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5 text-brand-400" />
+                <span>Copiar</span>
+              </>
+            )}
+          </button>
 
           {/* Export CSV Button */}
           <button
