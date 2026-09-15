@@ -14,6 +14,8 @@ import {
   Code2,
   Check,
   Pin,
+  Share2,
+  Star,
 } from 'lucide-react';
 import { queryService } from '../../features/chat/services/query_service';
 
@@ -21,6 +23,7 @@ interface ChatMessageItemProps {
   result: QueryResult;
   user: User | null;
   userRole: string;
+  activeThreadId?: string | null;
   onOpenTraceability: (traceability: QueryResult['traceability']) => void;
   onEditPrompt?: (question: string) => void;
   onFeedback?: (result: QueryResult, rating: 'positive' | 'negative') => void;
@@ -56,15 +59,43 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   result,
   user,
   userRole,
+  activeThreadId,
   onOpenTraceability,
   onEditPrompt,
   onFeedback,
   onFollowUp,
 }) => {
   const [copiedSql, setCopiedSql] = useState(false);
+  const [copiedShareLink, setCopiedShareLink] = useState(false);
+  const [isGolden, setIsGolden] = useState(false);
   const [feedbackStatus, setFeedbackStatus] = useState<'positive' | 'negative' | null>(null);
   const [isPinned, setIsPinned] = useState(false);
   const [isPinning, setIsPinning] = useState(false);
+
+  const handleShareThread = () => {
+    const threadId = activeThreadId || (result as any).thread_id;
+    if (!threadId) return;
+    const shareUrl = `${window.location.origin}${window.location.pathname}?thread=${encodeURIComponent(threadId)}`;
+    navigator.clipboard.writeText(shareUrl);
+    setCopiedShareLink(true);
+    setTimeout(() => setCopiedShareLink(false), 2000);
+  };
+
+  const handleToggleGolden = async () => {
+    if (!result.traceability?.sql_executed) return;
+    const nextState = !isGolden;
+    setIsGolden(nextState);
+    try {
+      await queryService.toggleGoldenQuery({
+        question: result.question,
+        sql: result.traceability.sql_executed,
+        connection_id: (result as any).connection_id || 1,
+        is_golden: nextState,
+      });
+    } catch {
+      setIsGolden(!nextState);
+    }
+  };
 
   const handlePin = async () => {
     if (isPinned || isPinning) return;
@@ -212,6 +243,45 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                 >
                   <Pin className={`w-3.5 h-3.5 ${isPinned ? 'text-amber-400 fill-amber-400' : ''}`} />
                   <span>{isPinned ? 'Fijado en Tablero' : 'Fijar en Tablero'}</span>
+                </button>
+              )}
+
+              {/* Quick 1-click Golden Query Toggle (Star) */}
+              {result.traceability?.sql_executed && (
+                <button
+                  type="button"
+                  onClick={handleToggleGolden}
+                  className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-colors shadow-xs ${
+                    isGolden
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                      : 'bg-dark-base hover:bg-dark-card border-dark-border/80 text-gray-400 hover:text-amber-400'
+                  }`}
+                  title={isGolden ? 'Consulta Maestra aprendida por IA (haz clic para desmarcar)' : 'Marcar como Consulta Maestra (alta prioridad en aprendizaje de IA)'}
+                >
+                  <Star className={`w-3.5 h-3.5 ${isGolden ? 'text-amber-400 fill-amber-400' : ''}`} />
+                  <span>{isGolden ? 'Consulta Maestra' : 'Hacer Maestra'}</span>
+                </button>
+              )}
+
+              {/* Quick Share Query Link */}
+              {activeThreadId && (
+                <button
+                  type="button"
+                  onClick={handleShareThread}
+                  className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-dark-base hover:bg-dark-card border border-dark-border/80 text-gray-300 hover:text-white transition-colors font-medium shadow-xs"
+                  title="Copiar enlace para compartir esta consulta con el equipo"
+                >
+                  {copiedShareLink ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-emerald-400 font-semibold">¡Enlace Copiado!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Compartir</span>
+                    </>
+                  )}
                 </button>
               )}
 

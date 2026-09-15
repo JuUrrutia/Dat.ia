@@ -86,6 +86,13 @@ class ChatFeedbackRequest(BaseModel):
     connection_id: int = 1
     rating: str  # positive | negative
     comment: Optional[str] = None
+    is_golden: Optional[bool] = False
+
+class GoldenQueryRequest(BaseModel):
+    question: str
+    sql: str
+    connection_id: int = 1
+    is_golden: bool = True
 
 class ChatFeedbackResponse(BaseModel):
     success: bool

@@ -29,6 +29,7 @@ export const ChatDashboardPage: React.FC = () => {
     promptInput,
     setPromptInput,
     isGenerating,
+    generatingPhase,
     activeTraceability,
     setActiveTraceability,
     isMobileHistoryOpen,
@@ -266,6 +267,7 @@ export const ChatDashboardPage: React.FC = () => {
                   result={res}
                   user={user}
                   userRole={userRole}
+                  activeThreadId={activeThreadId}
                   onOpenTraceability={(trace) => setActiveTraceability(trace)}
                   onEditPrompt={handleEditPrompt}
                   onFeedback={handleFeedback}
@@ -292,7 +294,7 @@ export const ChatDashboardPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* AI Thinking Bubble */}
+                  {/* AI Thinking Bubble with Live Step Phases */}
                   <div className="flex items-start space-x-2 sm:space-x-3 justify-start">
                     <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-cyan-600/20">
                       <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-pulse" />
@@ -304,15 +306,15 @@ export const ChatDashboardPage: React.FC = () => {
                         <span className="text-slate-500">•</span>
                         <span className="text-slate-400 font-normal flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
-                          Traduciendo a SQL con IA Local...
+                          Procesando con IA Local
                         </span>
                       </div>
                       <div className="flex items-center space-x-2 text-xs text-slate-300">
                         <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-bounce" />
                         <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-bounce [animation-delay:0.2s]" />
                         <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-bounce [animation-delay:0.4s]" />
-                        <span className="text-slate-400 text-xs pl-1">
-                          Generando consulta SQL y preparando visualizaciones...
+                        <span className="text-cyan-300 text-xs pl-1 font-medium animate-fadeIn">
+                          {generatingPhase || 'Generando consulta SQL y preparando visualizaciones...'}
                         </span>
                       </div>
                     </div>

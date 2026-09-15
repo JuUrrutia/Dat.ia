@@ -40,6 +40,12 @@ def init_db(db: Session):
             with engine.begin() as conn:
                 if "result_snapshot" not in audit_cols:
                     conn.execute(text("ALTER TABLE audit_logs ADD COLUMN result_snapshot TEXT NULL"))
+
+        if "query_learning_memories" in inspector.get_table_names():
+            mem_cols = {c["name"] for c in inspector.get_columns("query_learning_memories")}
+            with engine.begin() as conn:
+                if "is_golden" not in mem_cols:
+                    conn.execute(text("ALTER TABLE query_learning_memories ADD COLUMN is_golden BOOLEAN DEFAULT FALSE NOT NULL"))
     except Exception:
         pass
 
