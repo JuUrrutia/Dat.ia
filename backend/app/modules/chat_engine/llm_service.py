@@ -1,6 +1,6 @@
 import httpx
 import re
-from typing import Dict, Any, Optional, List
+from typing import Optional
 from app.core.config import settings
 from app.core.logging import logger
 from app.core.prompts import PromptManager

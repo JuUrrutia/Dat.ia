@@ -1,5 +1,5 @@
 """
-Dat.ia - PostgreSQL Database Bootstrapper
+DATIA - PostgreSQL Database Bootstrapper
 Checks if PostgreSQL database and tables exist.
 Creates database, schemas, tables, and seeds initial data idempotently.
 """
@@ -87,26 +87,16 @@ def ensure_tables_and_seed_data():
         return False
 
 def bootstrap():
-    logger.info("==========================================")
-    logger.info("Dat.ia POSTGRESQL BOOTSTRAP CHECK")
-    logger.info("==========================================")
-    logger.info(f"Target: {settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}")
-
-    db_ready = ensure_postgres_database()
-    if not db_ready:
-        logger.warning(
-            f"PostgreSQL server ({settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}) is currently not reachable. "
-            "Skipping offline bootstrap. The backend will automatically bootstrap when PostgreSQL is running."
-        )
-        return False
-
-    tables_ready = ensure_tables_and_seed_data()
-    if tables_ready:
-        logger.info("PostgreSQL initialization & validation complete!")
-        return True
-    return False
+    try:
+        from scripts.setup_postgres_full import run as run_setup_full
+        return run_setup_full()
+    except Exception as e:
+        logger.warning(f"Error delegando a setup_postgres_full: {e}")
+        db_ready = ensure_postgres_database()
+        if not db_ready:
+            return False
+        return ensure_tables_and_seed_data()
 
 if __name__ == "__main__":
     success = bootstrap()
-    # Exit with 0 so build pipeline proceeds smoothly even if PostgreSQL is offline
     sys.exit(0)

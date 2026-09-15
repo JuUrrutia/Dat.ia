@@ -3,9 +3,12 @@ from typing import Generator, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-import app.models  # Ensures all SQLAlchemy models (RoleDomainLink, RoleTablePermission, etc.) are registered
+import app.modules.auth.models
+import app.modules.admin_catalog.models
+import app.modules.telemetry_audit.models
+import app.modules.chat_engine.models
 from app.core.database import SessionLocal
-from app.core.security import decode_access_token, decode_token_payload
+from app.core.security import decode_token_payload
 from app.modules.auth.models import User, UserSession
 from app.core.constants import SESSION_LAST_SEEN_UPDATE_INTERVAL_MINUTES, ADMIN_ROLES
 
