@@ -273,14 +273,15 @@ def save_chat_thread(
     db: Session = Depends(get_db)
 ) -> Any:
     """Creates or updates a persistent chat thread with its full results stream."""
+    # Query by thread ID (primary key) to avoid unique constraint violations
     thread = db.query(ChatConversation).filter(
-        ChatConversation.id == thread_in.id,
-        ChatConversation.user_id == current_user.id
+        ChatConversation.id == thread_in.id
     ).first()
 
     msgs_json = json.dumps(thread_in.results)
 
     if thread:
+        thread.user_id = current_user.id
         thread.title = thread_in.title
         thread.connection_id = thread_in.connection_id or 1
         thread.messages_json = msgs_json
@@ -296,8 +297,23 @@ def save_chat_thread(
             updated_at=datetime.datetime.utcnow()
         )
         db.add(thread)
-    db.commit()
-    db.refresh(thread)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        # Concurrently created by another request: fetch and update
+        thread = db.query(ChatConversation).filter(ChatConversation.id == thread_in.id).first()
+        if thread:
+            thread.user_id = current_user.id
+            thread.title = thread_in.title
+            thread.connection_id = thread_in.connection_id or 1
+            thread.messages_json = msgs_json
+            thread.updated_at = datetime.datetime.utcnow()
+            db.commit()
+
+    if thread:
+        db.refresh(thread)
 
     return ChatThreadDetail(
         id=thread.id,

@@ -14,7 +14,7 @@ const ProtectedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#0B0F19] text-gray-300">
+      <div className="flex items-center justify-center h-screen bg-[var(--app-bg)] text-[var(--app-text)]">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
           <span className="text-sm">Cargando sesión...</span>
@@ -28,7 +28,7 @@ const ProtectedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#0B0F19] text-gray-100 overflow-hidden font-sans">
+    <div className="flex flex-col h-screen bg-[var(--app-bg)] text-[var(--app-text)] overflow-hidden font-sans">
       <Header />
       <main className="flex-1 overflow-hidden relative flex flex-col min-h-0">
         {children}

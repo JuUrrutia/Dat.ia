@@ -1,5 +1,7 @@
 import React from 'react';
 import { Sparkles, TrendingUp, DollarSign, AlertTriangle, Users, ChevronRight } from 'lucide-react';
+import logoDatiaDark from '../../pages/Logo_datia_2.png';
+import logoDatiaLight from '../../pages/Logo_Datia_3.png';
 
 interface ChatEmptyStateProps {
   promptSuggestions: string[];
@@ -23,8 +25,9 @@ export const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
       <div className="relative flex items-center justify-center">
         <div className="absolute w-32 h-32 rounded-full bg-gradient-to-tr from-brand-500/20 via-indigo-500/20 to-cyan-500/20 blur-2xl pointer-events-none animate-pulse" />
         
-        <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-gradient-to-tr from-brand-600 via-indigo-600 to-cyan-500 flex items-center justify-center shadow-2xl shadow-brand-500/30 border border-white/20 animate-fadeIn">
-          <Sparkles className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
+        <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-white/80 dark:bg-zinc-900/80 flex items-center justify-center shadow-2xl shadow-brand-500/30 border border-white/20 animate-fadeIn overflow-hidden p-2">
+          <img src={logoDatiaLight} alt="Logo de Dat.ia" className="block dark:hidden w-full h-full object-contain" />
+          <img src={logoDatiaDark} alt="Logo de Dat.ia" className="hidden dark:block w-full h-full object-contain" />
         </div>
       </div>
 

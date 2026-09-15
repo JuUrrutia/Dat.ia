@@ -50,7 +50,7 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
         >
           <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
           <span>Nueva Consulta</span>
-          <span className="text-[10px] opacity-60 font-mono hidden sm:inline ml-1">Ctrl+N</span>
+          <span className="text-[10px] text-white/60 font-mono hidden sm:inline ml-1">Ctrl+N</span>
         </button>
 
         {onCloseMobile && (

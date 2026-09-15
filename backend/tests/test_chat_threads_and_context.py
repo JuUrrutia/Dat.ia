@@ -82,6 +82,12 @@ def test_chat_thread_crud(auth_headers):
     assert data["id"] == "thread-test-123"
     assert data["title"] == "Análisis de Ventas Q3"
     assert len(data["results"]) == 1
+
+    # 1.1 Upsert the same thread with updated title to verify idempotency (no UniqueViolation)
+    thread_payload["title"] = "Análisis de Ventas Q3 - Actualizado"
+    res_update = client.post("/api/v1/chat/threads", json=thread_payload, headers=auth_headers)
+    assert res_update.status_code == 200
+    assert res_update.json()["title"] == "Análisis de Ventas Q3 - Actualizado"
     
     # 2. List threads
     res_list = client.get("/api/v1/chat/threads", headers=auth_headers)
@@ -92,7 +98,7 @@ def test_chat_thread_crud(auth_headers):
     # 3. Get thread detail
     res_detail = client.get("/api/v1/chat/threads/thread-test-123", headers=auth_headers)
     assert res_detail.status_code == 200
-    assert res_detail.json()["title"] == "Análisis de Ventas Q3"
+    assert res_detail.json()["title"] == "Análisis de Ventas Q3 - Actualizado"
     
     # 4. Delete thread
     res_del = client.delete("/api/v1/chat/threads/thread-test-123", headers=auth_headers)

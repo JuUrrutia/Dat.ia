@@ -34,7 +34,7 @@ export const AssistantHeader: React.FC<AssistantHeaderProps> = ({
   const hasSupportData = Boolean(result.data_rows && result.data_rows.length > 0);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 px-1 pb-1">
+    <div className="assistant-response-header flex flex-wrap items-center justify-between gap-2 px-1 pb-1">
       {/* Response Badges */}
       <div className="flex items-center space-x-2 flex-wrap gap-y-1 text-xs">
         <span className="inline-flex items-center gap-1 font-semibold text-cyan-400 bg-cyan-500/10 px-2.5 py-0.5 rounded-full border border-cyan-500/20 text-[10px]">

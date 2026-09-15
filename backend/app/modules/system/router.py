@@ -151,18 +151,28 @@ async def get_system_anomalies(
 
     anomalies = []
 
-    # 1. Conexiones con revisión de permisos pendiente
-    pending_conns = db.query(CorporateConnection).filter(CorporateConnection.requires_permission_review == True).all()
-    for c in pending_conns:
-        anomalies.append({
-            "id": f"conn-rev-{c.id}",
-            "type": "security",
-            "severity": "warning",
-            "title": f"Revisión de permisos requerida: {c.name}",
-            "description": f"La base de datos '{c.database_name}' tiene cambios de esquema o tablas pendientes de auditar.",
-            "action_label": "Ir a Conexiones",
-            "action_route": "/admin/connections"
-        })
+    # 1. Conexiones con revisión de permisos pendiente o tablas sin dominio asignado
+    from app.modules.admin_catalog.models import SemanticCatalog
+    from sqlalchemy import func
+
+    unassigned_counts = dict(
+        db.query(SemanticCatalog.connection_id, func.count(SemanticCatalog.id))
+        .filter(SemanticCatalog.domain_id == None)
+        .group_by(SemanticCatalog.connection_id)
+        .all()
+    )
+    for c in db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == True).all():
+        pending = unassigned_counts.get(c.id, 0)
+        if pending > 0:
+            anomalies.append({
+                "id": f"conn-rev-{c.id}",
+                "type": "security",
+                "severity": "warning",
+                "title": f"Revisión requerida: {c.name}",
+                "description": f"La base de datos '{c.database_name}' tiene {pending} elemento(s) pendientes de asignar a un dominio RBAC.",
+                "action_label": "Ir a Administración",
+                "action_route": "/admin"
+            })
 
     # 2. Bloqueos de seguridad AST en últimas 24h
     cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=24)

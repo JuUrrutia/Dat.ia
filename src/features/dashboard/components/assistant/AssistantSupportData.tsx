@@ -13,7 +13,7 @@ export const AssistantSupportData: React.FC<AssistantSupportDataProps> = ({ resu
   }
 
   return (
-    <div className="bg-gradient-to-br from-zinc-900/90 via-zinc-900/60 to-zinc-950/90 border border-white/10 rounded-3xl p-6 shadow-2xl space-y-4 animate-fadeIn">
+    <div className="assistant-response-support bg-gradient-to-br from-zinc-900/90 via-zinc-900/60 to-zinc-950/90 border border-white/10 rounded-3xl p-6 shadow-2xl space-y-4 animate-fadeIn">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <Database className="w-4 h-4 text-emerald-400" />
