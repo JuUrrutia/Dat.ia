@@ -1,5 +1,5 @@
 import unittest
-from app.services.query_engine import QueryEngine
+from app.modules.chat_engine.engine import QueryEngine
 
 class TestAgnosticVisualization(unittest.TestCase):
 
@@ -12,7 +12,7 @@ class TestAgnosticVisualization(unittest.TestCase):
             {"centro_distribucion": "CD Este", "toneladas_despachadas": 980.2, "eficiencia_ruta_pct": 95.0},
         ]
 
-        kpis, chart_type, chart_option, summary, exec_rep, gauges = QueryEngine._build_dynamic_visualization(
+        kpis, chart_type, chart_option, summary, exec_rep = QueryEngine._build_dynamic_visualization(
             question="¿Cuál es el volumen despachado por centro de distribución?",
             columns=columns,
             rows=rows,
@@ -36,7 +36,7 @@ class TestAgnosticVisualization(unittest.TestCase):
             {"mes": "2026-03", "pacientes_atendidos": 180},
         ]
 
-        kpis, chart_type, chart_option, summary, exec_rep, gauges = QueryEngine._build_dynamic_visualization(
+        kpis, chart_type, chart_option, summary, exec_rep = QueryEngine._build_dynamic_visualization(
             question="Evolución de pacientes atendidos por mes",
             columns=columns,
             rows=rows,

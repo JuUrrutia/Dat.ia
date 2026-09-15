@@ -68,14 +68,6 @@ export interface KPICard {
   change_direction?: 'positive' | 'negative' | 'neutral';
 }
 
-export interface MetricGauge {
-  title: string;
-  percentage: number;
-  value_label: string;
-  target_label: string;
-  color?: string;
-}
-
 export interface ExecutiveReport {
   overview: string;
   key_findings: string[];
@@ -95,12 +87,11 @@ export interface TraceabilityAudit {
 }
 
 export interface PresentationHints {
-  show_executive_report: boolean;
-  show_kpis: boolean;
-  show_gauges: boolean;
-  show_chart: boolean;
-  preferred_view: 'studio' | 'report' | 'table' | 'assistant';
-  summary_style: 'concise' | 'detailed' | 'executive';
+  show_executive_report?: boolean;
+  show_kpis?: boolean;
+  show_chart?: boolean;
+  preferred_view?: 'assistant' | 'report' | 'table';
+  summary_style?: 'concise' | 'detailed' | 'executive';
 }
 
 export interface QueryResult {
@@ -110,8 +101,7 @@ export interface QueryResult {
   summary_text: string;
   executive_report?: ExecutiveReport;
   kpis: KPICard[];
-  gauges?: MetricGauge[];
-  chart_type: 'bar' | 'line' | 'area' | 'pie' | 'donut' | 'radar' | 'gauge' | 'none';
+  chart_type: 'bar' | 'line' | 'area' | 'pie' | 'donut' | 'none';
   chart_option: any; // ECharts option
   data_columns: string[];
   data_rows: Record<string, any>[];
