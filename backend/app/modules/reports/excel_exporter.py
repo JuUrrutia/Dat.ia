@@ -36,7 +36,7 @@ class ExcelExporter:
 
         ws_summary.merge_cells("A1:F2")
         title_cell = ws_summary["A1"]
-        title_cell.value = "Dat.ia - INFORME EJECUTIVO DE NEGOCIO"
+        title_cell.value = "DATIA - INFORME EJECUTIVO DE NEGOCIO"
         title_cell.font = font_title
         title_cell.fill = fill_header
         title_cell.alignment = Alignment(horizontal="center", vertical="center")
@@ -57,6 +57,12 @@ class ExcelExporter:
         ws_summary["B6"].font = font_normal
 
         current_row = 8
+        if getattr(data, "custom_notes", None):
+            ws_summary[f"A{current_row}"] = "Notas Ejecutivas:"
+            ws_summary[f"A{current_row}"].font = font_bold
+            ws_summary[f"B{current_row}"] = data.custom_notes
+            ws_summary[f"B{current_row}"].font = font_normal
+            current_row += 2
 
         if data.kpis:
             ws_summary.cell(row=current_row, column=1, value="INDICADORES CLAVE (KPIs)").font = font_section
@@ -112,46 +118,47 @@ class ExcelExporter:
         ws_summary.column_dimensions['B'].width = 60
         ws_summary.column_dimensions['C'].width = 30
 
-        # Sheet 2: Datos
-        ws_data = wb.create_sheet(title="Datos")
-        ws_data.views.sheetView[0].showGridLines = True
+        # Sheet 2: Datos (Opcional según preferencia del usuario)
+        if getattr(data, 'include_raw_data', True) and (data.data_rows or data.data_columns):
+            ws_data = wb.create_sheet(title="Datos")
+            ws_data.views.sheetView[0].showGridLines = True
 
-        columns = ReportDataCompiler.compile_columns(data)
+            columns = ReportDataCompiler.compile_columns(data)
 
-        for col_idx, col_name in enumerate(columns, 1):
-            cell = ws_data.cell(row=1, column=col_idx, value=str(col_name))
-            cell.font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-            cell.fill = fill_header
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-            cell.border = border_all
-
-        ws_data.row_dimensions[1].height = 24
-
-        for row_idx, row_dict in enumerate(data.data_rows, 2):
             for col_idx, col_name in enumerate(columns, 1):
-                val = row_dict.get(col_name)
-                cell = ws_data.cell(row=row_idx, column=col_idx, value=val)
-                cell.font = font_normal
+                cell = ws_data.cell(row=1, column=col_idx, value=str(col_name))
+                cell.font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+                cell.fill = fill_header
+                cell.alignment = Alignment(horizontal="center", vertical="center")
                 cell.border = border_all
-                if row_idx % 2 == 1:
-                    cell.fill = fill_zebra
-                if isinstance(val, (int, float)):
-                    cell.alignment = Alignment(horizontal="right")
-                else:
-                    cell.alignment = Alignment(horizontal="left")
 
-        for col in ws_data.columns:
-            max_len = 0
-            col_letter = get_column_letter(col[0].column)
-            for cell in col:
-                val_str = str(cell.value or '')
-                if len(val_str) > max_len:
-                    max_len = len(val_str)
-            ws_data.column_dimensions[col_letter].width = max(12, min(max_len + 4, 50))
+            ws_data.row_dimensions[1].height = 24
 
-        if columns and data.data_rows:
-            last_col_letter = get_column_letter(len(columns))
-            ws_data.auto_filter.ref = f"A1:{last_col_letter}{len(data.data_rows) + 1}"
+            for row_idx, row_dict in enumerate(data.data_rows, 2):
+                for col_idx, col_name in enumerate(columns, 1):
+                    val = row_dict.get(col_name)
+                    cell = ws_data.cell(row=row_idx, column=col_idx, value=val)
+                    cell.font = font_normal
+                    cell.border = border_all
+                    if row_idx % 2 == 1:
+                        cell.fill = fill_zebra
+                    if isinstance(val, (int, float)):
+                        cell.alignment = Alignment(horizontal="right")
+                    else:
+                        cell.alignment = Alignment(horizontal="left")
+
+            for col in ws_data.columns:
+                max_len = 0
+                col_letter = get_column_letter(col[0].column)
+                for cell in col:
+                    val_str = str(cell.value or '')
+                    if len(val_str) > max_len:
+                        max_len = len(val_str)
+                ws_data.column_dimensions[col_letter].width = max(12, min(max_len + 4, 50))
+
+            if columns and data.data_rows:
+                last_col_letter = get_column_letter(len(columns))
+                ws_data.auto_filter.ref = f"A1:{last_col_letter}{len(data.data_rows) + 1}"
 
         out_buffer = io.BytesIO()
         wb.save(out_buffer)

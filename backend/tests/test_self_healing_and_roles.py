@@ -9,13 +9,11 @@ from fastapi.testclient import TestClient
 from main import app
 from app.core.database import Base, get_db
 from app.db.init_db import init_db
-from app.models.role import Role, Domain
-from app.models.user import User
-from app.models.permission import RoleTablePermission
-from app.models.learning import QueryLearningMemory
-from app.models.connection import CorporateConnection
-from app.services.dynamic_schema import DynamicSchemaPruningService
-from app.services.query_engine import QueryEngine
+from app.modules.auth.models import Role, Domain, User
+from app.modules.admin_catalog.models import RoleTablePermission, CorporateConnection
+from app.modules.chat_engine.models import QueryLearningMemory
+from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
+from app.modules.chat_engine.engine import QueryEngine
 from app.core.constants import (
     ROLE_ADMINISTRADOR,
     ROLE_DIRECTOR_EJECUTIVO,

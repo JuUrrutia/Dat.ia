@@ -5,16 +5,11 @@ import {
   AlertTriangle,
   ShieldCheck,
 } from 'lucide-react';
-import { formatMetricNumber } from '../dashboard/executiveDashboardUtils';
 import { ReportExportToolbar } from './report/ReportExportToolbar';
 import { ReportFindingsView } from './report/ReportFindingsView';
 
 interface ExecutiveReportViewProps {
   result: QueryResult;
-  formatNumber?: (num: number) => string;
-  totalVal?: number;
-  maxValRow?: Record<string, any> | null;
-  catCol?: string;
   copiedReport?: boolean;
   onCopyReport?: () => void;
   onOpenTraceability?: () => void;
@@ -22,10 +17,6 @@ interface ExecutiveReportViewProps {
 
 export const ExecutiveReportView: React.FC<ExecutiveReportViewProps> = ({
   result,
-  formatNumber = (n) => formatMetricNumber(n, false),
-  totalVal = 0,
-  maxValRow = null,
-  catCol = 'Categoría',
   copiedReport: externalCopied,
   onCopyReport: externalCopyHandler,
   onOpenTraceability,
@@ -74,13 +65,7 @@ export const ExecutiveReportView: React.FC<ExecutiveReportViewProps> = ({
       )}
 
       {/* Report Findings & Strategic Sections */}
-      <ReportFindingsView
-        result={result}
-        formatNumber={formatNumber}
-        totalVal={totalVal}
-        maxValRow={maxValRow}
-        catCol={catCol}
-      />
+      <ReportFindingsView result={result} />
 
       {/* Section 4: Technical Traceability & Governance */}
       <div className="pt-4 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-zinc-400">
