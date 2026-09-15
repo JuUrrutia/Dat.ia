@@ -229,6 +229,24 @@ export const queryService = {
     }
   },
 
+  async getSharedThread(id: string): Promise<{ id: string; title: string; connection_id: number; results: QueryResult[]; created_at: string; updated_at: string } | null> {
+    try {
+      const res = await apiClient.get(`/chat/threads/shared/${id}`);
+      return res.data;
+    } catch {
+      return null;
+    }
+  },
+
+  async toggleGoldenQuery(payload: { question: string; sql: string; connection_id?: number; is_golden: boolean }): Promise<{ success: boolean; message: string; is_golden: boolean }> {
+    try {
+      const res = await apiClient.post('/chat/golden-query', payload);
+      return res.data;
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Error al actualizar consulta maestra', is_golden: false };
+    }
+  },
+
   async saveThread(thread: { id: string; title: string; connection_id?: number; results: QueryResult[] }): Promise<boolean> {
     try {
       await apiClient.post('/chat/threads', thread);

@@ -79,6 +79,7 @@ export function useChatEngine() {
   });
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const [generatingPhase, setGeneratingPhase] = useState<string>('Interpretando consulta en lenguaje natural...');
 
   // Sync threads from backend on login
   useEffect(() => {
@@ -110,6 +111,34 @@ export function useChatEngine() {
       isMounted = false;
     };
   }, [user, storageKey]);
+
+  // Check for shared thread URL parameter ?thread=<id>
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const sharedId = params.get('thread');
+    if (sharedId) {
+      queryService.getSharedThread(sharedId).then((sharedThread) => {
+        if (sharedThread) {
+          const formatted: FullThread = {
+            id: sharedThread.id,
+            title: sharedThread.title,
+            timestamp: sharedThread.updated_at ? new Date(sharedThread.updated_at).toLocaleDateString() : 'Compartido',
+            connection_id: sharedThread.connection_id,
+            results: sharedThread.results || [],
+          };
+          setThreads((prev) => {
+            if (prev.some((t) => t.id === sharedThread.id)) {
+              return prev.map((t) => (t.id === sharedThread.id ? formatted : t));
+            }
+            return [formatted, ...prev];
+          });
+          setActiveThreadId(sharedThread.id);
+          notify('info', `Consulta compartida cargada: "${sharedThread.title}"`);
+        }
+      });
+    }
+  }, []);
 
   // Persist threads to localStorage on change
   useEffect(() => {
@@ -242,6 +271,17 @@ export function useChatEngine() {
     setPendingPrompt(trimmed);
     setPromptInput('');
     setIsGenerating(true);
+    setGeneratingPhase('Interpretando consulta en lenguaje natural...');
+
+    const phaseTimer1 = setTimeout(() => {
+      setGeneratingPhase('Validando permisos RBAC y reglas de seguridad AST...');
+    }, 1400);
+    const phaseTimer2 = setTimeout(() => {
+      setGeneratingPhase('Ejecutando consulta en base de datos corporativa...');
+    }, 3200);
+    const phaseTimer3 = setTimeout(() => {
+      setGeneratingPhase('Estructurando análisis ejecutivo y visualizaciones...');
+    }, 5500);
 
     const timeoutId = setTimeout(() => {
       if (abortControllerRef.current === controller) {
@@ -294,6 +334,9 @@ export function useChatEngine() {
       notify('error', err.message || 'Error al conectar con la base de datos o el motor LLM local.');
     } finally {
       clearTimeout(timeoutId);
+      clearTimeout(phaseTimer1);
+      clearTimeout(phaseTimer2);
+      clearTimeout(phaseTimer3);
       setIsGenerating(false);
       setPendingPrompt(null);
     }
@@ -327,6 +370,7 @@ export function useChatEngine() {
     promptInput,
     setPromptInput,
     isGenerating,
+    generatingPhase,
     activeTraceability,
     setActiveTraceability,
     isMobileHistoryOpen,

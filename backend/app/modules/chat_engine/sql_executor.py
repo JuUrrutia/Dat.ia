@@ -37,6 +37,12 @@ class SQLExecutor:
             from app.core.database import build_engine_for_connector
             eng = build_engine_for_connector(target_db)
             with eng.connect() as conn:
+                if str(getattr(target_db, "db_type", "")).lower() == "postgres":
+                    try:
+                        conn.execute(text("SET TRANSACTION READ ONLY;"))
+                        conn.execute(text("SET statement_timeout = 15000;"))
+                    except Exception:
+                        pass
                 res = conn.execute(text(sql))
                 return [cls._clean_row(dict(r._mapping)) for r in res.fetchall()]
 
@@ -45,11 +51,21 @@ class SQLExecutor:
             from sqlalchemy import create_engine, text
             eng = create_engine(target_db)
             with eng.connect() as conn:
+                try:
+                    conn.execute(text("SET TRANSACTION READ ONLY;"))
+                    conn.execute(text("SET statement_timeout = 15000;"))
+                except Exception:
+                    pass
                 res = conn.execute(text(sql))
                 return [cls._clean_row(dict(r._mapping)) for r in res.fetchall()]
 
-        # SQLite connection
-        conn = sqlite3.connect(str(target_db))
+        # SQLite connection (using native read-only URI mode when file exists)
+        import os
+        db_path = str(target_db)
+        if os.path.isfile(db_path):
+            conn = sqlite3.connect(f"file:{os.path.abspath(db_path)}?mode=ro", uri=True)
+        else:
+            conn = sqlite3.connect(db_path)
         try:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
@@ -245,14 +261,19 @@ Genera la consulta SQL corregida y funcional para {engine_label}:"""
             from app.modules.chat_engine.models import QueryLearningMemory
             memories = db.query(QueryLearningMemory).filter(
                 QueryLearningMemory.connection_id == connection_id
-            ).order_by(QueryLearningMemory.execution_count.desc(), QueryLearningMemory.id.desc()).limit(3).all()
+            ).order_by(
+                QueryLearningMemory.is_golden.desc(),
+                QueryLearningMemory.execution_count.desc(),
+                QueryLearningMemory.id.desc()
+            ).limit(3).all()
 
             if not memories:
                 return ""
 
             examples = []
             for m in memories:
-                examples.append(f"- Pregunta similar: \"{m.question_pattern}\" -> SQL: {m.successful_sql}")
+                tag = "[Consulta Maestra Verificada]" if getattr(m, "is_golden", False) else "Pregunta similar"
+                examples.append(f"- {tag}: \"{m.question_pattern}\" -> SQL: {m.successful_sql}")
             return "Ejemplos de consultas previamente aprendidas y verificadas:\n" + "\n".join(examples)
         except Exception:
             return ""
