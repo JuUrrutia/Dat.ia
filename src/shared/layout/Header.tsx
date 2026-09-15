@@ -10,8 +10,12 @@ import {
   LayoutDashboard,
   Menu,
   X,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import { SystemHealthPopover } from './SystemHealthPopover';
+import logoDatiaDark from '../../pages/Logo_datia_2.png';
+import logoDatiaLight from '../../pages/Logo_Datia_3.png';
 
 export const Header: React.FC = () => {
   const { user, logout } = useAuth();
@@ -20,7 +24,18 @@ export const Header: React.FC = () => {
   const { status, details, lastChecked, isLoading, refetch } = useSystemHealth();
   const [isHealthPopoverOpen, setIsHealthPopoverOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window === 'undefined') return 'light';
+    return (localStorage.getItem('datia-theme') as 'light' | 'dark') || 'light';
+  });
   const mobileMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove('light', 'dark');
+    root.classList.add(theme);
+    localStorage.setItem('datia-theme', theme);
+  }, [theme]);
 
   const activePath = location.pathname;
 
@@ -54,9 +69,15 @@ export const Header: React.FC = () => {
             setIsMobileMenuOpen(false);
           }}
         >
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-brand-600 via-indigo-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-brand-500/25 shrink-0 group-hover:scale-105 transition-transform">
-            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-          </div>
+          <img
+            src={theme === 'dark' ? logoDatiaDark : logoDatiaLight}
+            alt="Logo de Dat.ia"
+            onError={(e) => {
+              const nextSrc = theme === 'dark' ? logoDatiaLight : logoDatiaDark;
+              e.currentTarget.src = nextSrc;
+            }}
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-contain shrink-0"
+          />
           <div className="truncate">
             <h1 className="text-xs sm:text-base font-bold text-white tracking-tight flex items-center gap-1.5 sm:gap-2">
               <span>DATIA</span>
@@ -132,6 +153,17 @@ export const Header: React.FC = () => {
 
       {/* Right Actions & Mobile Hamburger */}
       <div className="flex items-center space-x-2 sm:space-x-4">
+        <button
+          type="button"
+          onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+          aria-label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'}
+          title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
+          className="hidden sm:flex items-center gap-2 rounded-xl border border-dark-border bg-dark-base/70 px-2.5 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-brand-500/40 hover:text-white"
+        >
+          {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-500" />}
+          <span>{theme === 'dark' ? 'Claro' : 'Oscuro'}</span>
+        </button>
+
         <div className="text-right hidden sm:block">
           <div className="text-xs font-bold text-white tracking-tight">{user.username}</div>
           <div className="text-[10px] font-semibold text-brand-300 bg-brand-500/15 px-2.5 py-0.5 rounded-full border border-brand-500/30 inline-block mt-0.5">
@@ -224,8 +256,19 @@ export const Header: React.FC = () => {
                 )}
               </div>
 
-              {/* Logout Button */}
-              <div className="pt-2 border-t border-dark-border">
+              {/* Theme & Logout Button */}
+              <div className="pt-2 border-t border-dark-border space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-gray-300 hover:bg-dark-card transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-500" />}
+                    <span>{theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}</span>
+                  </span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {

@@ -26,6 +26,7 @@ export function useChatEngine() {
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const userRole = user?.role_name || (user?.is_admin ? 'Administrador' : 'Usuario');
   const [promptSuggestions, setPromptSuggestions] = useState<string[]>([]);
@@ -87,29 +88,17 @@ export function useChatEngine() {
     const loadBackendThreads = async () => {
       try {
         const remoteSummaries = await queryService.getThreads();
-        if (remoteSummaries && remoteSummaries.length > 0) {
-          // Fetch full details for recent threads (up to 10)
-          const detailedThreads: FullThread[] = [];
-          for (const s of remoteSummaries.slice(0, 10)) {
-            const detail = await queryService.getThread(s.id);
-            if (detail) {
-              detailedThreads.push({
-                id: detail.id,
-                title: detail.title,
-                timestamp: detail.updated_at ? new Date(detail.updated_at).toLocaleDateString() : 'Reciente',
-                connection_id: detail.connection_id,
-                results: detail.results || [],
-              });
-            }
-          }
-          if (isMounted && detailedThreads.length > 0) {
-            setThreads(detailedThreads);
-            try {
-              localStorage.setItem(storageKey, JSON.stringify(detailedThreads));
-            } catch {
-              // ignore quota
-            }
-          }
+        if (remoteSummaries && remoteSummaries.length > 0 && isMounted) {
+          setThreads((prev) => {
+            const prevMap = new Map(prev.map((t) => [t.id, t]));
+            return remoteSummaries.map((s) => ({
+              id: s.id,
+              title: s.title,
+              timestamp: s.updated_at ? new Date(s.updated_at).toLocaleDateString() : 'Reciente',
+              connection_id: s.connection_id,
+              results: prevMap.get(s.id)?.results || [],
+            }));
+          });
         }
       } catch {
         // use local cache
@@ -144,13 +133,34 @@ export function useChatEngine() {
     timestamp: t.timestamp,
   }));
 
-  const handleSelectThread = (id: string) => {
+  const handleSelectThread = async (id: string) => {
     setActiveThreadId(id);
+    const target = threads.find((t) => t.id === id);
+    if (target && target.results.length === 0) {
+      try {
+        const detail = await queryService.getThread(id);
+        if (detail?.results?.length) {
+          setThreads((prev) =>
+            prev.map((t) => (t.id === id ? { ...t, results: detail.results } : t))
+          );
+        }
+      } catch {
+        // use existing thread state
+      }
+    }
   };
 
   const handleNewThread = useCallback(() => {
-    setActiveThreadId(null);
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
+    setIsGenerating(false);
+    setPromptInput('');
     setPendingPrompt(null);
+    setActiveTraceability(null);
+    setActiveThreadId(null);
     setTimeout(() => {
       promptTextareaRef.current?.focus();
     }, 50);
@@ -190,8 +200,6 @@ export function useChatEngine() {
     promptTextareaRef.current?.focus();
     notify('info', 'Pregunta cargada en el editor para reintentar.');
   };
-
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   const handleSendPrompt = async (text: string) => {
     const trimmed = text.trim();

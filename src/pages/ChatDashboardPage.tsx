@@ -99,7 +99,7 @@ export const ChatDashboardPage: React.FC = () => {
   }, [isPresentationMode]);
 
   return (
-    <div className={`flex ${isPresentationMode ? 'fixed inset-0 z-50 bg-[#07090E]' : 'h-[calc(100vh-64px)]'} overflow-hidden bg-[#0A0D14]`}>
+    <div className={`flex ${isPresentationMode ? 'fixed inset-0 z-50 bg-[#07090E]' : 'h-[calc(100vh-64px)]'} overflow-hidden bg-[#0A0D14] chat-shell`}>
       {/* Sidebar Desktop & Mobile (Hidden in Presentation Mode) */}
       {!isPresentationMode && (
         <SidebarChatHistory
@@ -116,9 +116,9 @@ export const ChatDashboardPage: React.FC = () => {
       )}
 
       {/* Main Container */}
-      <div className="flex-1 flex flex-col min-w-0 h-full relative bg-gradient-to-b from-[#0B0F19] via-[#0A0D14] to-[#07090E]">
+      <div className="flex-1 flex flex-col min-w-0 h-full relative bg-gradient-to-b from-[#0B0F19] via-[#0A0D14] to-[#07090E] chat-shell-panel">
         {/* Top Context Subheader */}
-        <div className="h-12 border-b border-[#1E293B]/60 bg-[#0F172A]/40 backdrop-blur-md px-4 flex items-center justify-between shrink-0">
+        <div className="h-12 border-b border-[#1E293B]/60 bg-[#0F172A]/40 backdrop-blur-md px-4 flex items-center justify-between shrink-0 chat-shell-header">
           <div className="flex items-center gap-3">
             {!isPresentationMode && (
               <button
@@ -278,7 +278,7 @@ export const ChatDashboardPage: React.FC = () => {
                 <div className="space-y-4 sm:space-y-6 pt-4 border-t border-dark-border/40 first:border-0 first:pt-0 animate-fadeIn">
                   {/* User Question Bubble */}
                   <div className="flex items-start space-x-2 sm:space-x-3 justify-end">
-                    <div className="bg-brand-600/20 border border-brand-500/30 rounded-2xl rounded-tr-sm p-3.5 sm:p-4 max-w-[85%] sm:max-w-2xl shadow-md">
+                    <div className="chat-user-bubble bg-brand-600/20 border border-brand-500/30 rounded-2xl rounded-tr-sm p-3.5 sm:p-4 max-w-[85%] sm:max-w-2xl shadow-md">
                       <div className="flex items-center space-x-1.5 text-[10px] text-brand-400 font-semibold mb-1">
                         <UserIcon className="w-3 h-3" />
                         <span>
@@ -297,7 +297,7 @@ export const ChatDashboardPage: React.FC = () => {
                     <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-cyan-600/20">
                       <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-pulse" />
                     </div>
-                    <div className="bg-slate-900/90 border border-slate-700/60 rounded-2xl rounded-tl-sm p-4 max-w-[85%] sm:max-w-2xl space-y-2.5 shadow-xl">
+                    <div className="chat-bot-response bg-slate-900/90 border border-slate-700/60 rounded-2xl rounded-tl-sm p-4 max-w-[85%] sm:max-w-2xl space-y-2.5 shadow-xl">
                       <div className="flex items-center space-x-2 text-[10px] text-cyan-400 font-semibold">
                         <Bot className="w-3 h-3" />
                         <span>DATIA IA</span>
@@ -327,7 +327,7 @@ export const ChatDashboardPage: React.FC = () => {
 
         {/* Floating Input Controls (Hidden in Presentation Mode) */}
         {!isPresentationMode && (
-          <div className="p-4 md:p-6 bg-gradient-to-t from-[#07090E] via-[#0A0D14] to-transparent shrink-0">
+          <div className="p-4 md:p-6 bg-gradient-to-t from-[#07090E] via-[#0A0D14] to-transparent shrink-0 chat-shell-input-wrap">
             <div className="max-w-4xl mx-auto">
               <ChatPromptInput
                 promptInput={promptInput}

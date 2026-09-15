@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '../features/auth/context/AuthContext';
 import { ShieldCheck, Database, Lock, KeyRound, Mail, UserPlus, LogIn, ArrowRight, AlertCircle } from 'lucide-react';
+import logoDatiaDark from './Logo_datia_2.png';
+import logoDatiaLight from './Logo_Datia_3.png';
 
 const PRESET_USERS = [
   { name: 'Administrador', username: 'admin', password: 'admin123', role: 'Administrador', is_admin: true },
@@ -83,7 +85,8 @@ export const LoginPage: React.FC = () => {
         {/* Brand Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-dark-card/60 shadow-xl shadow-brand-600/20 mb-2 overflow-hidden border border-brand-500/20">
-            <img src="/Logo_datia_2.png" alt="Logo Datia" className="w-full h-full object-contain p-1" />
+            <img src={logoDatiaLight} alt="Logo Datia" className="block dark:hidden w-full h-full object-contain p-1" />
+            <img src={logoDatiaDark} alt="Logo Datia" className="hidden dark:block w-full h-full object-contain p-1" />
           </div>
           <h1 className="text-2xl font-extrabold text-white tracking-tight">Dat.ia</h1>
           <p className="text-xs text-gray-400">Transformando datos en decisiones</p>

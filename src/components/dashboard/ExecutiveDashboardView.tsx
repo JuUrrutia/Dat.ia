@@ -58,7 +58,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
     <div className="w-full space-y-4 animate-fadeIn font-sans">
       {/* Optional Mode Switcher Tabs (Only if there are multiple data views available and user switched view) */}
       {(hasChart || hasDataRows || result.executive_report) && (
-        <div className="flex items-center space-x-1.5 bg-dark-base/80 p-1 rounded-xl border border-dark-border/80 w-fit">
+        <div className="executive-dashboard-header flex items-center space-x-1.5 bg-dark-base/80 p-1 rounded-xl border border-dark-border/80 w-fit">
           <button
             type="button"
             onClick={() => setViewMode('assistant')}
