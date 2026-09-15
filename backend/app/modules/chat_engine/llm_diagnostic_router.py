@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from app.api.deps import get_current_user
-from app.models.user import User
-from app.services.health_service import HealthService
+from app.modules.auth.models import User
+from app.modules.system.health_service import HealthService
 from app.core.config import settings
 from app.core.prompts import PromptManager
 

@@ -7,10 +7,8 @@ from fastapi.testclient import TestClient
 from main import app
 from app.core.database import SessionLocal
 from app.db.init_db import init_db
-from app.models.user import User
-from app.models.role import Role
-from app.models.audit_log import AuditLog
-from app.models.session import UserSession
+from app.modules.auth.models import User, Role, UserSession
+from app.modules.telemetry_audit.models import AuditLog
 from app.core.security import create_access_token, get_password_hash
 
 SAMPLE_SNAPSHOT_DATA = {
@@ -35,9 +33,6 @@ SAMPLE_SNAPSHOT_DATA = {
         {"title": "Ventas Totales", "value": "$145,200", "subtitle": "+15% vs Q anterior"},
         {"title": "Unidades", "value": "12,500", "subtitle": "Top 5 productos"},
         {"title": "Margen Bruto", "value": "34.5%", "subtitle": "Estable"}
-    ],
-    "gauges": [
-        {"title": "Cumplimiento Meta", "percentage": 88.5, "value_label": "88.5%", "target_label": "100%"}
     ],
     "data_columns": ["id_producto", "nombre_producto", "unidades_vendidas", "total_ingresos"],
     "data_rows": [

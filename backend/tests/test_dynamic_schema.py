@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import MagicMock
-from app.services.dynamic_schema import DynamicSchemaPruningService
+from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
 
 class TestDynamicSchema(unittest.TestCase):
 

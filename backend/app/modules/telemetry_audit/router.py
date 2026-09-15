@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_admin
-from app.models.user import User
+from app.modules.auth.models import User
 from app.modules.telemetry_audit.models import AuditLog
 from app.modules.telemetry_audit.schemas import AuditLogsPage, AuditLogOut
 

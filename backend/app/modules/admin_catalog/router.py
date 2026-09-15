@@ -3,32 +3,24 @@ import io
 from typing import List, Optional, Any
 from fastapi import APIRouter, Depends, status, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user, get_current_admin
-from app.models.user import User
+from app.modules.auth.models import User
 from app.modules.admin_catalog.schemas import (
     SemanticCatalogCreate, SemanticCatalogUpdate, SemanticCatalogOut,
     DataDictionaryResponse, AutoEnrichRequest, AutoEnrichResponse,
     CorporateConnectionCreate, CorporateConnectionUpdate, CorporateConnectionOut,
-    ConnectionTestRequest, ConnectionTestResult,
+    ConnectionTestRequest, ConnectionTestResult, MetadataDBTestRequest,
     ReportExportRequest
 )
 from app.modules.catalog.services.catalog_service import CatalogDomainService
 from app.modules.catalog.services.connector_service import ConnectorDomainService
 from app.modules.reports.generator import ReportGeneratorService
-from app.services.health_service import HealthService
+from app.modules.system.health_service import HealthService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-class MetadataDBTestRequest(BaseModel):
-    server: str
-    port: int
-    db_name: str
-    user: Optional[str] = None
-    password: Optional[str] = None
 
 # =========================================================================
 # SEMANTIC CATALOG ENDPOINTS (/catalog)

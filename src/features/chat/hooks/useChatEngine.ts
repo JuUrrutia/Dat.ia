@@ -1,38 +1,18 @@
-import { useState, useRef, useEffect } from 'react';
-import { useAuth } from '../../../context/AuthContext';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useAuth } from '../../auth/context/AuthContext';
 import { useNotifications } from '../../../context/NotificationContext';
 import { QueryResult } from '../../../types';
 import { ChatThread } from '../../../components/chat/SidebarChatHistory';
 import { queryService } from '../services/query_service';
-import { connectorService, CorporateConnection } from '../../../services/connector_service';
+import { connectorService, CorporateConnection } from '../../admin/services/connector_service';
 
 export interface FullThread {
   id: string;
   title: string;
   timestamp: string;
+  connection_id?: number;
   results: QueryResult[];
 }
-
-const CHAT_THREADS_KEY_PREFIX = 'datia_chat_threads:v1:';
-const CHAT_SUGGESTIONS_KEY_PREFIX = 'datia_chat_suggestions:v1:';
-
-const loadThreads = (userId: number): FullThread[] => {
-  try {
-    const saved = localStorage.getItem(`${CHAT_THREADS_KEY_PREFIX}${userId}`);
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    return [];
-  }
-};
-
-const loadSuggestionsPreference = (userId: number): boolean => {
-  try {
-    const saved = localStorage.getItem(`${CHAT_SUGGESTIONS_KEY_PREFIX}${userId}`);
-    return saved === null ? true : saved === 'true';
-  } catch {
-    return true;
-  }
-};
 
 export function useChatEngine() {
   const { user, settings } = useAuth();
@@ -44,15 +24,18 @@ export function useChatEngine() {
   const [activeConnectionId, setActiveConnectionId] = useState<number | null>(null);
   const [activeDatabaseName, setActiveDatabaseName] = useState('BD Corporativa Local (SQLite)');
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const userRole = user?.role_name || (user?.is_admin ? 'Administrador' : 'Usuario');
   const [promptSuggestions, setPromptSuggestions] = useState<string[]>([]);
-  const [showPromptSuggestions, setShowPromptSuggestions] = useState(() => (
-    user ? loadSuggestionsPreference(user.id) : true
-  ));
-
   const [connectors, setConnectors] = useState<CorporateConnection[]>([]);
 
+  // Local storage storage key
+  const storageKey = `datia_threads_${user?.id || 'guest'}`;
+
+  // 1. Load initial connectors & suggestions
   useEffect(() => {
     let isMounted = true;
     queryService.getSuggestions(userRole).then((suggs) => {
@@ -85,53 +68,71 @@ export function useChatEngine() {
     }
   };
 
-  const [threads, setThreads] = useState<FullThread[]>(() => (user ? loadThreads(user.id) : []));
+  // 2. Persistent Threads State (Cache-first with Backend Sync)
+  const [threads, setThreads] = useState<FullThread[]>(() => {
+    try {
+      const cached = localStorage.getItem(storageKey);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
-  const isHydratingThreadsRef = useRef(false);
 
-  useEffect(() => {
-    if (!user) {
-      setThreads([]);
-      setActiveThreadId(null);
-      setShowPromptSuggestions(true);
-      return;
-    }
-
-    isHydratingThreadsRef.current = true;
-    setThreads(loadThreads(user.id));
-    setActiveThreadId(null);
-    setShowPromptSuggestions(loadSuggestionsPreference(user.id));
-  }, [user?.id]);
-
-  const togglePromptSuggestions = () => {
-    setShowPromptSuggestions((previous) => {
-      const next = !previous;
-      if (user) {
-        try {
-          localStorage.setItem(`${CHAT_SUGGESTIONS_KEY_PREFIX}${user.id}`, String(next));
-        } catch {
-          // Ignore storage failures; the preference remains active for this session.
-        }
-      }
-      return next;
-    });
-  };
-
+  // Sync threads from backend on login
   useEffect(() => {
     if (!user) return;
-    if (isHydratingThreadsRef.current) {
-      isHydratingThreadsRef.current = false;
-      return;
-    }
+    let isMounted = true;
 
+    const loadBackendThreads = async () => {
+      try {
+        const remoteSummaries = await queryService.getThreads();
+        if (remoteSummaries && remoteSummaries.length > 0) {
+          // Fetch full details for recent threads (up to 10)
+          const detailedThreads: FullThread[] = [];
+          for (const s of remoteSummaries.slice(0, 10)) {
+            const detail = await queryService.getThread(s.id);
+            if (detail) {
+              detailedThreads.push({
+                id: detail.id,
+                title: detail.title,
+                timestamp: detail.updated_at ? new Date(detail.updated_at).toLocaleDateString() : 'Reciente',
+                connection_id: detail.connection_id,
+                results: detail.results || [],
+              });
+            }
+          }
+          if (isMounted && detailedThreads.length > 0) {
+            setThreads(detailedThreads);
+            try {
+              localStorage.setItem(storageKey, JSON.stringify(detailedThreads));
+            } catch {
+              // ignore quota
+            }
+          }
+        }
+      } catch {
+        // use local cache
+      }
+    };
+
+    loadBackendThreads();
+    return () => {
+      isMounted = false;
+    };
+  }, [user, storageKey]);
+
+  // Persist threads to localStorage on change
+  useEffect(() => {
     try {
-      localStorage.setItem(`${CHAT_THREADS_KEY_PREFIX}${user.id}`, JSON.stringify(threads));
+      localStorage.setItem(storageKey, JSON.stringify(threads));
     } catch {
-      // Ignore storage failures; the in-memory history remains available.
+      // ignore
     }
-  }, [threads, user?.id]);
+  }, [threads, storageKey]);
 
+  // Auto-scroll on new message
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [threads, isGenerating, activeThreadId, pendingPrompt]);
@@ -148,9 +149,7 @@ export function useChatEngine() {
     setActiveThreadId(id);
   };
 
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  const handleNewThread = () => {
+  const handleNewThread = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -161,14 +160,44 @@ export function useChatEngine() {
     setPendingPrompt(null);
     setActiveTraceability(null);
     setActiveThreadId(null);
-  };
+    setTimeout(() => {
+      promptTextareaRef.current?.focus();
+    }, 50);
+  }, []);
 
-  const handleDeleteThread = (id: string, e: React.MouseEvent) => {
+  const handleDeleteThread = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setThreads((prev) => prev.filter((t) => t.id !== id));
     if (activeThreadId === id) {
       setActiveThreadId(null);
     }
+    await queryService.deleteThread(id);
+    notify('info', 'Conversación eliminada del historial.');
+  };
+
+  // Keyboard shortcuts (Ctrl+N, Ctrl+K)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N')) {
+        e.preventDefault();
+        handleNewThread();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setIsMobileHistoryOpen(true);
+        setTimeout(() => {
+          searchInputRef.current?.focus();
+        }, 100);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleNewThread]);
+
+  const handleEditPrompt = (question: string) => {
+    setPromptInput(question);
+    promptTextareaRef.current?.focus();
+    notify('info', 'Pregunta cargada en el editor para reintentar.');
   };
 
   const handleSendPrompt = async (text: string) => {
@@ -182,15 +211,31 @@ export function useChatEngine() {
     abortControllerRef.current = controller;
 
     const currentThreadId = activeThreadId || `thread-${Date.now()}`;
+    let threadTitle = trimmed.length > 32 ? `${trimmed.substring(0, 30)}...` : trimmed;
+
     if (!activeThreadId) {
       const newTh: FullThread = {
         id: currentThreadId,
-        title: trimmed.length > 32 ? `${trimmed.substring(0, 30)}...` : trimmed,
+        title: threadTitle,
         timestamp: 'Ahora',
+        connection_id: activeConnectionId || 1,
         results: [],
       };
       setThreads((prev) => [newTh, ...prev]);
       setActiveThreadId(currentThreadId);
+    } else if (activeThread) {
+      threadTitle = activeThread.title;
+    }
+
+    // Extract multi-turn conversation history from active thread (last 2 turns)
+    const conversationHistory: Array<{ question: string; sql?: string }> = [];
+    if (activeThread && activeThread.results.length > 0) {
+      for (const res of activeThread.results.slice(-2)) {
+        conversationHistory.push({
+          question: res.question,
+          sql: res.traceability?.sql_executed,
+        });
+      }
     }
 
     setPendingPrompt(trimmed);
@@ -205,7 +250,14 @@ export function useChatEngine() {
     }, 90000);
 
     try {
-      const newResult = await queryService.sendQuery(trimmed, userRole, activeConnectionId || undefined, settings);
+      const newResult = await queryService.sendQuery(
+        trimmed,
+        userRole,
+        activeConnectionId || undefined,
+        settings,
+        undefined,
+        conversationHistory.length > 0 ? conversationHistory : undefined
+      );
 
       const vStatus = newResult.traceability?.validation_status;
       if (vStatus && vStatus !== 'APROBADO') {
@@ -216,17 +268,26 @@ export function useChatEngine() {
         }
       }
 
-      setThreads((prev) =>
-        prev.map((t) => {
+      setThreads((prev) => {
+        const updated = prev.map((t) => {
           if (t.id === currentThreadId) {
+            const newResults = [...t.results, newResult];
+            // Asynchronously save to backend
+            queryService.saveThread({
+              id: t.id,
+              title: t.title,
+              connection_id: activeConnectionId || 1,
+              results: newResults,
+            });
             return {
               ...t,
-              results: [...t.results, newResult],
+              results: newResults,
             };
           }
           return t;
-        })
-      );
+        });
+        return updated;
+      });
     } catch (err: any) {
       if (err.name === 'AbortError') return;
       notify('error', err.message || 'Error al conectar con la base de datos o el motor LLM local.');
@@ -235,6 +296,27 @@ export function useChatEngine() {
       setIsGenerating(false);
       setPendingPrompt(null);
     }
+  };
+
+  const handleFeedback = async (
+    result: QueryResult,
+    rating: 'positive' | 'negative',
+    comment?: string
+  ) => {
+    const res = await queryService.sendFeedback({
+      audit_log_id: result.traceability?.audit_log_id || result.audit_log_id,
+      question: result.question,
+      sql: result.traceability?.sql_executed,
+      connection_id: activeConnectionId || 1,
+      rating,
+      comment,
+    });
+    if (res.success) {
+      notify('success', res.message);
+    } else {
+      notify('warning', res.message);
+    }
+    return res;
   };
 
   return {
@@ -252,18 +334,21 @@ export function useChatEngine() {
     activeConnectionId,
     connectors,
     promptSuggestions,
-    showPromptSuggestions,
-    togglePromptSuggestions,
     threads,
     activeThreadId,
     activeThread,
     sidebarThreads,
     pendingPrompt,
     chatBottomRef,
+    searchInputRef,
+    promptTextareaRef,
     handleSelectThread,
     handleNewThread,
     handleDeleteThread,
     handleSendPrompt,
     handleSelectConnection,
+    handleEditPrompt,
+    handleFeedback,
   };
 }
+

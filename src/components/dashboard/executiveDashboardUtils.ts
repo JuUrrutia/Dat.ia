@@ -2,7 +2,6 @@ import { ChartType, THEME_COLORS, computeChartStats, deriveProcessedRows, format
 import { buildBarChartOption } from '../../features/dashboard/components/charts/barChartConfig';
 import { buildPieChartOption } from '../../features/dashboard/components/charts/pieChartConfig';
 import { buildLineChartOption } from '../../features/dashboard/components/charts/lineChartConfig';
-import { buildGaugeChartOption } from '../../features/dashboard/components/charts/gaugeConfig';
 
 export {
   THEME_COLORS,
@@ -43,5 +42,5 @@ export function buildDynamicChartOption(params: {
     return buildLineChartOption({ ...params, activeChartType });
   }
 
-  return buildGaugeChartOption(params);
+  return fallbackChartOption;
 }
