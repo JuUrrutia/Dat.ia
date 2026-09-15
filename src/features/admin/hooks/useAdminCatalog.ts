@@ -3,11 +3,11 @@ import {
   CatalogItem,
   DataDictionaryResponse,
   catalogService,
-} from '../../../services/catalog_service';
+} from '../services/catalog_service';
 import {
   CorporateConnection,
   connectorService,
-} from '../../../services/connector_service';
+} from '../services/connector_service';
 
 export function useAdminCatalog() {
   const [subTab, setSubTab] = useState<'catalog' | 'dictionary'>('catalog');

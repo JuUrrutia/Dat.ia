@@ -1,14 +1,13 @@
 import time
-import os
 import datetime
-from typing import List, Optional, Dict, Any
+from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.api.deps import get_db, get_current_user
-from app.models.user import User
-from app.modules.admin_catalog.models import CorporateConnection, DatabaseType
+from app.modules.auth.models import User
+from app.modules.admin_catalog.models import CorporateConnection
 from app.core.config import settings
 from app.core.constants import (
     SYSTEM_STATUS_OPERATIONAL,
@@ -75,7 +74,7 @@ async def get_system_health(
         meta_msg = f"Error en base de datos de metadatos: {str(e)}"
 
     meta_comp = ComponentHealth(
-        name="Metadata Store (Dat.ia DB)",
+        name="Metadata Store (Datia DB)",
         type="metadata_db",
         status=SYSTEM_STATUS_OPERATIONAL if meta_ok else SYSTEM_STATUS_DEGRADED,
         latency_ms=meta_latency,
@@ -87,23 +86,16 @@ async def get_system_health(
     healthy_count = 0
 
     for c in active_conns:
-        if c.db_type == DatabaseType.SQLITE:
-            db_path = c.database_name
-            exists = os.path.exists(db_path) if db_path else True
-            conn_ok = exists
-            conn_msg = f"Archivo SQLite '{db_path}' verificado." if exists else f"Archivo SQLite '{db_path}' no encontrado."
-            conn_latency = 1
-        else:
-            res = HealthService.check_db_connectivity(
-                host=c.host,
-                port=c.port,
-                timeout=2.0,
-                db_type=c.db_type.value,
-                database_name=c.database_name
-            )
-            conn_ok = res["success"]
-            conn_msg = res["message"]
-            conn_latency = res["latency_ms"]
+        res = HealthService.check_db_connectivity(
+            host=c.host,
+            port=c.port,
+            timeout=2.0,
+            db_type=c.db_type.value if hasattr(c.db_type, 'value') else str(c.db_type),
+            database_name=c.database_name
+        )
+        conn_ok = res["success"]
+        conn_msg = res["message"]
+        conn_latency = res["latency_ms"]
 
         if conn_ok:
             healthy_count += 1
@@ -142,3 +134,87 @@ async def get_system_health(
         total_active_connectors=total_conns,
         healthy_connectors_count=healthy_count
     )
+
+
+@router.get("/anomalies")
+async def get_system_anomalies(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Scans for proactive operational and analytical anomalies:
+    1. Connections requiring permission review
+    2. Repeated AST security blocks in the last 24 hours
+    3. Slow queries (>4000ms)
+    """
+    from app.modules.telemetry_audit.models import AuditLog
+
+    anomalies = []
+
+    # 1. Conexiones con revisión de permisos pendiente o tablas sin dominio asignado
+    from app.modules.admin_catalog.models import SemanticCatalog
+
+    uploaded_conns = db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == True).all()
+    for c in uploaded_conns:
+        unassigned_count = db.query(SemanticCatalog).filter(
+            SemanticCatalog.connection_id == c.id,
+            SemanticCatalog.domain_id == None
+        ).count()
+        has_catalog = db.query(SemanticCatalog).filter(SemanticCatalog.connection_id == c.id).first()
+        if not has_catalog or unassigned_count > 0:
+            desc = (
+                f"La base de datos '{c.database_name}' tiene {unassigned_count} elemento(s) pendientes de asignar a un dominio RBAC."
+                if has_catalog
+                else f"La base de datos '{c.database_name}' aún no cuenta con catálogo semántico configurado."
+            )
+            anomalies.append({
+                "id": f"conn-rev-{c.id}",
+                "type": "security",
+                "severity": "warning",
+                "title": f"Revisión requerida: {c.name}",
+                "description": desc,
+                "action_label": "Ir a Administración",
+                "action_route": "/admin"
+            })
+
+    # 2. Bloqueos de seguridad AST en últimas 24h
+    cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=24)
+    recent_blocked = db.query(AuditLog).filter(
+        AuditLog.validation_status.like("RECHAZADO%"),
+        AuditLog.timestamp >= cutoff
+    ).count()
+
+    if recent_blocked > 0:
+        anomalies.append({
+            "id": "audit-blocked-24h",
+            "type": "security",
+            "severity": "critical" if recent_blocked >= 5 else "warning",
+            "title": f"{recent_blocked} consultas bloqueadas por seguridad",
+            "description": f"Se registraron {recent_blocked} intentos de consulta rechazados por validación AST en las últimas 24h.",
+            "action_label": "Ver Auditoría",
+            "action_route": "/admin/audit"
+        })
+
+    # 3. Consultas lentas (>4s)
+    slow_queries = db.query(AuditLog).filter(
+        AuditLog.execution_time_ms > 4000,
+        AuditLog.timestamp >= cutoff
+    ).count()
+
+    if slow_queries > 0:
+        anomalies.append({
+            "id": "audit-slow-24h",
+            "type": "performance",
+            "severity": "info",
+            "title": f"{slow_queries} consultas lentas detectadas",
+            "description": "Se detectaron ejecuciones con tiempos superiores a 4s. Podría requerirse optimización o índices.",
+            "action_label": "Ver Auditoría",
+            "action_route": "/admin/audit"
+        })
+
+    return {
+        "count": len(anomalies),
+        "anomalies": anomalies,
+        "has_critical": any(a["severity"] == "critical" for a in anomalies)
+    }
+

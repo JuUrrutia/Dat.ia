@@ -17,7 +17,6 @@
     "doctor": "npx react-doctor@latest"
   },
   "dependencies": {
-    "axios": "^1.7.9",
     "echarts": "^5.5.1",
     "echarts-for-react": "^3.0.2",
     "lucide-react": "^0.469.0",

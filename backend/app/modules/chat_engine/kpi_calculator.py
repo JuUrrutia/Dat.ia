@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Tuple, Optional
 from app.core.constants import DATE_COLUMN_KEYWORDS, CURRENCY_COLUMN_KEYWORDS, PERCENTAGE_COLUMN_KEYWORDS
 from app.core.prompts import PromptManager
 from app.modules.chat_engine.llm_service import LLMService
-from app.modules.chat_engine.schemas import KPICard, ExecutiveReport, MetricGauge
+from app.modules.chat_engine.schemas import KPICard, ExecutiveReport
 
 NON_METRIC_KEYWORDS = {
     "ano", "anio", "year", "mes", "month", "dia", "day", "fecha", "date",
@@ -27,7 +27,7 @@ def is_true_numeric_metric(col_name: str, sample_val: Any) -> bool:
 
 class KPICalculator:
     """
-    Computes business metrics, KPICards, MetricGauges, and deep ExecutiveReports
+    Computes business metrics, KPICards, and deep ExecutiveReports
     agnostic to database engine/schema.
     """
 
@@ -38,7 +38,7 @@ class KPICalculator:
         columns: List[str],
         rows: List[Dict[str, Any]],
         user_role: str = "Economista"
-    ) -> Tuple[List[KPICard], str, Dict[str, Any], str, Optional[ExecutiveReport], List[MetricGauge]]:
+    ) -> Tuple[List[KPICard], str, Dict[str, Any], str, Optional[ExecutiveReport], List[Any]]:
         if not rows or not columns:
             kpis = [
                 KPICard(title="Registros Obtenidos", value="0 Registros", subtitle="Sin coincidencia en BD", change_direction="neutral")
@@ -104,23 +104,6 @@ class KPICalculator:
             chart_type = "none"
             chart_option = {"series": []}
 
-            gauges = [
-                MetricGauge(
-                    title="Muestra de Datos",
-                    percentage=min(100.0, round((len(rows) / 50) * 100, 1)),
-                    value_label=f"{len(rows)} Filas",
-                    target_label="Filtro Aplicado",
-                    color="#06B6D4"
-                ),
-                MetricGauge(
-                    title="Completitud",
-                    percentage=100.0,
-                    value_label="100%",
-                    target_label="Datos Validados",
-                    color="#10B981"
-                )
-            ]
-
             summary = (
                 f"Informe de Consulta: Se recuperaron **{len(rows)} registros** de la base de datos para '{question}'. "
                 f"La información se clasifica por **{cat_title}** con **{len(columns)} atributos** de detalle disponibles."
@@ -141,7 +124,7 @@ class KPICalculator:
                 business_impact=f"Información disponible para seguimiento y consulta de {cat_title}."
             )
 
-            return kpis, chart_type, chart_option, summary, exec_rep, gauges
+            return kpis, chart_type, chart_option, summary, exec_rep
 
         # CASE 2: REAL QUANTITATIVE METRICS PRESENT
         total_val = sum((r.get(primary_num, 0) or 0) for r in rows if isinstance(r.get(primary_num), (int, float)))
@@ -190,22 +173,6 @@ class KPICalculator:
         chart_option = {"series": []}
 
         pct_top = round((top_val / total_val * 100), 1) if total_val > 0 else 0
-        gauges = [
-            MetricGauge(
-                title="Concentración Líder",
-                percentage=min(100.0, pct_top),
-                value_label=f"{pct_top}%",
-                target_label=f"Líder: {top_entity[:16]}",
-                color="#10B981" if pct_top < 50 else "#F59E0B"
-            ),
-            MetricGauge(
-                title="Muestra de Datos",
-                percentage=min(100.0, round((len(rows) / 100) * 100, 1)),
-                value_label=f"{len(rows)} Filas",
-                target_label="Filtro Aplicado",
-                color="#06B6D4"
-            )
-        ]
 
         summary = (
             f"Informe Ejecutivo: Se procesaron **{len(rows)} registros** de la base de datos corporativa para la consulta '{question}'. "
@@ -231,7 +198,7 @@ class KPICalculator:
             business_impact=f"Impacto directo en la gestión y control de la métrica {kpi_title}."
         )
 
-        return kpis, chart_type, chart_option, summary, exec_rep, gauges
+        return kpis, chart_type, chart_option, summary, exec_rep
 
     @classmethod
     async def generate_semantic_analysis_with_llm(

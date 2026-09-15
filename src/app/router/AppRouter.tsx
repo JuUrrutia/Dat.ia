@@ -1,7 +1,7 @@
 import React from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import { Header } from '../../components/layout/Header';
+import { useAuth } from '../../features/auth/context/AuthContext';
+import { Header } from '../../shared/layout/Header';
 import { ToastContainer } from '../../components/shared/ToastContainer';
 import { LoginPage } from '../../pages/LoginPage';
 import { ChatDashboardPage } from '../../pages/ChatDashboardPage';

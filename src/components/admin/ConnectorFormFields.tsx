@@ -1,5 +1,5 @@
 import React from 'react';
-import { CorporateConnection } from '../../services/connector_service';
+import { CorporateConnection } from '../../features/admin/services/connector_service';
 
 export interface FormFieldsProps {
   name: string;

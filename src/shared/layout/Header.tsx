@@ -6,6 +6,7 @@ import {
   Settings,
   ShieldAlert,
   LogOut,
+  Sparkles,
   LayoutDashboard,
   Menu,
   X,
@@ -56,12 +57,13 @@ export const Header: React.FC = () => {
   if (!user) return null;
 
   return (
-    <header className="h-16 border-b border-dark-border bg-dark-surface/90 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between z-30 relative select-none">
+    <header className="h-16 border-b border-dark-border/80 bg-dark-surface/95 backdrop-blur-xl px-3 sm:px-6 flex items-center justify-between z-30 relative select-none font-sans">
       {/* Brand & Offline / Dynamic Health Status Badge */}
       <div className="flex items-center space-x-3 sm:space-x-4">
         <button
           type="button"
-          className="flex items-center space-x-2.5 sm:space-x-3 text-left focus:outline-none"
+          aria-label="Ir a Dashboard de Dat.ia"
+          className="flex items-center space-x-2.5 sm:space-x-3 text-left group rounded-xl p-1 transition-all focus-visible:ring-2 focus-visible:ring-brand-500"
           onClick={() => {
             navigate('/chat');
             setIsMobileMenuOpen(false);
@@ -77,13 +79,13 @@ export const Header: React.FC = () => {
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-contain shrink-0"
           />
           <div className="truncate">
-            <h1 className="text-xs sm:text-base font-semibold text-white tracking-tight flex items-center gap-1.5 sm:gap-2">
+            <h1 className="text-xs sm:text-base font-bold text-white tracking-tight flex items-center gap-1.5 sm:gap-2">
               <span>Dat.ia</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20 font-normal">
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand-500/15 text-brand-300 border border-brand-500/30">
                 IA Local
               </span>
             </h1>
-            <p className="text-[10px] sm:text-xs text-gray-400 truncate">
+            <p className="text-[10px] sm:text-xs text-gray-400 font-medium hidden xs:block truncate">
               Transformando datos en decisiones
             </p>
           </div>
@@ -103,14 +105,15 @@ export const Header: React.FC = () => {
       </div>
 
       {/* Desktop Main Navigation Links */}
-      <nav className="hidden md:flex items-center space-x-1 bg-dark-base/60 p-1 rounded-xl border border-dark-border">
+      <nav className="hidden md:flex items-center space-x-1.5 bg-dark-base/80 p-1.5 rounded-2xl border border-dark-border/80 shadow-inner">
         <button
           type="button"
+          aria-current={activePath === '/chat' || activePath === '/' ? 'page' : undefined}
           onClick={() => navigate('/chat')}
-          className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
             activePath === '/chat' || activePath === '/'
-              ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
-              : 'text-gray-400 hover:text-white hover:bg-dark-card/50'
+              ? 'bg-brand-600 text-white shadow-md shadow-brand-600/35 glow-brand'
+              : 'text-gray-300 hover:text-white hover:bg-dark-card/60'
           }`}
         >
           <LayoutDashboard className="w-4 h-4" />
@@ -119,11 +122,12 @@ export const Header: React.FC = () => {
 
         <button
           type="button"
+          aria-current={activePath === '/settings' ? 'page' : undefined}
           onClick={() => navigate('/settings')}
-          className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
             activePath === '/settings'
-              ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
-              : 'text-gray-400 hover:text-white hover:bg-dark-card/50'
+              ? 'bg-brand-600 text-white shadow-md shadow-brand-600/35 glow-brand'
+              : 'text-gray-300 hover:text-white hover:bg-dark-card/60'
           }`}
         >
           <Settings className="w-4 h-4" />
@@ -133,14 +137,15 @@ export const Header: React.FC = () => {
         {user.is_admin && (
           <button
             type="button"
+            aria-current={activePath === '/admin' ? 'page' : undefined}
             onClick={() => navigate('/admin')}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
               activePath === '/admin'
-                ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
-                : 'text-gray-400 hover:text-white hover:bg-dark-card/50'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-600/35'
+                : 'text-gray-300 hover:text-white hover:bg-dark-card/60'
             }`}
           >
-            <ShieldAlert className="w-4 h-4" />
+            <ShieldAlert className="w-4 h-4 text-purple-300" />
             <span>Gobernanza RBAC</span>
           </button>
         )}
@@ -160,8 +165,8 @@ export const Header: React.FC = () => {
         </button>
 
         <div className="text-right hidden sm:block">
-          <div className="text-xs font-semibold text-gray-200">{user.username}</div>
-          <div className="text-[10px] text-brand-400 bg-brand-500/10 px-2 py-0.5 rounded border border-brand-500/20 inline-block mt-0.5">
+          <div className="text-xs font-bold text-white tracking-tight">{user.username}</div>
+          <div className="text-[10px] font-semibold text-brand-300 bg-brand-500/15 px-2.5 py-0.5 rounded-full border border-brand-500/30 inline-block mt-0.5">
             {user.role_name || (user.is_admin ? 'Super Administrador' : 'Usuario')}
           </div>
         </div>
@@ -169,9 +174,9 @@ export const Header: React.FC = () => {
         <button
           type="button"
           onClick={logout}
-          title="Cerrar Sesión"
-          aria-label="Cerrar Sesión"
-          className="hidden sm:flex p-2 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-colors"
+          title="Cerrar Sesión Segura"
+          aria-label="Cerrar Sesión Segura"
+          className="hidden sm:flex p-2.5 rounded-xl text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 transition-all focus-visible:ring-2 focus-visible:ring-rose-500"
         >
           <LogOut className="w-4 h-4" />
         </button>
@@ -251,6 +256,7 @@ export const Header: React.FC = () => {
                 )}
               </div>
 
+              {/* Theme & Logout Button */}
               <div className="pt-2 border-t border-dark-border space-y-2">
                 <button
                   type="button"
@@ -263,7 +269,6 @@ export const Header: React.FC = () => {
                   </span>
                 </button>
 
-                {/* Logout Button */}
                 <button
                   type="button"
                   onClick={() => {

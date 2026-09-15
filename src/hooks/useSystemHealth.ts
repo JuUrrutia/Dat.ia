@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { apiClient } from '../services/api_client';
+import { apiClient } from '../shared/api/api_client';
 import { SystemHealthResponse } from '../types';
 import { useNotifications } from '../context/NotificationContext';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../features/auth/context/AuthContext';
 
 export const DEFAULT_POLLING_INTERVAL_MS = 60000;
 

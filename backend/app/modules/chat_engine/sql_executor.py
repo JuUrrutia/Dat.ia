@@ -13,6 +13,20 @@ class SQLExecutor:
     """
 
     @classmethod
+    def _clean_row(cls, row_mapping: Any) -> Dict[str, Any]:
+        import decimal
+        from datetime import date, datetime
+        cleaned = {}
+        for k, v in row_mapping.items():
+            if isinstance(v, decimal.Decimal):
+                cleaned[k] = float(v) if (v % 1) else int(v)
+            elif isinstance(v, (date, datetime)):
+                cleaned[k] = v.isoformat()
+            else:
+                cleaned[k] = v
+        return cleaned
+
+    @classmethod
     def execute_raw_sql(cls, target_db: Any, sql: str, dialect: str = "sqlite") -> List[Dict[str, Any]]:
         """
         Safely executes a SELECT query on SQLite or PostgreSQL using try...finally to ensure connection closure.
@@ -24,7 +38,7 @@ class SQLExecutor:
             eng = build_engine_for_connector(target_db)
             with eng.connect() as conn:
                 res = conn.execute(text(sql))
-                return [dict(r._mapping) for r in res.fetchall()]
+                return [cls._clean_row(dict(r._mapping)) for r in res.fetchall()]
 
         # If target_db is a PostgreSQL connection string
         if isinstance(target_db, str) and (target_db.startswith("postgresql://") or target_db.startswith("postgresql+psycopg://")):
@@ -32,7 +46,7 @@ class SQLExecutor:
             eng = create_engine(target_db)
             with eng.connect() as conn:
                 res = conn.execute(text(sql))
-                return [dict(r._mapping) for r in res.fetchall()]
+                return [cls._clean_row(dict(r._mapping)) for r in res.fetchall()]
 
         # SQLite connection
         conn = sqlite3.connect(str(target_db))
@@ -40,7 +54,7 @@ class SQLExecutor:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute(sql)
-            return [dict(r) for r in cursor.fetchall()]
+            return [cls._clean_row(dict(r)) for r in cursor.fetchall()]
         finally:
             try:
                 conn.close()

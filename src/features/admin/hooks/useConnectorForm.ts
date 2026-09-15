@@ -1,5 +1,5 @@
 import { useReducer, useEffect } from 'react';
-import { CorporateConnection, ConnectionFormData, connectorService, ConnectionTestResult } from '../../../services/connector_service';
+import { CorporateConnection, ConnectionFormData, connectorService, ConnectionTestResult } from '../services/connector_service';
 
 interface State {
   name: string;

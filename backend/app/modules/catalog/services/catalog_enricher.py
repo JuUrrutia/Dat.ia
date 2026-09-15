@@ -1,6 +1,6 @@
 import re
 import json
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Tuple
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -15,10 +15,48 @@ class CatalogEnricher:
     for databases and columns.
     """
 
+    SAP_COMMON_MAP = {
+        "bukrs": ("Sociedad / Empresa", "Código de sociedad contable independiente (Company Code) en SAP.", "Dimensión de agrupación"),
+        "belnr": ("Número de Documento Contable", "Número único de documento o asiento contable en SAP.", "Identificador de transacción"),
+        "gjahr": ("Ejercicio Fiscal", "Año o ejercicio contable en el que se registra la transacción.", "DATE_PART('year', fecha)"),
+        "wrbtr": ("Importe en Moneda de Documento", "Monto registrado en la moneda original de la transacción.", "SUM(wrbtr)"),
+        "dmbtr": ("Importe en Moneda Local", "Monto convertido a la moneda local de la sociedad.", "SUM(dmbtr)"),
+        "shkzg": ("Indicador Debe/Haber", "Indica si la posición contable es Débito/Debe ('S') o Crédito/Haber ('H').", "Filtro contable S/H"),
+        "matnr": ("Código de Material", "Identificador alfanumérico único del producto o material en SAP.", "Clave foránea (MARA)"),
+        "kunnr": ("Código de Cliente", "Identificador único de la cuenta de cliente en SAP.", "Clave foránea (KNA1)"),
+        "lifnr": ("Código de Proveedor", "Identificador único de la cuenta de proveedor en SAP.", "Clave foránea (LFA1)"),
+        "werks": ("Centro / Planta", "Unidad organizativa de producción, almacenamiento o distribución en SAP.", "Dimensión de centro"),
+        "lgort": ("Almacén", "Ubicación física de almacenamiento de mercancías en SAP.", "Dimensión de almacén"),
+        "vbeln": ("Documento Comercial / Factura", "Número de documento de ventas, entrega o facturación en SAP.", "Clave de documento comercial"),
+        "posnr": ("Posición de Documento", "Número de renglón o ítem dentro del documento comercial o contable.", "Número de ítem"),
+        "ebeln": ("Documento de Compra / Pedido", "Número de pedido de compras en SAP.", "Clave de orden de compra"),
+        "ebelp": ("Posición de Pedido de Compra", "Número de posición dentro del pedido de compras en SAP.", "Número de ítem"),
+        "netwr": ("Valor Neto", "Importe neto del pedido o factura sin impuestos.", "SUM(netwr)"),
+        "menge": ("Cantidad", "Cantidad física de unidades de material o servicio.", "SUM(menge)"),
+        "meins": ("Unidad de Medida Base", "Unidad de medida del stock o servicio (ej. KG, UN, L).", "Unidad de medida"),
+        "bldat": ("Fecha de Documento", "Fecha de emisión física o legal del documento mercantil.", "DATE(bldat)"),
+        "budat": ("Fecha de Contabilización", "Fecha en que se registra contablemente el impacto en el libro mayor.", "DATE(budat)"),
+        "blart": ("Clase de Documento", "Tipo o clasificación contable del asiento (ej. KR, KZ, SA, DR).", "Dimensión de documento"),
+        "waers": ("Moneda de Transacción", "Clave de moneda de la operación (ej. USD, EUR, CLP, MXN).", "Código ISO de moneda"),
+        "mwskz": ("Indicador de Impuestos", "Código que define la alícuota o tratamiento tributario (IVA/Tax).", "Clasificación tributaria"),
+        "kostl": ("Centro de Coste", "Unidad organizativa responsable del devengo de costos operativos.", "Dimensión de Controlling"),
+        "prctr": ("Centro de Beneficio", "Unidad organizativa responsable de la rentabilidad y resultados.", "Dimensión de Controlling"),
+        "aufnr": ("Orden de Fabricación / Trabajo", "Número de orden interna o de producción en SAP.", "Identificador de orden"),
+    }
+
     @classmethod
     def heuristic_enrich(cls, table_name: str, col_name: str, col_type: str, samples: List[str]) -> Dict[str, str]:
         t_lower = table_name.lower()
         c_lower = col_name.lower()
+
+        # Direct SAP acronym match
+        if c_lower in cls.SAP_COMMON_MAP:
+            f_name, d_text, f_formula = cls.SAP_COMMON_MAP[c_lower]
+            return {
+                "friendly_name": f_name,
+                "description": d_text,
+                "business_formula": f_formula
+            }
 
         friendly = c_lower.replace("_", " ").title()
         desc = f"Campo '{col_name}' de la tabla {table_name}"
@@ -74,7 +112,13 @@ class CatalogEnricher:
         }
 
     @classmethod
-    def seed_catalog_heuristics_for_connection(cls, db: Session, connection_id: int, db_path: Optional[str] = None) -> int:
+    def seed_catalog_heuristics_for_connection(
+        cls,
+        db: Session,
+        connection_id: int,
+        db_path: Optional[str] = None,
+        only_tables: Optional[List[str]] = None
+    ) -> int:
         """
         Inspects the physical database and automatically generates initial heuristic semantic catalog
         entries for all tables and columns that don't already have catalog entries for this connection.
@@ -83,6 +127,10 @@ class CatalogEnricher:
         tables_meta = SchemaInspector.introspect_connection_metadata(conn_obj, db_path)
         if not tables_meta:
             return 0
+
+        if only_tables:
+            only_lower = {t.lower() for t in only_tables}
+            tables_meta = [t for t in tables_meta if t["table_name"].lower() in only_lower]
 
         seeded_count = 0
         for tbl_info in tables_meta:
@@ -170,7 +218,8 @@ class CatalogEnricher:
                     llm_enriched = None
                     try:
                         system_prompt = (
-                            "Eres un especialista en gobernanza de datos y catálogos semánticos empresariales. "
+                            "Eres un especialista en gobernanza de datos, catálogos semánticos y ERPs corporativos (SAP, Oracle, AS/400). "
+                            "Reconoce y traduce con precisión acrónimos técnicos y códigos alemanes de SAP (ej. BKPF, BSEG, BUKRS, WRBTR, MATNR, KUNNR, VBELN). "
                             "Responde ÚNICAMENTE con un JSON con los campos 'friendly_name', 'description' y 'business_formula' en español."
                         )
                         prompt = (

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, RefreshCw, Edit3, Trash2 } from 'lucide-react';
-import { CatalogItem } from '../../../services/catalog_service';
+import { CatalogItem } from '../../../features/admin/services/catalog_service';
 
 interface SemanticCatalogSectionProps {
   items: CatalogItem[];

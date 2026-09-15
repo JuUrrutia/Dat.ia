@@ -33,6 +33,13 @@
     background: var(--app-bg);
     color: var(--app-text);
   }
+
+  /* Accessibility Focus Visible Rings (WCAG 2.2 AA) */
+  :focus-visible {
+    outline: 2px solid #0c8aff !important;
+    outline-offset: 2px !important;
+    box-shadow: 0 0 0 4px rgba(12, 138, 255, 0.25) !important;
+  }
 }
 
 html.light body {
@@ -98,55 +105,13 @@ html.light .glass-card {
   border-color: rgba(148, 163, 184, 0.2) !important;
 }
 
-html.light .chat-shell {
-  background: #F5F7FB !important;
-}
-
-html.light .chat-shell h1,
-html.light .chat-shell h2,
-html.light .chat-shell h3,
-html.light .chat-shell h4,
-html.light .chat-shell p,
-html.light .chat-shell li,
-html.light .chat-shell label,
-html.light .chat-shell span:not(.bg-gradient-to-r):not([class*='bg-brand-600']):not([class*='bg-purple-600']):not([class*='bg-indigo-600']):not([class*='text-white']) {
-  color: #334155 !important;
-}
-
-html.light .chat-shell button:not([class*='bg-gradient-to-r']):not([class*='bg-brand-600']):not([class*='bg-purple-600']):not([class*='bg-indigo-600']) {
-  color: #334155 !important;
-}
-
-html.light .chat-user-bubble {
-  background: rgba(124, 58, 237, 0.09) !important;
-  border-color: rgba(124, 58, 237, 0.25) !important;
-}
-
-html.light .chat-user-bubble .text-brand-400,
-html.light .chat-user-bubble .text-brand-500,
-html.light .chat-user-bubble span,
-html.light .chat-user-bubble p {
-  color: #1f2937 !important;
-}
-
-html.light .chat-bot-response {
-  background: rgba(255, 255, 255, 0.97) !important;
-  border-color: rgba(148, 163, 184, 0.5) !important;
-  color: #334155 !important;
-}
-
-html.light .assistant-response-shell {
-  background: transparent !important;
-}
-
-html.light .assistant-response-card,
-html.light .light-ai-primary-card,
-html.light .assistant-response-card.light-ai-primary-card,
 html.light .executive-dashboard-header {
-  background-color: #ffffff !important;
-  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.96) 100%) !important;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.96) 100%) !important;
   border-color: rgba(148, 163, 184, 0.45) !important;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06) !important;
+}
+
+html.light .executive-dashboard-header * {
   color: #334155 !important;
 }
 
@@ -207,53 +172,6 @@ html.light .executive-report-view .text-cyan-400 {
 html.light .executive-report-view .border-t,
 html.light .executive-report-view .border-b {
   border-color: rgba(148, 163, 184, 0.45) !important;
-}
-
-html.light .studio-diagnosis-card,
-html.light .studio-main-chart-card,
-html.light .studio-hero-card,
-html.light .studio-gauge-card,
-html.light .studio-stats-strip {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.96) 100%) !important;
-  border-color: rgba(148, 163, 184, 0.45) !important;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06) !important;
-}
-
-html.light .studio-diagnosis-card *,
-html.light .studio-main-chart-card *,
-html.light .studio-hero-card *,
-html.light .studio-gauge-card *,
-html.light .studio-stats-strip * {
-  color: #334155 !important;
-}
-
-html.light .studio-diagnosis-card .text-zinc-200,
-html.light .studio-main-chart-card .text-zinc-400,
-html.light .studio-hero-card .text-zinc-400,
-html.light .studio-gauge-card .text-zinc-400,
-html.light .studio-stats-strip .text-zinc-400,
-html.light .studio-stats-strip .text-zinc-200,
-html.light .studio-hero-card .text-zinc-400,
-html.light .studio-gauge-card .text-zinc-400 {
-  color: #475467 !important;
-}
-
-html.light .studio-stats-strip .text-amber-400,
-html.light .studio-stats-strip .text-emerald-400,
-html.light .studio-stats-strip .text-rose-400,
-html.light .studio-stats-strip .text-cyan-400 {
-  color: #d97706 !important;
-}
-
-html.light .studio-hero-card .bg-zinc-950\/50,
-html.light .studio-hero-card .bg-zinc-950\/90,
-html.light .studio-gauge-card .bg-zinc-950\/80,
-html.light .studio-gauge-card .bg-zinc-950\/40,
-html.light .studio-main-chart-card .bg-zinc-950\/90,
-html.light .studio-diagnosis-card .bg-zinc-950,
-html.light .studio-diagnosis-card .bg-zinc-900,
-html.light .studio-stats-strip .bg-zinc-950\/60 {
-  background-color: rgba(255, 255, 255, 0.92) !important;
 }
 
 html.light .assistant-response-card > *,
@@ -377,26 +295,45 @@ html.light .chat-shell-input-wrap {
   background: rgba(107, 114, 128, 0.8);
 }
 
-/* Glassmorphism utility classes */
+/* Glassmorphism & Cyber-Utilitarian Utility Classes */
 .glass-panel {
-  background: rgba(17, 24, 39, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(17, 24, 39, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .glass-card {
-  background: rgba(31, 41, 55, 0.6);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(31, 41, 55, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
-.glass-card:hover {
-  border-color: rgba(59, 130, 246, 0.3);
+.glass-card-interactive {
+  background: rgba(31, 41, 55, 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card-interactive:hover {
+  background: rgba(31, 41, 55, 0.75);
+  border-color: rgba(12, 138, 255, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px -6px rgba(12, 138, 255, 0.15);
 }
 
 /* Shimmer & Glow Effects */
 .glow-brand {
-  box-shadow: 0 0 20px -5px rgba(12, 138, 255, 0.3);
+  box-shadow: 0 0 20px -5px rgba(12, 138, 255, 0.35);
+}
+
+.glow-brand-lg {
+  box-shadow: 0 0 30px -5px rgba(12, 138, 255, 0.45);
+}
+
+.glow-success {
+  box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.35);
 }

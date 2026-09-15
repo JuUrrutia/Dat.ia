@@ -1,6 +1,6 @@
 import json
 import re
-from typing import List, Dict, Any, Optional, Set, Tuple
+from typing import List, Dict, Any, Optional
 from app.core.constants import (
     DATA_REQUEST_KEYWORDS, GREETING_KEYWORDS, ADVISORY_KEYWORDS, EXPLANATION_KEYWORDS,
     HYBRID_KEYWORDS, REPORT_KEYWORDS, LIST_KEYWORDS, COUNT_KEYWORDS
@@ -66,7 +66,6 @@ class IntentClassifier:
             return PresentationHints(
                 show_executive_report=False,
                 show_kpis=False,
-                show_gauges=False,
                 show_chart=False,
                 preferred_view="assistant",
                 summary_style="detailed"
@@ -92,12 +91,14 @@ class IntentClassifier:
                 json_match = re.search(r'\{[\s\S]*\}', resp)
                 if json_match:
                     data = json.loads(json_match.group(0))
+                    pref_v = str(data.get("preferred_view", "assistant"))
+                    if pref_v == "studio":
+                        pref_v = "assistant"
                     return PresentationHints(
                         show_executive_report=bool(data.get("show_executive_report", True)),
                         show_kpis=bool(data.get("show_kpis", True)),
-                        show_gauges=bool(data.get("show_gauges", True)),
                         show_chart=bool(data.get("show_chart", True)),
-                        preferred_view=str(data.get("preferred_view", "studio")),
+                        preferred_view=pref_v,
                         summary_style=str(data.get("summary_style", "detailed"))
                     )
         except Exception:
@@ -115,31 +116,33 @@ class IntentClassifier:
     ) -> PresentationHints:
         q_lower = question.lower()
 
-        if response_type == "report":
+        is_report_requested = any(k in q_lower for k in ("informe", "reporte", "diagnóstico", "evaluación ejecutiva"))
+
+        if response_type == "report" or is_report_requested:
             return PresentationHints(
                 show_executive_report=True, show_kpis=True,
-                show_gauges=True, show_chart=True,
+                show_chart=True,
                 preferred_view="report", summary_style="executive"
             )
 
         if response_type == "hybrid":
             return PresentationHints(
-                show_executive_report=True, show_kpis=True,
-                show_gauges=False, show_chart=True,
-                preferred_view="studio", summary_style="detailed"
+                show_executive_report=False, show_kpis=True,
+                show_chart=True,
+                preferred_view="assistant", summary_style="detailed"
             )
 
         if any(k in q_lower for k in COUNT_KEYWORDS):
             return PresentationHints(
                 show_executive_report=False, show_kpis=True,
-                show_gauges=False, show_chart=False,
+                show_chart=False,
                 preferred_view="table", summary_style="concise"
             )
 
         if any(k in q_lower for k in LIST_KEYWORDS):
             return PresentationHints(
                 show_executive_report=False, show_kpis=False,
-                show_gauges=False, show_chart=False,
+                show_chart=False,
                 preferred_view="table", summary_style="concise"
             )
 
@@ -155,14 +158,14 @@ class IntentClassifier:
         if has_numeric and len(rows) > 1:
             return PresentationHints(
                 show_executive_report=False, show_kpis=True,
-                show_gauges=False, show_chart=True,
-                preferred_view="studio", summary_style="detailed"
+                show_chart=True,
+                preferred_view="assistant", summary_style="detailed"
             )
 
         return PresentationHints(
             show_executive_report=False, show_kpis=False,
-            show_gauges=False, show_chart=True if has_numeric else False,
-            preferred_view="studio" if has_numeric else "table",
+            show_chart=True if has_numeric else False,
+            preferred_view="assistant" if has_numeric else "table",
             summary_style="concise"
         )
 
@@ -184,18 +187,19 @@ class IntentClassifier:
             temp = 0.2
             prompt = f"Pregunta del usuario ({user_role}): \"{question}\"\n"
             if data_context:
-                prompt += f"\nResultados devueltos por la base de datos ({len(data_context)} registros encontrados):\n{json.dumps(data_context[:25], ensure_ascii=False, indent=2)}\n\nResponde directamente a la pregunta explicando estos datos."
+                prompt += f"\nResultados obtenidos por DATIA desde la base de datos corporativa ({len(data_context)} registros encontrados):\n{json.dumps(data_context[:25], ensure_ascii=False, indent=2, default=str)}\n\nExplica estos datos obtenidos de la BD al usuario en respuesta a su pregunta."
             else:
-                prompt += "\nLa base de datos ejecutó la consulta pero no se encontraron registros coincidentes. Explica cordialmente la situación."
+                prompt += "\nLa base de datos fue consultada pero no se encontraron registros coincidentes. Explica cordialmente la situación al usuario."
         elif response_type == "greeting":
             system_prompt = PromptManager.get_general_greeting_system_prompt(user_role, set(columns or []))
             temp = 0.4
             prompt = f"Saludo/Mensaje del usuario ({user_role}): \"{question}\"\nSaluda cordialmente, explica tus funciones y sugiere ejemplos de preguntas para sus tablas autorizadas."
         elif response_type in ("advisory", "explanation", "hybrid"):
-            system_prompt, temp = PromptManager.get_conversational_system_prompt(response_type)
+            system_prompt = PromptManager.get_conversational_system_prompt(response_type)
+            temp = 0.2
             prompt = f"Pregunta del usuario ({user_role}): \"{question}\"\n"
             if data_context:
-                prompt += f"\nContexto de datos reales de la empresa (primeras 30 filas):\n{json.dumps(data_context[:30], ensure_ascii=False, indent=2)}"
+                prompt += f"\nContexto de datos reales leídos de la base de datos ({len(data_context)} registros encontrados):\n{json.dumps(data_context[:30], ensure_ascii=False, indent=2, default=str)}\n\nAnaliza e interpreta estos datos de la BD para responder a la consulta del usuario de forma perspicaz."
         else:
             return None
 

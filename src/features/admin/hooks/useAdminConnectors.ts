@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CorporateConnection, ConnectionTestResult, connectorService } from '../../../services/connector_service';
+import { CorporateConnection, ConnectionTestResult, connectorService } from '../services/connector_service';
 
 export function useAdminConnectors(connectors: CorporateConnection[]) {
   const [filterDbType, setFilterDbType] = useState<string>('ALL');
