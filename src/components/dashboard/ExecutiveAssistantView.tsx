@@ -38,7 +38,7 @@ export const ExecutiveAssistantView: React.FC<ExecutiveAssistantViewProps> = ({
   );
 
   return (
-    <div className="w-full space-y-5 animate-fadeIn">
+    <div className="w-full space-y-3 animate-fadeIn font-sans">
       <AssistantHeader
         result={result}
         canSwitchToStudio={canSwitchToStudio}
@@ -54,35 +54,28 @@ export const ExecutiveAssistantView: React.FC<ExecutiveAssistantViewProps> = ({
       {showSupportData && <AssistantSupportData result={result} />}
 
       {/* Main Content Area */}
-      <div className="bg-gradient-to-br from-zinc-900/95 via-zinc-900/60 to-zinc-950/95 border border-white/10 rounded-3xl p-7 shadow-2xl space-y-6">
+      <div className="glass-panel border border-white/10 rounded-2xl p-5 sm:p-6 shadow-2xl space-y-4">
         <AssistantMarkdownBody rawContent={rawContent} />
 
         {/* Footer Technical Metadata & Traceability */}
-        <div className="pt-5 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-zinc-400">
+        <div className="pt-3.5 border-t border-dark-border/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-gray-400">
           <div className="flex items-center space-x-3 flex-wrap gap-y-1">
-            <span className="flex items-center space-x-1 text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md border border-emerald-500/20 font-medium">
+            <span className="inline-flex items-center space-x-1 text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md border border-emerald-500/20 text-[10px] font-semibold">
               <CheckCircle2 className="w-3 h-3" />
               <span>Gobernanza AST Aprobada</span>
             </span>
-            <span>
-              Latencia: <strong className="text-zinc-200">{result.traceability?.execution_time_ms || 0} ms</strong>
+            <span className="text-[11px]">
+              Latencia: <strong className="text-gray-200 font-mono">{result.traceability?.execution_time_ms || 0} ms</strong>
             </span>
-            {result.grounding_info && (
-              <span className="hidden sm:inline text-zinc-500">|</span>
-            )}
-            {result.grounding_info && (
-              <span className="text-zinc-300 truncate max-w-md">
-                {result.grounding_info}
-              </span>
-            )}
           </div>
 
           {onOpenTraceability && (
             <button
+              type="button"
               onClick={onOpenTraceability}
-              className="flex items-center space-x-1.5 text-xs text-amber-400 hover:text-amber-300 transition-colors self-start sm:self-auto font-medium"
+              className="flex items-center space-x-1 text-xs text-brand-300 hover:text-brand-200 transition-colors font-medium self-start sm:self-auto"
             >
-              <ShieldCheck className="w-3.5 h-3.5" />
+              <ShieldCheck className="w-3.5 h-3.5 text-brand-400" />
               <span>Ver Auditoría SQL</span>
             </button>
           )}

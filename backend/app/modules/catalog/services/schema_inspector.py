@@ -27,6 +27,9 @@ class SchemaInspector:
         conn = None
         if connection_id:
             conn = db.query(CorporateConnection).filter(CorporateConnection.id == connection_id).first()
+            if not conn:
+                # If explicit connection_id was requested (e.g. 1) but not found, check for the main corporate DB
+                conn = db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == False).first()
 
         if not conn:
             conn = db.query(CorporateConnection).filter(CorporateConnection.is_active == True).order_by(CorporateConnection.id.desc()).first()
@@ -73,6 +76,25 @@ class SchemaInspector:
 
                 table_names = inspector.get_table_names(schema=target_schema)
                 active_tables = [t for t in table_names if t.lower() not in cls.IGNORED_TABLES]
+
+                if conn_obj:
+                    from app.core.database import SessionLocal
+                    from app.modules.admin_catalog.models import RoleTablePermission, CorporateConnection
+                    _s = SessionLocal()
+                    try:
+                        if conn_obj.is_uploaded:
+                            assigned = _s.query(RoleTablePermission.table_name).filter(RoleTablePermission.connection_id == conn_obj.id).all()
+                            if assigned:
+                                assigned_set = {r[0].lower() for r in assigned if r[0]}
+                                active_tables = [t for t in active_tables if t.lower() in assigned_set]
+                        else:
+                            uploaded_conn_ids = [c[0] for c in _s.query(CorporateConnection.id).filter(CorporateConnection.is_uploaded == True).all()]
+                            if uploaded_conn_ids:
+                                uploaded_tables = _s.query(RoleTablePermission.table_name).filter(RoleTablePermission.connection_id.in_(uploaded_conn_ids)).all()
+                                uploaded_set = {r[0].lower() for r in uploaded_tables if r[0]}
+                                active_tables = [t for t in active_tables if t.lower() not in uploaded_set]
+                    finally:
+                        _s.close()
 
                 with eng.connect() as connection:
                     for tbl in active_tables:

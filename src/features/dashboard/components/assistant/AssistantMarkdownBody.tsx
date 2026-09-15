@@ -1,6 +1,5 @@
 import React from 'react';
 
-// Helper to parse sections/ideas from markdown
 export const parseMarkdownContent = (text: string) => {
   const lines = text.split('\n');
   const sections: Array<{
@@ -90,14 +89,14 @@ export const formatInlineMarkdown = (text: string, keyPrefix: string = 'inline')
   return parts.map((part) => {
     if (part.content.startsWith('**') && part.content.endsWith('**')) {
       return (
-        <strong key={part.id} className="text-amber-300 font-semibold">
+        <strong key={part.id} className="text-white font-semibold">
           {part.content.slice(2, -2)}
         </strong>
       );
     }
     if (part.content.startsWith('`') && part.content.endsWith('`')) {
       return (
-        <code key={part.id} className="bg-zinc-950 px-1.5 py-0.5 rounded text-amber-300 font-mono text-xs border border-white/10">
+        <code key={part.id} className="bg-dark-base px-1.5 py-0.5 rounded text-cyan-300 font-mono text-xs border border-dark-border">
           {part.content.slice(1, -1)}
         </code>
       );
@@ -115,20 +114,20 @@ export const AssistantMarkdownBody: React.FC<AssistantMarkdownBodyProps> = ({ ra
 
   if (parsedSections.length === 0) {
     return (
-      <div className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">
+      <div className="text-xs sm:text-sm text-gray-200 leading-relaxed whitespace-pre-wrap font-sans">
         {rawContent}
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4 font-sans text-xs sm:text-sm text-gray-200">
       {parsedSections.map((sec) => {
         if (sec.type === 'h2') {
           return (
-            <div key={sec.id} className="pb-3 border-b border-white/10 flex items-center space-x-2.5">
-              <div className="w-2 h-2 rounded-full bg-amber-400" />
-              <h3 className="text-base font-bold text-white tracking-tight">
+            <div key={sec.id} className="pb-2 border-b border-dark-border/80 flex items-center space-x-2 pt-2">
+              <span className="w-2 h-2 rounded-full bg-cyan-400" />
+              <h3 className="text-sm sm:text-base font-extrabold text-white tracking-tight">
                 {sec.content}
               </h3>
             </div>
@@ -139,16 +138,16 @@ export const AssistantMarkdownBody: React.FC<AssistantMarkdownBodyProps> = ({ ra
           return (
             <div
               key={sec.id}
-              className="flex items-center space-x-3 pt-2 mt-4 first:mt-0"
+              className="flex items-center space-x-2.5 pt-2 mt-3 first:mt-0"
             >
               {sec.number !== undefined ? (
-                <div className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-300 font-extrabold flex items-center justify-center text-xs shrink-0 border border-amber-500/30 shadow-md shadow-amber-500/10">
+                <div className="w-5 h-5 rounded-md bg-brand-500/20 text-brand-300 font-bold flex items-center justify-center text-xs shrink-0 border border-brand-500/30">
                   {sec.number}
                 </div>
               ) : (
-                <div className="w-2 h-2 rounded-full bg-amber-400" />
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
               )}
-              <h4 className="text-sm font-bold text-amber-300/95 tracking-tight">
+              <h4 className="text-xs sm:text-sm font-bold text-gray-100 tracking-tight">
                 {sec.content}
               </h4>
             </div>
@@ -159,7 +158,7 @@ export const AssistantMarkdownBody: React.FC<AssistantMarkdownBodyProps> = ({ ra
           return (
             <blockquote
               key={sec.id}
-              className="border-l-2 border-amber-400/80 bg-amber-500/5 px-4 py-2.5 rounded-r-xl text-xs text-amber-200/90 leading-relaxed italic my-2"
+              className="border-l-2 border-cyan-400 bg-cyan-500/5 px-3.5 py-2 rounded-r-xl text-xs text-gray-300 leading-relaxed italic my-2"
             >
               {formatInlineMarkdown(sec.content, sec.id)}
             </blockquote>
@@ -170,9 +169,9 @@ export const AssistantMarkdownBody: React.FC<AssistantMarkdownBodyProps> = ({ ra
           return (
             <div
               key={sec.id}
-              className="flex items-start space-x-2.5 text-sm text-zinc-300 leading-relaxed pl-1 py-0.5"
+              className="flex items-start space-x-2 text-xs sm:text-sm text-gray-300 leading-relaxed pl-1 py-0.5"
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-2 shrink-0" />
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-2 shrink-0" />
               <div className="leading-relaxed font-normal flex-1">
                 {formatInlineMarkdown(sec.content, sec.id)}
               </div>
@@ -183,7 +182,7 @@ export const AssistantMarkdownBody: React.FC<AssistantMarkdownBodyProps> = ({ ra
         return (
           <p
             key={sec.id}
-            className="text-sm text-zinc-200 leading-relaxed font-normal my-1"
+            className="text-xs sm:text-sm text-gray-200 leading-relaxed font-normal my-1"
           >
             {formatInlineMarkdown(sec.content, sec.id)}
           </p>

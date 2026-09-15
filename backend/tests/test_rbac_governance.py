@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock
-from app.services.query_engine import QueryEngine
-from app.services.dynamic_schema import DynamicSchemaPruningService
+from app.modules.chat_engine.engine import QueryEngine
+from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
 
 class TestRBACGovernance(unittest.TestCase):
 
@@ -84,7 +84,7 @@ class TestRBACGovernance(unittest.TestCase):
             permission_type=MagicMock(value="BLOCKED")
         )
         # Match enum comparison inside dynamic_schema
-        from app.models.permission import ColumnPermissionType
+        from app.modules.admin_catalog.models import ColumnPermissionType
         mock_col_perm.permission_type = ColumnPermissionType.BLOCKED
 
         mock_db = MagicMock()

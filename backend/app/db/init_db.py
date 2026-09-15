@@ -1,4 +1,7 @@
-import app.models  # Ensures all SQLAlchemy models are registered
+import app.modules.auth.models
+import app.modules.admin_catalog.models
+import app.modules.telemetry_audit.models
+import app.modules.chat_engine.models
 from sqlalchemy.orm import Session
 from app.core.database import Base, engine
 from app.core.security import get_password_hash
@@ -6,7 +9,6 @@ from app.modules.auth.models import User, Role, Domain
 from app.modules.admin_catalog.models import (
     CorporateConnection, DatabaseType, SemanticCatalog, RoleTablePermission
 )
-from app.core.constants import ROLE_ADMINISTRADOR
 
 def init_db(db: Session):
     """
@@ -116,24 +118,69 @@ def init_db(db: Session):
 
     import os
     from app.core.config import settings
+    from app.core.security import encrypt_credential
+
+    if engine.dialect.name != "postgresql":
+        db_path = settings.SQLITE_DB_PATH
+        if not os.path.exists(db_path):
+            try:
+                import sys
+                backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                if backend_dir not in sys.path:
+                    sys.path.insert(0, backend_dir)
+                from setup_demo_db import setup_demo_sqlite
+                setup_demo_sqlite()
+            except Exception:
+                pass
 
     existing_conn = db.query(CorporateConnection).first()
     if not existing_conn:
-        db_path = settings.SQLITE_DB_PATH
-        db_name = os.path.basename(db_path)
-        default_conn = CorporateConnection(
-            name="BD Corporativa Local",
-            db_type=DatabaseType.SQLITE,
-            host=db_path,
-            port=0,
-            database_name=db_name,
-            username="admin",
-            encrypted_password="",
-            is_active=True,
-            is_uploaded=False
-        )
+        if engine.dialect.name == "postgresql":
+            default_conn = CorporateConnection(
+                name="Base de Datos Corporativa PostgreSQL",
+                db_type=DatabaseType.POSTGRESQL,
+                host=settings.POSTGRES_SERVER,
+                port=settings.POSTGRES_PORT,
+                database_name="democratizacion_empresa",
+                username=settings.POSTGRES_USER,
+                encrypted_password=encrypt_credential(settings.POSTGRES_PASSWORD),
+                is_active=True,
+                is_uploaded=False
+            )
+        else:
+            db_path = settings.SQLITE_DB_PATH
+            db_name = os.path.basename(db_path)
+            default_conn = CorporateConnection(
+                name="BD Corporativa Local",
+                db_type=DatabaseType.SQLITE,
+                host=db_path,
+                port=0,
+                database_name=db_name,
+                username="admin",
+                encrypted_password="",
+                is_active=True,
+                is_uploaded=False
+            )
         db.add(default_conn)
         db.commit()
+    elif engine.dialect.name == "postgresql":
+        pg_conn = db.query(CorporateConnection).filter(
+            CorporateConnection.db_type == DatabaseType.POSTGRESQL
+        ).first()
+        if not pg_conn:
+            default_conn = CorporateConnection(
+                name="Base de Datos Corporativa PostgreSQL",
+                db_type=DatabaseType.POSTGRESQL,
+                host=settings.POSTGRES_SERVER,
+                port=settings.POSTGRES_PORT,
+                database_name="democratizacion_empresa",
+                username=settings.POSTGRES_USER,
+                encrypted_password=encrypt_credential(settings.POSTGRES_PASSWORD),
+                is_active=True,
+                is_uploaded=False
+            )
+            db.add(default_conn)
+            db.commit()
 
     all_business_tables = [
         "dim_categorias", "dim_productos", "dim_clientes",
@@ -158,29 +205,40 @@ def init_db(db: Session):
     for r in all_ti_roles:
         role_table_mappings.append((r, all_tech_tables))
 
-    for r_obj, tbl_list in role_table_mappings:
-        if r_obj:
-            for tbl in tbl_list:
-                existing_perm = db.query(RoleTablePermission).filter(
-                    RoleTablePermission.role_id == r_obj.id,
-                    RoleTablePermission.connection_id == 1,
-                    RoleTablePermission.table_name == tbl
-                ).first()
-                if not existing_perm:
-                    db.add(RoleTablePermission(
-                        role_id=r_obj.id,
-                        connection_id=1,
-                        schema_name="main",
-                        table_name=tbl,
-                        is_allowed=True
-                    ))
+    primary_conn = None
+    standard_connections = db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == False).all()
+    for s_conn in standard_connections:
+        s_schema = "public" if (s_conn.db_type == DatabaseType.POSTGRESQL or str(s_conn.db_type).lower() == "postgresql") else "main"
+        for r_obj, tbl_list in role_table_mappings:
+            if r_obj:
+                for tbl in tbl_list:
+                    existing_perm = db.query(RoleTablePermission).filter(
+                        RoleTablePermission.role_id == r_obj.id,
+                        RoleTablePermission.connection_id == s_conn.id,
+                        RoleTablePermission.table_name == tbl
+                    ).first()
+                    if not existing_perm:
+                        db.add(RoleTablePermission(
+                            role_id=r_obj.id,
+                            connection_id=s_conn.id,
+                            schema_name=s_schema,
+                            table_name=tbl,
+                            is_allowed=True
+                        ))
 
-    # Also seed permissions for all other registered connections (e.g. uploaded datasets)
+    # Ensure financial roles strictly do NOT have access to tech/server infrastructure tables
+    for r_obj in all_financiero_roles:
+        db.query(RoleTablePermission).filter(
+            RoleTablePermission.role_id == r_obj.id,
+            RoleTablePermission.table_name.in_(["dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos"])
+        ).delete(synchronize_session=False)
+
+    # Seed permissions for uploaded user datasets (is_uploaded == True)
     from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
-    other_connections = db.query(CorporateConnection).filter(CorporateConnection.id != 1).all()
+    uploaded_connections = db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == True).all()
     operational_roles = db.query(Role).filter(~Role.name.in_(["Usuario", "Usuario Consultor"])).all()
 
-    for o_conn in other_connections:
+    for o_conn in uploaded_connections:
         db_path = o_conn.host if (o_conn.host and os.path.exists(o_conn.host)) else (
             o_conn.database_name if (o_conn.database_name and os.path.exists(o_conn.database_name)) else None
         )

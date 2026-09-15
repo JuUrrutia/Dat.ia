@@ -4,7 +4,7 @@ from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
 from app.modules.chat_engine.llm_service import LLMService
 from app.modules.chat_engine.models import QueryLearningMemory
 from app.modules.chat_engine.schemas import (
-    QueryRequest, QueryResponse, SuggestionsResponse, KPICard, MetricGauge, ExecutiveReport, TraceabilityAudit, PresentationHints
+    QueryRequest, QueryResponse, SuggestionsResponse, KPICard, ExecutiveReport, TraceabilityAudit, PresentationHints
 )
 
 __all__ = [
@@ -18,7 +18,6 @@ __all__ = [
     "QueryResponse",
     "SuggestionsResponse",
     "KPICard",
-    "MetricGauge",
     "ExecutiveReport",
     "TraceabilityAudit",
     "PresentationHints"

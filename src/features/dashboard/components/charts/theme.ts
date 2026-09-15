@@ -7,13 +7,9 @@ export type ChartType =
   | 'area'
   | 'donut'
   | 'pie'
-  | 'radar'
-  | 'scatter'
-  | 'funnel'
-  | 'gauge'
-  | 'treemap';
+  | 'none';
 
-export type ColorTheme = 'amber' | 'cyan' | 'emerald' | 'indigo' | 'rose' | 'ocean' | 'rainbow';
+export type ColorTheme = 'amber' | 'cyan' | 'emerald' | 'indigo' | 'rose';
 
 export const THEME_COLORS: Record<
   ColorTheme,
@@ -47,7 +43,7 @@ export const THEME_COLORS: Record<
     gradient: ['#10B981', '#059669', '#047857', '#34D399', '#6EE7B7', '#064E3B'],
   },
   indigo: {
-    name: 'Púrpura Dat.ia IA',
+    name: 'Púrpura Datia IA',
     primary: '#8B5CF6',
     secondary: '#A78BFA',
     glow: 'rgba(139, 92, 246, 0.35)',
@@ -59,20 +55,6 @@ export const THEME_COLORS: Record<
     secondary: '#FB7185',
     glow: 'rgba(244, 63, 94, 0.35)',
     gradient: ['#F43F5E', '#E11D48', '#BE123C', '#FB7185', '#FDA4AF', '#881337'],
-  },
-  ocean: {
-    name: 'Azul Océano',
-    primary: '#3B82F6',
-    secondary: '#60A5FA',
-    glow: 'rgba(59, 130, 246, 0.35)',
-    gradient: ['#3B82F6', '#2563EB', '#1D4ED8', '#60A5FA', '#93C5FD', '#1E3A8A'],
-  },
-  rainbow: {
-    name: 'Espectro Multicolor',
-    primary: '#6366F1',
-    secondary: '#EC4899',
-    glow: 'rgba(99, 102, 241, 0.35)',
-    gradient: ['#6366F1', '#EC4899', '#F59E0B', '#10B981', '#06B6D4', '#8B5CF6', '#F43F5E', '#14B8A6'],
   },
 };
 

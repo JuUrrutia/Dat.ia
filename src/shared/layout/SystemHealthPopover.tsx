@@ -86,6 +86,18 @@ export const SystemHealthPopover: React.FC<SystemHealthPopoverProps> = ({
         aria-expanded={isOpen}
         className={`flex items-center space-x-2 px-3 py-1 rounded-full border text-xs font-medium transition-colors shadow-sm ${badgeUI.bg}`}
       >
+        {status === 'OPERATIVO' && (
+          <span className="relative flex h-2 w-2 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+        )}
+        {status === 'DEGRADADO' && (
+          <span className="relative flex h-2 w-2 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+          </span>
+        )}
         {badgeUI.icon}
         <span>{badgeUI.label}</span>
       </button>
@@ -145,7 +157,7 @@ export const SystemHealthPopover: React.FC<SystemHealthPopoverProps> = ({
                 <Database className="w-4 h-4 text-brand-400 shrink-0" />
                 <div className="truncate">
                   <div className="text-white font-medium truncate">
-                    {details?.metadata_db.name || 'Base Metadatos (Dat.ia)'}
+                    {details?.metadata_db.name || 'Base Metadatos (Datia)'}
                   </div>
                   <div className="text-[10px] text-gray-400">
                     {details?.metadata_db.latency_ms || 0} ms
