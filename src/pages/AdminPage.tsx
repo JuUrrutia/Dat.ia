@@ -87,18 +87,18 @@ export const AdminPage: React.FC = () => {
   const activeCount = connectors.filter((c) => c.is_active).length;
 
   return (
-    <div className="w-full h-full flex-1 bg-dark-base overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar pb-28 font-sans">
+    <div className="w-full h-full flex-1 bg-slate-50 dark:bg-dark-base overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar pb-28 font-sans">
       {/* Header Banner */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 glass-panel p-5 rounded-2xl border border-white/10 shadow-2xl">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 glass-panel p-5 rounded-2xl border border-slate-200 dark:border-white/10 shadow-sm bg-white dark:bg-zinc-900/90">
         <div className="flex items-center space-x-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-purple-500/25 shrink-0">
-            <ShieldAlert className="w-6 h-6 text-white" />
+          <div className="w-11 h-11 rounded-xl bg-brand-600 flex items-center justify-center text-white shadow-sm shrink-0">
+            <ShieldAlert className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-lg sm:text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
+            <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
               <span>Panel de Gobernanza & Fuentes BD Corporativas</span>
             </h1>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-slate-600 dark:text-gray-400">
               Administración centralizada de conexiones a SQLite, PostgreSQL, SQL Server y MySQL con cifrado AES-256
             </p>
           </div>
@@ -106,41 +106,41 @@ export const AdminPage: React.FC = () => {
 
         {/* Quick Stats Badges */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <div className="bg-dark-base/80 border border-dark-border/80 px-4 py-2.5 rounded-xl flex items-center space-x-3 shadow-inner">
-            <Server className="w-4 h-4 text-purple-400 shrink-0" />
+          <div className="bg-slate-50 dark:bg-dark-base/80 border border-slate-200 dark:border-dark-border/80 px-4 py-2.5 rounded-xl flex items-center space-x-3 shadow-inner">
+            <Server className="w-4 h-4 text-brand-600 dark:text-brand-400 shrink-0" />
             <div className="truncate">
-              <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Fuentes BD</div>
-              <div className="text-white font-bold text-xs">{connectors.length} ({activeCount} activas)</div>
+              <div className="text-[10px] text-slate-500 dark:text-gray-400 font-bold uppercase tracking-wider">Fuentes BD</div>
+              <div className="text-slate-900 dark:text-white font-bold text-xs font-mono">{connectors.length} ({activeCount} activas)</div>
             </div>
           </div>
 
-          <div className="bg-dark-base/80 border border-dark-border/80 px-4 py-2.5 rounded-xl flex items-center space-x-3 shadow-inner">
-            <Users className="w-4 h-4 text-emerald-400 shrink-0" />
+          <div className="bg-slate-50 dark:bg-dark-base/80 border border-slate-200 dark:border-dark-border/80 px-4 py-2.5 rounded-xl flex items-center space-x-3 shadow-inner">
+            <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <div className="truncate">
-              <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Usuarios RBAC</div>
-              <div className="text-white font-bold text-xs">{dbUsers.length} Perfiles</div>
+              <div className="text-[10px] text-slate-500 dark:text-gray-400 font-bold uppercase tracking-wider">Usuarios RBAC</div>
+              <div className="text-slate-900 dark:text-white font-bold text-xs font-mono">{dbUsers.length} Perfiles</div>
             </div>
           </div>
 
-          <div className="bg-dark-base/80 border border-dark-border/80 px-4 py-2.5 rounded-xl flex items-center space-x-3 shadow-inner">
-            <Key className="w-4 h-4 text-cyan-400 shrink-0" />
+          <div className="bg-slate-50 dark:bg-dark-base/80 border border-slate-200 dark:border-dark-border/80 px-4 py-2.5 rounded-xl flex items-center space-x-3 shadow-inner">
+            <Key className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
             <div className="truncate">
-              <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Seguridad</div>
-              <div className="text-emerald-400 font-bold text-xs">AES-256 + CLS</div>
+              <div className="text-[10px] text-slate-500 dark:text-gray-400 font-bold uppercase tracking-wider">Seguridad</div>
+              <div className="text-emerald-600 dark:text-emerald-400 font-bold text-xs">AES-256 + CLS</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Executive Navigation Tabs */}
-      <div className="flex items-center space-x-2 border-b border-dark-border/80 pb-1 overflow-x-auto custom-scrollbar">
+      <div className="flex items-center space-x-2 border-b border-slate-200 dark:border-dark-border/80 pb-1 overflow-x-auto custom-scrollbar">
         <button
           type="button"
           onClick={() => setActiveTab('connectors')}
           className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold transition-all whitespace-nowrap rounded-t-xl ${
             activeTab === 'connectors'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 glow-brand'
-              : 'text-gray-400 hover:text-white hover:bg-dark-card/60'
+              ? 'bg-brand-600 text-white shadow-sm'
+              : 'text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-card/60'
           }`}
         >
           <Database className="w-4 h-4" />
@@ -152,8 +152,8 @@ export const AdminPage: React.FC = () => {
           onClick={() => setActiveTab('users')}
           className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold transition-all whitespace-nowrap rounded-t-xl ${
             activeTab === 'users'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 glow-brand'
-              : 'text-gray-400 hover:text-white hover:bg-dark-card/60'
+              ? 'bg-brand-600 text-white shadow-sm'
+              : 'text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-card/60'
           }`}
         >
           <Users className="w-4 h-4" />
@@ -165,8 +165,8 @@ export const AdminPage: React.FC = () => {
           onClick={() => setActiveTab('catalog')}
           className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold transition-all whitespace-nowrap rounded-t-xl ${
             activeTab === 'catalog'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 glow-brand'
-              : 'text-gray-400 hover:text-white hover:bg-dark-card/60'
+              ? 'bg-brand-600 text-white shadow-sm'
+              : 'text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-card/60'
           }`}
         >
           <BookOpen className="w-4 h-4" />
@@ -178,8 +178,8 @@ export const AdminPage: React.FC = () => {
           onClick={() => setActiveTab('audit')}
           className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold transition-all whitespace-nowrap rounded-t-xl ${
             activeTab === 'audit'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 glow-brand'
-              : 'text-gray-400 hover:text-white hover:bg-dark-card/60'
+              ? 'bg-brand-600 text-white shadow-sm'
+              : 'text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-card/60'
           }`}
         >
           <FileText className="w-4 h-4" />

@@ -76,15 +76,11 @@ export const LoginPage: React.FC = () => {
   const activeError = localError || error;
 
   return (
-    <div className="min-h-screen bg-dark-base flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background Glow Accents */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-
+    <div className="min-h-[100dvh] bg-dark-base flex items-center justify-center p-4 relative overflow-hidden">
       <div className="w-full max-w-md space-y-6 relative z-10">
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-dark-card/60 shadow-xl shadow-brand-600/20 mb-2 overflow-hidden border border-brand-500/20">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-dark-card/60 shadow-md mb-2 overflow-hidden border border-white/10">
             <img src={logoDatiaLight} alt="Logo Datia" className="block dark:hidden w-full h-full object-contain p-1" />
             <img src={logoDatiaDark} alt="Logo Datia" className="hidden dark:block w-full h-full object-contain p-1" />
           </div>
@@ -93,7 +89,7 @@ export const LoginPage: React.FC = () => {
         </div>
 
         {/* Card Panel */}
-        <div className="glass-panel rounded-3xl p-7 border border-white/10 shadow-2xl space-y-6">
+        <div className="glass-panel rounded-2xl p-7 border border-white/10 shadow-xl space-y-6">
           {/* Mode Switcher Tabs */}
           <div className="flex bg-dark-base/80 p-1 rounded-xl border border-dark-border">
             <button
@@ -203,7 +199,7 @@ export const LoginPage: React.FC = () => {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full mt-2 flex items-center justify-center space-x-2 bg-gradient-to-r from-brand-600 to-purple-600 hover:from-brand-500 hover:to-purple-500 text-white font-semibold py-2.5 rounded-xl shadow-lg shadow-brand-600/30 transition-colors disabled:opacity-50"
+              className="w-full mt-2 flex items-center justify-center space-x-2 bg-brand-600 hover:bg-brand-500 active:scale-[0.99] text-white font-semibold py-2.5 rounded-xl shadow-md shadow-brand-600/25 transition-all disabled:opacity-50 cursor-pointer"
             >
               <span>{isSubmitting ? 'Procesando...' : mode === 'login' ? 'Acceder al Sistema' : 'Crear Cuenta'}</span>
               <ArrowRight className="w-4 h-4" />
@@ -212,17 +208,17 @@ export const LoginPage: React.FC = () => {
 
           {/* Quick Demo Selector for 3 Profiles */}
           <div className="pt-4 border-t border-dark-border/60">
-            <p className="text-[11px] text-gray-400 text-center mb-2.5">O prueba directamente con un perfil asignado:</p>
+            <p className="text-[11px] text-gray-400 text-center mb-2.5 font-medium">O prueba directamente con un perfil asignado:</p>
             <div className="grid grid-cols-3 gap-2">
               {PRESET_USERS.map((u) => (
                 <button
                   key={u.username}
                   type="button"
                   onClick={() => handlePresetLogin(u)}
-                  className="bg-dark-base/50 hover:bg-dark-card border border-dark-border hover:border-brand-500/40 rounded-lg p-2 text-center transition-colors"
+                  className="bg-dark-base/50 hover:bg-dark-card border border-dark-border hover:border-brand-500/40 rounded-xl p-2.5 text-center transition-all active:scale-[0.98] cursor-pointer"
                 >
                   <div className="text-[11px] font-semibold text-gray-200 truncate">{u.name}</div>
-                  <div className="text-[9px] text-brand-400 truncate">{u.role}</div>
+                  <div className="text-[10px] text-brand-400 font-medium truncate">{u.role}</div>
                 </button>
               ))}
             </div>

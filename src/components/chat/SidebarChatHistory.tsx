@@ -37,20 +37,20 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
   );
 
   const sidebarContent = (
-    <div className="w-72 bg-dark-surface/95 border-r border-dark-border flex flex-col h-full shrink-0 select-none">
+    <div className="w-72 bg-white dark:bg-dark-surface/95 border-r border-slate-200 dark:border-dark-border flex flex-col h-full shrink-0 select-none">
       {/* New Query Button & Mobile Close Header */}
-      <div className="p-3 sm:p-4 border-b border-dark-border/60 flex items-center gap-2">
+      <div className="p-3 sm:p-4 border-b border-slate-200 dark:border-dark-border/60 flex items-center gap-2">
         <button
           type="button"
           onClick={() => {
             onNewThread();
             if (onCloseMobile) onCloseMobile();
           }}
-          className="flex-1 flex items-center justify-center space-x-2 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white text-xs font-semibold py-2.5 px-4 rounded-xl shadow-lg shadow-brand-500/20 transition-colors group"
+          className="flex-1 flex items-center justify-center space-x-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold py-2.5 px-4 rounded-xl shadow-xs transition-colors group"
         >
           <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
           <span>Nueva Consulta</span>
-          <span className="text-[10px] text-white/60 font-mono hidden sm:inline ml-1">Ctrl+N</span>
+          <span className="text-[10px] text-white/70 font-mono hidden sm:inline ml-1">Ctrl+N</span>
         </button>
 
         {onCloseMobile && (
@@ -58,7 +58,7 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
             type="button"
             onClick={onCloseMobile}
             aria-label="Cerrar barra lateral"
-            className="md:hidden p-2 rounded-xl text-gray-400 hover:text-white hover:bg-dark-card transition-colors"
+            className="md:hidden p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-card transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -68,7 +68,7 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
       {/* Real-time Search Input */}
       <div className="px-3 pt-2 pb-1">
         <div className="relative flex items-center">
-          <Search className="w-3.5 h-3.5 text-gray-500 absolute left-2.5 pointer-events-none" />
+          <Search className="w-3.5 h-3.5 text-slate-400 dark:text-gray-500 absolute left-2.5 pointer-events-none" />
           <input
             ref={searchInputRef}
             type="text"
@@ -76,13 +76,13 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar historial... (Ctrl+K)"
             aria-label="Buscar en historial de consultas"
-            className="w-full bg-dark-base/90 border border-dark-border/80 text-xs text-white placeholder-gray-500 rounded-xl pl-8 pr-7 py-1.5 focus:outline-none focus:border-brand-500 transition-colors font-sans"
+            className="w-full bg-slate-50 dark:bg-dark-base/90 border border-slate-300 dark:border-dark-border/80 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-gray-500 rounded-xl pl-8 pr-7 py-1.5 focus:outline-none focus:border-brand-500 transition-colors font-sans"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 text-gray-400 hover:text-white p-0.5"
+              className="absolute right-2 text-slate-400 hover:text-slate-700 dark:text-gray-400 dark:hover:text-white p-0.5"
               aria-label="Limpiar búsqueda"
             >
               <X className="w-3 h-3" />
@@ -94,18 +94,17 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
       {/* Threads List */}
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
         <div>
-          <div className="flex items-center justify-between px-2 mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+          <div className="flex items-center justify-between px-2 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
             <div className="flex items-center space-x-1.5">
-              <History className="w-3 h-3 text-brand-400" />
+              <History className="w-3 h-3 text-brand-600 dark:text-brand-400" />
               <span>Historial de Consultas</span>
             </div>
             {searchQuery && (
-              <span className="text-[9px] text-brand-400 bg-brand-500/10 px-1.5 py-0.5 rounded border border-brand-500/20 font-mono">
+              <span className="text-[9px] text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-500/10 px-1.5 py-0.5 rounded border border-brand-200 dark:border-brand-500/20 font-mono">
                 {filteredThreads.length} {filteredThreads.length === 1 ? 'coincidencia' : 'coincidencias'}
               </span>
             )}
           </div>
-
 
           <div className="space-y-1">
             {filteredThreads.map((t) => {
@@ -123,12 +122,12 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
                     }}
                     className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer text-xs text-left transition-colors ${
                       isActive
-                        ? 'bg-brand-500/15 text-white border border-brand-500/30 font-medium'
-                        : 'text-gray-400 hover:text-gray-200 hover:bg-dark-card/60 border border-transparent'
+                        ? 'bg-brand-50 dark:bg-brand-500/15 text-brand-700 dark:text-white border border-brand-200 dark:border-brand-500/30 font-medium'
+                        : 'text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-gray-200 hover:bg-slate-100 dark:hover:bg-dark-card/60 border border-transparent'
                     }`}
                   >
                     <div className="flex items-center space-x-2.5 truncate pr-6">
-                      <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-brand-400' : 'text-gray-500'}`} />
+                      <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-gray-500'}`} />
                       <span className="truncate">{t.title}</span>
                     </div>
                   </button>
@@ -137,7 +136,7 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
                     type="button"
                     onClick={(e) => onDeleteThread(t.id, e)}
                     aria-label={`Eliminar conversación ${t.title}`}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-rose-400 transition-opacity absolute right-2"
+                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 dark:text-gray-400 dark:hover:text-rose-400 transition-opacity absolute right-2"
                     title="Eliminar conversación"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -147,13 +146,13 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
             })}
 
             {threads.length === 0 && (
-              <div className="text-center py-8 text-xs text-gray-500 px-2">
+              <div className="text-center py-8 text-xs text-slate-500 dark:text-gray-500 px-2">
                 No hay conversaciones previas. Haz clic en "Nueva Consulta" para iniciar una.
               </div>
             )}
 
             {threads.length > 0 && filteredThreads.length === 0 && (
-              <div className="text-center py-8 text-xs text-gray-500 px-2">
+              <div className="text-center py-8 text-xs text-slate-500 dark:text-gray-500 px-2">
                 No se encontraron consultas para "{searchQuery}".
               </div>
             )}
@@ -163,15 +162,15 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
       </div>
 
       {/* Database Active Status Footer */}
-      <div className="p-3 border-t border-dark-border/60 bg-dark-base/40">
-        <div className="flex items-center space-x-2.5 bg-dark-card/50 p-2.5 rounded-xl border border-dark-border">
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+      <div className="p-3 border-t border-slate-200 dark:border-dark-border/60 bg-slate-50/60 dark:bg-dark-base/40">
+        <div className="flex items-center space-x-2.5 bg-white dark:bg-dark-card/50 p-2.5 rounded-xl border border-slate-200 dark:border-dark-border">
+          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse shrink-0" />
           <div className="truncate min-w-0">
-            <div className="text-[10px] text-gray-400 uppercase font-semibold flex items-center gap-1">
-              <Database className="w-2.5 h-2.5 text-brand-400" />
+            <div className="text-[10px] text-slate-500 dark:text-gray-400 uppercase font-semibold flex items-center gap-1">
+              <Database className="w-2.5 h-2.5 text-brand-600 dark:text-brand-400" />
               <span>Fuente BD Activa</span>
             </div>
-            <div className="text-[11px] text-gray-200 truncate font-mono font-medium">
+            <div className="text-[11px] text-slate-900 dark:text-gray-200 truncate font-mono font-medium">
               {activeDatabaseName}
             </div>
           </div>
