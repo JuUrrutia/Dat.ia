@@ -3,7 +3,7 @@ import { QueryResult } from '../../types';
 import { AssistantHeader } from '../../features/dashboard/components/assistant/AssistantHeader';
 import { AssistantSupportData } from '../../features/dashboard/components/assistant/AssistantSupportData';
 import { AssistantMarkdownBody } from '../../features/dashboard/components/assistant/AssistantMarkdownBody';
-import { ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Clock } from 'lucide-react';
 
 interface ExecutiveAssistantViewProps {
   result: QueryResult;
@@ -58,14 +58,11 @@ export const ExecutiveAssistantView: React.FC<ExecutiveAssistantViewProps> = ({
         <AssistantMarkdownBody rawContent={rawContent} />
 
         {/* Footer Technical Metadata & Traceability */}
-        <div className="pt-3.5 border-t border-dark-border/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-gray-400">
-          <div className="flex items-center space-x-3 flex-wrap gap-y-1">
-            <span className="inline-flex items-center space-x-1 text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md border border-emerald-500/20 text-[10px] font-semibold">
-              <CheckCircle2 className="w-3 h-3" />
-              <span>Gobernanza AST Aprobada</span>
-            </span>
-            <span className="text-[11px]">
-              Latencia: <strong className="text-gray-200 font-mono">{result.traceability?.execution_time_ms || 0} ms</strong>
+        <div className="pt-3 border-t border-dark-border/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-slate-600 dark:text-gray-400">
+          <div className="flex items-center space-x-2 text-[11px]">
+            <Clock className="w-3.5 h-3.5 text-slate-500 dark:text-gray-400" />
+            <span>
+              Latencia: <strong className="text-slate-800 dark:text-gray-200 font-mono tabular-nums">{result.traceability?.execution_time_ms || 0} ms</strong>
             </span>
           </div>
 
@@ -73,9 +70,9 @@ export const ExecutiveAssistantView: React.FC<ExecutiveAssistantViewProps> = ({
             <button
               type="button"
               onClick={onOpenTraceability}
-              className="flex items-center space-x-1 text-xs text-brand-300 hover:text-brand-200 transition-colors font-medium self-start sm:self-auto"
+              className="flex items-center space-x-1 text-xs text-brand-700 dark:text-brand-300 hover:text-brand-900 dark:hover:text-brand-200 transition-colors font-medium self-start sm:self-auto"
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-brand-400" />
+              <ShieldCheck className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
               <span>Ver Auditoría SQL</span>
             </button>
           )}

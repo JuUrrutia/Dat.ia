@@ -6,7 +6,7 @@ import { ExecutiveAssistantView } from './ExecutiveAssistantView';
 import { KPISection } from '../../features/dashboard/components/KPISection';
 import { ChartSection } from '../../features/dashboard/components/ChartSection';
 import { OfflineAlertView } from '../../features/dashboard/components/OfflineAlertView';
-import { BarChart3, FileText, Table as TableIcon, Sparkles } from 'lucide-react';
+import { FileText, Table as TableIcon, Sparkles } from 'lucide-react';
 
 interface ExecutiveDashboardViewProps {
   result: QueryResult;
@@ -56,36 +56,21 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
 
   return (
     <div className="w-full space-y-4 animate-fadeIn font-sans">
-      {/* Optional Mode Switcher Tabs (Only if there are multiple data views available and user switched view) */}
-      {(hasChart || hasDataRows || result.executive_report) && (
-        <div className="executive-dashboard-header flex items-center space-x-1.5 bg-dark-base/80 p-1 rounded-xl border border-dark-border/80 w-fit">
+      {/* Optional Mode Switcher Tabs (Only if there are specialized alternative views like Report or Full Table) */}
+      {(result.executive_report || hasDataRows) && (
+        <div className="executive-dashboard-header flex items-center space-x-1.5 bg-slate-100 dark:bg-dark-base/80 p-1 rounded-xl border border-slate-200 dark:border-dark-border/80 w-fit">
           <button
             type="button"
             onClick={() => setViewMode('assistant')}
             className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              (viewMode as string) === 'assistant'
-                ? 'bg-brand-600 text-white shadow-md'
-                : 'text-gray-400 hover:text-white'
+              viewMode === 'assistant'
+                ? 'bg-brand-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Conversación IA</span>
+            <span>Síntesis y Gráficos</span>
           </button>
-
-          {hasChart && (
-            <button
-              type="button"
-              onClick={() => setViewMode('studio')}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                viewMode === 'studio'
-                  ? 'bg-brand-600 text-white shadow-md'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              <span>Studio Visual</span>
-            </button>
-          )}
 
           {result.executive_report && (
             <button
@@ -93,8 +78,8 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
               onClick={() => setViewMode('report')}
               className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 viewMode === 'report'
-                  ? 'bg-brand-600 text-white shadow-md'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-brand-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <FileText className="w-3.5 h-3.5" />
@@ -108,12 +93,12 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
               onClick={() => setViewMode('table')}
               className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 viewMode === 'table'
-                  ? 'bg-brand-600 text-white shadow-md'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-brand-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <TableIcon className="w-3.5 h-3.5" />
-              <span>Datos ({result.data_rows?.length || 0})</span>
+              <span>Tabla de Datos ({result.data_rows?.length || 0})</span>
             </button>
           )}
         </div>
@@ -121,12 +106,27 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
 
       {/* Main View Switching */}
       {viewMode === 'assistant' && (
-        <ExecutiveAssistantView
-          result={result}
-          onOpenTraceability={onOpenTraceability}
-          onSwitchToStudio={() => setViewMode('studio')}
-          onSwitchToReport={() => setViewMode('report')}
-        />
+        <div className="space-y-4">
+          <ExecutiveAssistantView
+            result={result}
+            onOpenTraceability={onOpenTraceability}
+            onSwitchToReport={result.executive_report ? () => setViewMode('report') : undefined}
+          />
+
+          {/* Auto-render KPIs directly under narrative if present */}
+          {result.kpis && result.kpis.length > 0 && (
+            <KPISection kpis={result.kpis} />
+          )}
+
+          {/* Auto-render interactive Chart directly under narrative if present */}
+          {hasChart && (
+            <ChartSection
+              result={result}
+              onDrillDown={(cat) => onFollowUp?.(`Detalla en profundidad los registros para: ${cat}`)}
+              onTimeFilter={(label) => onFollowUp?.(`Filtra los datos de la consulta anterior para el periodo: ${label}`)}
+            />
+          )}
+        </div>
       )}
 
       {viewMode === 'studio' && (

@@ -21,11 +21,9 @@ export const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
 }) => {
   return (
     <div className="h-full flex flex-col items-center justify-center max-w-3xl mx-auto text-center space-y-6 sm:space-y-8 p-4 font-sans relative">
-      {/* Kokonut UI Animated Glowing Ring / Orb Background */}
+      {/* Datia Brand Avatar */}
       <div className="relative flex items-center justify-center">
-        <div className="absolute w-32 h-32 rounded-full bg-gradient-to-tr from-brand-500/20 via-indigo-500/20 to-cyan-500/20 blur-2xl pointer-events-none animate-pulse" />
-        
-        <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-white/80 dark:bg-zinc-900/80 flex items-center justify-center shadow-2xl shadow-brand-500/30 border border-white/20 animate-fadeIn overflow-hidden p-2">
+        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-dark-card/70 flex items-center justify-center shadow-lg border border-white/10 overflow-hidden p-2">
           <img src={logoDatiaLight} alt="Logo de Dat.ia" className="block dark:hidden w-full h-full object-contain" />
           <img src={logoDatiaDark} alt="Logo de Dat.ia" className="hidden dark:block w-full h-full object-contain" />
         </div>
@@ -34,7 +32,7 @@ export const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
       {/* Hero Content */}
       <div className="space-y-2.5 max-w-lg">
         <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-300 text-xs font-semibold">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
           <span>DATIA Text-to-SQL Assistant</span>
         </div>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-tight">

@@ -33,13 +33,13 @@ export const SettingsPostgresSection: React.FC<SettingsPostgresSectionProps> = (
             <Database className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-xs sm:text-sm font-bold text-white tracking-tight flex items-center gap-2">
+            <h3 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
               <span>Base de Metadatos & Logs (PostgreSQL)</span>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30">
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30">
                 Audit & Schema DB
               </span>
             </h3>
-            <p className="text-[11px] text-gray-400">Almacenamiento persistente de logs de auditoría y diccionario semántico</p>
+            <p className="text-[11px] text-gray-600 dark:text-gray-400">Almacenamiento persistente de logs de auditoría y diccionario semántico</p>
           </div>
         </div>
 
@@ -47,9 +47,9 @@ export const SettingsPostgresSection: React.FC<SettingsPostgresSectionProps> = (
           type="button"
           onClick={onTestPG}
           disabled={testingPG}
-          className="flex items-center justify-center space-x-1.5 text-xs font-semibold bg-dark-base/80 hover:bg-dark-card text-blue-300 border border-blue-500/30 hover:border-blue-500/60 px-3.5 py-2 rounded-xl transition-all shadow-sm focus-visible:ring-2 focus-visible:ring-blue-500"
+          className="flex items-center justify-center space-x-1.5 text-xs font-semibold bg-slate-100 dark:bg-dark-base/80 hover:bg-slate-200 dark:hover:bg-dark-card text-blue-700 dark:text-blue-300 border border-blue-500/30 hover:border-blue-500/60 px-3.5 py-2 rounded-xl transition-all shadow-xs focus-visible:ring-2 focus-visible:ring-blue-500"
         >
-          <RefreshCw className={`w-3.5 h-3.5 text-blue-400 ${testingPG ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-3.5 h-3.5 text-blue-600 dark:text-blue-400 ${testingPG ? 'animate-spin' : ''}`} />
           <span>{testingPG ? 'Verificando BD...' : 'Probar Conexión PG'}</span>
         </button>
       </div>
@@ -57,7 +57,7 @@ export const SettingsPostgresSection: React.FC<SettingsPostgresSectionProps> = (
       {/* Grid Inputs */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
         <div>
-          <label htmlFor="pg-host-input" className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+          <label htmlFor="pg-host-input" className="block text-[11px] font-bold uppercase tracking-wider text-gray-700 dark:text-gray-400 mb-1.5">
             Servidor Host
           </label>
           <input
@@ -66,12 +66,12 @@ export const SettingsPostgresSection: React.FC<SettingsPostgresSectionProps> = (
             value={pgHost}
             onChange={(e) => onPgHostChange(e.target.value)}
             aria-label="Servidor Host"
-            className="w-full bg-dark-base/90 border border-dark-border rounded-xl px-3 py-2.5 text-xs text-brand-300 font-mono focus:outline-none focus:border-blue-500 transition-colors shadow-inner"
+            className="w-full bg-white dark:bg-dark-base/90 border border-slate-300 dark:border-dark-border rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-brand-300 font-mono focus:outline-none focus:border-blue-500 transition-colors shadow-xs"
           />
         </div>
 
         <div>
-          <label htmlFor="pg-port-input" className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+          <label htmlFor="pg-port-input" className="block text-[11px] font-bold uppercase tracking-wider text-gray-700 dark:text-gray-400 mb-1.5">
             Puerto
           </label>
           <input
@@ -83,12 +83,12 @@ export const SettingsPostgresSection: React.FC<SettingsPostgresSectionProps> = (
               onPgPortChange(Number.isFinite(val) ? val : 5432);
             }}
             aria-label="Puerto de la base de datos"
-            className="w-full bg-dark-base/90 border border-dark-border rounded-xl px-3 py-2.5 text-xs text-brand-300 font-mono focus:outline-none focus:border-blue-500 transition-colors shadow-inner"
+            className="w-full bg-white dark:bg-dark-base/90 border border-slate-300 dark:border-dark-border rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-brand-300 font-mono focus:outline-none focus:border-blue-500 transition-colors shadow-xs"
           />
         </div>
 
         <div>
-          <label htmlFor="pg-db-input" className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+          <label htmlFor="pg-db-input" className="block text-[11px] font-bold uppercase tracking-wider text-gray-700 dark:text-gray-400 mb-1.5">
             Nombre BD
           </label>
           <input
@@ -97,13 +97,13 @@ export const SettingsPostgresSection: React.FC<SettingsPostgresSectionProps> = (
             value={pgDb}
             onChange={(e) => onPgDbChange(e.target.value)}
             aria-label="Nombre de la Base de Datos"
-            className="w-full bg-dark-base/90 border border-dark-border rounded-xl px-3 py-2.5 text-xs text-brand-300 font-mono focus:outline-none focus:border-blue-500 transition-colors shadow-inner"
+            className="w-full bg-white dark:bg-dark-base/90 border border-slate-300 dark:border-dark-border rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-brand-300 font-mono focus:outline-none focus:border-blue-500 transition-colors shadow-xs"
           />
         </div>
       </div>
 
       {/* Security note */}
-      <div className="flex items-center space-x-2 text-[10px] text-gray-400 bg-dark-base/40 px-3 py-1.5 rounded-lg border border-dark-border/60">
+      <div className="flex items-center space-x-2 text-[10px] text-gray-600 dark:text-gray-400 bg-slate-50 dark:bg-dark-base/40 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-dark-border/60">
         <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
         <span>Conexión segura cifrada con TLS y roles aislados de sólo lectura para auditorías.</span>
       </div>
@@ -112,11 +112,11 @@ export const SettingsPostgresSection: React.FC<SettingsPostgresSectionProps> = (
         <div
           className={`p-3 rounded-xl border text-xs flex items-center space-x-2 animate-fadeIn ${
             pgStatus.success
-              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-              : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
+              : 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300'
           }`}
         >
-          {pgStatus.success ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" /> : <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />}
+          {pgStatus.success ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" /> : <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />}
           <span className="font-medium">{pgStatus.message}</span>
         </div>
       )}

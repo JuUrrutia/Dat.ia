@@ -140,15 +140,15 @@ export const ChartSection: React.FC<ChartSectionProps> = ({
   };
 
   return (
-    <div ref={chartContainerRef} className="bg-zinc-900/90 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl space-y-4">
+    <div ref={chartContainerRef} className="bg-white dark:bg-zinc-900/90 border border-slate-200 dark:border-white/10 rounded-3xl p-6 shadow-xl space-y-4">
       {/* Chart Header Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-white/10 pb-4">
         <div>
-          <h3 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+          <h3 className="text-sm font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 dark:bg-amber-400 animate-pulse" />
             Visualización Analítica Proyectada
           </h3>
-          <p className="text-xs text-zinc-400 mt-0.5">
+          <p className="text-xs text-slate-600 dark:text-zinc-400 mt-0.5">
             Gráfico dinámico ({activeChartType.toUpperCase()}) • Clic en elementos para desglose interactivo
           </p>
         </div>
@@ -156,7 +156,7 @@ export const ChartSection: React.FC<ChartSectionProps> = ({
         {/* Action Controls: Chart Morpher + Theme Selector + Copy Chart */}
         <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
           {/* Chart Morpher Buttons */}
-          <div className="flex items-center space-x-1 bg-zinc-950 p-1 rounded-xl border border-white/10">
+          <div className="flex items-center space-x-1 bg-slate-100 dark:bg-zinc-950 p-1 rounded-xl border border-slate-200 dark:border-white/10">
             {AVAILABLE_CHART_TYPES.map((ct) => {
               const Icon = ct.icon;
               const isSelected = activeChartType === ct.id;
@@ -167,8 +167,8 @@ export const ChartSection: React.FC<ChartSectionProps> = ({
                   onClick={() => setActiveChartType(ct.id)}
                   className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                     isSelected
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm'
-                      : 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
+                      ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 shadow-xs'
+                      : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/5 border border-transparent'
                   }`}
                   title={`Cambiar a gráfico de ${ct.label}`}
                 >
@@ -179,27 +179,25 @@ export const ChartSection: React.FC<ChartSectionProps> = ({
             })}
           </div>
 
-
-
           {/* Copy Chart Image Button */}
           <button
             type="button"
             onClick={handleCopyChart}
             className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
               copiedChart
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-xs'
-                : 'bg-zinc-950 text-zinc-300 hover:text-white border-white/10 hover:border-white/20 hover:bg-zinc-800'
+                ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 shadow-xs'
+                : 'bg-slate-100 dark:bg-zinc-950 text-slate-700 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white border-slate-300 dark:border-white/10 hover:border-slate-400 dark:hover:border-white/20 hover:bg-slate-200 dark:hover:bg-zinc-800'
             }`}
             title="Copiar gráfico al portapapeles como imagen PNG"
           >
             {copiedChart ? (
               <>
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 <span>¡Copiado!</span>
               </>
             ) : (
               <>
-                <Copy className="w-3.5 h-3.5 text-zinc-400" />
+                <Copy className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
                 <span className="hidden sm:inline">Copiar Gráfico</span>
               </>
             )}
@@ -210,7 +208,7 @@ export const ChartSection: React.FC<ChartSectionProps> = ({
       {/* Quick Time Filter Chips */}
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <div className="flex items-center space-x-1.5">
-          <span className="text-[11px] font-medium text-zinc-500 mr-1">Rango rápido:</span>
+          <span className="text-[11px] font-medium text-slate-500 dark:text-zinc-500 mr-1">Rango rápido:</span>
           {TIME_FILTER_OPTIONS.map((tf) => (
             <button
               key={tf.id}
@@ -218,15 +216,15 @@ export const ChartSection: React.FC<ChartSectionProps> = ({
               onClick={() => handleSelectTimeFilter(tf.id, tf.label)}
               className={`px-2.5 py-1 rounded-lg text-xs transition-all ${
                 activeTimeFilter === tf.id
-                  ? 'bg-zinc-800 text-cyan-300 font-semibold border border-cyan-500/30'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60 border border-transparent'
+                  ? 'bg-brand-500/15 dark:bg-zinc-800 text-brand-700 dark:text-cyan-300 font-semibold border border-brand-500/30 dark:border-cyan-500/30'
+                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800/60 border border-transparent'
               }`}
             >
               {tf.label}
             </button>
           ))}
         </div>
-        <span className="text-[11px] text-zinc-500 italic">
+        <span className="text-[11px] text-slate-500 dark:text-zinc-500 italic">
           💡 Clic en barras/dona para desglose automático
         </span>
       </div>
