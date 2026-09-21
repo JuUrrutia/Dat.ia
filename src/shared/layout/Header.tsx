@@ -79,13 +79,13 @@ export const Header: React.FC = () => {
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-contain shrink-0"
           />
           <div className="truncate">
-            <h1 className="text-xs sm:text-base font-bold text-white tracking-tight flex items-center gap-1.5 sm:gap-2">
+            <h1 className="text-xs sm:text-base font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-1.5 sm:gap-2">
               <span>DATIA</span>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand-500/15 text-brand-300 border border-brand-500/30">
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand-500/15 text-brand-700 dark:text-brand-300 border border-brand-500/30">
                 IA Local
               </span>
             </h1>
-            <p className="text-[10px] sm:text-xs text-gray-400 font-medium hidden xs:block truncate">
+            <p className="text-[10px] sm:text-xs text-slate-500 dark:text-gray-400 font-medium hidden xs:block truncate">
               Democratización de Datos Corporativos
             </p>
           </div>
@@ -105,15 +105,15 @@ export const Header: React.FC = () => {
       </div>
 
       {/* Desktop Main Navigation Links */}
-      <nav className="hidden md:flex items-center space-x-1.5 bg-dark-base/80 p-1.5 rounded-2xl border border-dark-border/80 shadow-inner">
+      <nav className="hidden md:flex items-center space-x-1.5 bg-slate-100 dark:bg-dark-base/80 p-1.5 rounded-2xl border border-slate-200 dark:border-dark-border/80 shadow-inner">
         <button
           type="button"
           aria-current={activePath === '/chat' || activePath === '/' ? 'page' : undefined}
           onClick={() => navigate('/chat')}
           className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
             activePath === '/chat' || activePath === '/'
-              ? 'bg-brand-600 text-white shadow-md shadow-brand-600/35 glow-brand'
-              : 'text-gray-300 hover:text-white hover:bg-dark-card/60'
+              ? 'bg-brand-600 text-white shadow-sm'
+              : 'text-slate-600 dark:text-gray-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-dark-card/60'
           }`}
         >
           <LayoutDashboard className="w-4 h-4" />
@@ -126,8 +126,8 @@ export const Header: React.FC = () => {
           onClick={() => navigate('/settings')}
           className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
             activePath === '/settings'
-              ? 'bg-brand-600 text-white shadow-md shadow-brand-600/35 glow-brand'
-              : 'text-gray-300 hover:text-white hover:bg-dark-card/60'
+              ? 'bg-brand-600 text-white shadow-sm'
+              : 'text-slate-600 dark:text-gray-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-dark-card/60'
           }`}
         >
           <Settings className="w-4 h-4" />
@@ -141,11 +141,11 @@ export const Header: React.FC = () => {
             onClick={() => navigate('/admin')}
             className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
               activePath === '/admin'
-                ? 'bg-purple-600 text-white shadow-md shadow-purple-600/35'
-                : 'text-gray-300 hover:text-white hover:bg-dark-card/60'
+                ? 'bg-brand-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-gray-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-dark-card/60'
             }`}
           >
-            <ShieldAlert className="w-4 h-4 text-purple-300" />
+            <ShieldAlert className="w-4 h-4 text-brand-600 dark:text-brand-200" />
             <span>Gobernanza RBAC</span>
           </button>
         )}
@@ -158,15 +158,15 @@ export const Header: React.FC = () => {
           onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
           aria-label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'}
           title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
-          className="hidden sm:flex items-center gap-2 rounded-xl border border-dark-border bg-dark-base/70 px-2.5 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-brand-500/40 hover:text-white"
+          className="hidden sm:flex items-center gap-2 rounded-xl border border-slate-200 dark:border-dark-border bg-slate-100 dark:bg-dark-base/70 px-2.5 py-2 text-xs font-medium text-slate-700 dark:text-gray-300 transition-colors hover:border-brand-500/40 hover:text-slate-900 dark:hover:text-white"
         >
           {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-500" />}
           <span>{theme === 'dark' ? 'Claro' : 'Oscuro'}</span>
         </button>
 
         <div className="text-right hidden sm:block">
-          <div className="text-xs font-bold text-white tracking-tight">{user.username}</div>
-          <div className="text-[10px] font-semibold text-brand-300 bg-brand-500/15 px-2.5 py-0.5 rounded-full border border-brand-500/30 inline-block mt-0.5">
+          <div className="text-xs font-bold text-gray-900 dark:text-white tracking-tight">{user.username}</div>
+          <div className="text-[10px] font-semibold text-brand-700 dark:text-brand-300 bg-brand-500/15 px-2.5 py-0.5 rounded-full border border-brand-500/30 inline-block mt-0.5">
             {user.role_name || (user.is_admin ? 'Super Administrador' : 'Usuario')}
           </div>
         </div>
@@ -176,7 +176,7 @@ export const Header: React.FC = () => {
           onClick={logout}
           title="Cerrar Sesión Segura"
           aria-label="Cerrar Sesión Segura"
-          className="hidden sm:flex p-2.5 rounded-xl text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 transition-all focus-visible:ring-2 focus-visible:ring-rose-500"
+          className="hidden sm:flex p-2.5 rounded-xl text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 transition-all focus-visible:ring-2 focus-visible:ring-rose-500"
         >
           <LogOut className="w-4 h-4" />
         </button>
@@ -187,24 +187,24 @@ export const Header: React.FC = () => {
             type="button"
             onClick={() => setIsMobileMenuOpen((prev) => !prev)}
             aria-label="Abrir menú de navegación"
-            className="p-2 rounded-xl bg-dark-base border border-dark-border text-gray-300 hover:text-white hover:border-brand-500/40 transition-colors"
+            className="p-2 rounded-xl bg-slate-100 dark:bg-dark-base border border-slate-200 dark:border-dark-border text-slate-700 dark:text-gray-300 hover:text-slate-900 dark:hover:text-white hover:border-brand-500/40 transition-colors"
           >
-            {isMobileMenuOpen ? <X className="w-5 h-5 text-brand-400" /> : <Menu className="w-5 h-5" />}
+            {isMobileMenuOpen ? <X className="w-5 h-5 text-brand-600 dark:text-brand-400" /> : <Menu className="w-5 h-5" />}
           </button>
 
           {/* Mobile Drawer Dropdown */}
           {isMobileMenuOpen && (
-            <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-dark-surface border border-dark-border shadow-2xl p-3 z-50 space-y-2 animate-fadeIn">
+            <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white dark:bg-dark-surface border border-slate-200 dark:border-dark-border shadow-2xl p-3 z-50 space-y-2 animate-fadeIn">
               {/* User Info on Mobile */}
-              <div className="p-3 rounded-xl bg-dark-base border border-dark-border">
-                <div className="text-xs font-bold text-white">{user.username}</div>
-                <div className="text-[10px] text-brand-400 mt-0.5">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-dark-base border border-slate-200 dark:border-dark-border">
+                <div className="text-xs font-bold text-gray-900 dark:text-white">{user.username}</div>
+                <div className="text-[10px] text-brand-700 dark:text-brand-400 mt-0.5">
                   {user.role_name || (user.is_admin ? 'Super Administrador' : 'Usuario')}
                 </div>
               </div>
 
               {/* Navigation Links */}
-              <div className="space-y-1 pt-1 border-t border-dark-border">
+              <div className="space-y-1 pt-1 border-t border-slate-200 dark:border-dark-border">
                 <button
                   type="button"
                   onClick={() => {
@@ -214,7 +214,7 @@ export const Header: React.FC = () => {
                   className={`w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-left transition-colors ${
                     activePath === '/chat' || activePath === '/'
                       ? 'bg-brand-600 text-white'
-                      : 'text-gray-300 hover:bg-dark-card'
+                      : 'text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-dark-card'
                   }`}
                 >
                   <LayoutDashboard className="w-4 h-4" />
@@ -230,7 +230,7 @@ export const Header: React.FC = () => {
                   className={`w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-left transition-colors ${
                     activePath === '/settings'
                       ? 'bg-brand-600 text-white'
-                      : 'text-gray-300 hover:bg-dark-card'
+                      : 'text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-dark-card'
                   }`}
                 >
                   <Settings className="w-4 h-4" />
@@ -246,8 +246,8 @@ export const Header: React.FC = () => {
                     }}
                     className={`w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-left transition-colors ${
                       activePath === '/admin'
-                        ? 'bg-purple-600 text-white'
-                        : 'text-gray-300 hover:bg-dark-card'
+                        ? 'bg-brand-600 text-white'
+                        : 'text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-dark-card'
                     }`}
                   >
                     <ShieldAlert className="w-4 h-4" />

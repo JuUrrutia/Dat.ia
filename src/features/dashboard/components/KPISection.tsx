@@ -26,16 +26,16 @@ export const KPISection: React.FC<KPISectionProps> = ({ kpis }) => {
               key={kpi.title || idx}
               className="glass-card-interactive rounded-2xl p-4 shadow-lg flex flex-col justify-between group"
             >
-              <div className="flex items-center justify-between text-[11px] font-semibold text-gray-300 uppercase tracking-wider">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 dark:text-gray-300 uppercase tracking-wider">
                 <span className="truncate">{kpi.title}</span>
                 {kpi.change_direction && (
                   <span
                     className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                       isPositive
-                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
                         : isNegative
-                        ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-                        : 'bg-dark-base text-gray-400 border-dark-border'
+                        ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30'
+                        : 'bg-slate-100 dark:bg-dark-base text-slate-700 dark:text-gray-400 border-slate-300 dark:border-dark-border'
                     }`}
                   >
                     {isPositive ? '↑ Elevado' : isNegative ? '↓ Reducido' : '• Estable'}
@@ -44,11 +44,11 @@ export const KPISection: React.FC<KPISectionProps> = ({ kpis }) => {
               </div>
 
               <div className="mt-2.5">
-                <div className="text-2xl font-black text-white tracking-tight font-mono group-hover:scale-[1.02] transition-transform origin-left">
+                <div className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight font-mono tabular-nums group-hover:scale-[1.01] transition-transform origin-left">
                   {displayVal}
                 </div>
                 {kpi.subtitle && (
-                  <p className="text-[11px] text-gray-400 mt-1 truncate">
+                  <p className="text-[11px] text-slate-500 dark:text-gray-400 mt-1 truncate">
                     {kpi.subtitle}
                   </p>
                 )}
