@@ -11,8 +11,18 @@ class TestASTValidator(unittest.TestCase):
             allowed_tables={"fact_ventas"}
         )
         self.assertTrue(is_valid)
-        self.assertIn("LIMIT 1000", secured_sql)
+        self.assertIn("LIMIT 500", secured_sql)
         self.assertIn("fact_ventas", meta["tables_used"])
+
+    def test_generate_sql_explanation(self):
+        sql = "SELECT dim_clientes.nombre, SUM(fact_ventas.monto) FROM fact_ventas JOIN dim_clientes ON fact_ventas.cliente_id = dim_clientes.id WHERE fact_ventas.monto > 100 GROUP BY dim_clientes.nombre ORDER BY SUM(fact_ventas.monto) DESC LIMIT 10"
+        explanation = ASTValidator.generate_sql_explanation(sql, dialect="sqlite")
+        self.assertIn("fact_ventas", explanation)
+        self.assertIn("dim_clientes", explanation)
+        self.assertIn("suma", explanation.lower())
+        self.assertIn("filtra por", explanation.lower())
+        self.assertIn("agrupa por", explanation.lower())
+        self.assertIn("10", explanation)
 
     def test_reject_dml_operation(self):
         sql = "DELETE FROM fact_ventas WHERE id = 1"

@@ -49,6 +49,11 @@ export function useChatEngine() {
         const active = conns.find((c) => c.is_active) || conns[0];
         setActiveConnectionId(active.id);
         setActiveDatabaseName(`${active.name} (${active.db_type.toUpperCase()})`);
+        queryService.getSuggestions(userRole, active.id).then((suggs) => {
+          if (isMounted) {
+            setPromptSuggestions(suggs);
+          }
+        });
       }
     });
     return () => {
@@ -62,7 +67,7 @@ export function useChatEngine() {
       setActiveConnectionId(target.id);
       setActiveDatabaseName(`${target.name} (${target.db_type.toUpperCase()})`);
       notify('info', `Fuente de datos activa: ${target.name} (${target.db_type.toUpperCase()})`);
-      queryService.getSuggestions(userRole).then((suggs) => {
+      queryService.getSuggestions(userRole, target.id).then((suggs) => {
         setPromptSuggestions(suggs);
       });
     }

@@ -73,15 +73,18 @@ export const ChatDashboardPage: React.FC = () => {
     setWidgets(list);
   };
 
-  const fetchAnomalies = async () => {
-    const data = await queryService.getAnomalies();
+  const fetchAnomalies = async (connId?: number | null) => {
+    const data = await queryService.getAnomalies(connId || undefined);
     setAnomaliesData(data);
   };
 
   useEffect(() => {
     fetchWidgets();
-    fetchAnomalies();
   }, []);
+
+  useEffect(() => {
+    fetchAnomalies(activeConnectionId);
+  }, [activeConnectionId]);
 
   const handleUnpin = async (id: number) => {
     await queryService.unpinWidget(id);
@@ -121,7 +124,7 @@ export const ChatDashboardPage: React.FC = () => {
       {/* Main Container */}
       <div className="flex-1 flex flex-col min-w-0 h-full relative bg-gradient-to-b from-[#0B0F19] via-[#0A0D14] to-[#07090E] chat-shell-panel">
         {/* Top Context Subheader */}
-        <div className="h-12 border-b border-[#1E293B]/60 bg-[#0F172A]/40 backdrop-blur-md px-4 flex items-center justify-between shrink-0 chat-shell-header">
+        <div className="relative z-30 h-12 border-b border-[#1E293B]/60 bg-[#0F172A]/80 backdrop-blur-md px-4 flex items-center justify-between shrink-0 chat-shell-header">
           <div className="flex items-center gap-3">
             {!isPresentationMode && (
               <button
@@ -179,38 +182,70 @@ export const ChatDashboardPage: React.FC = () => {
                 </button>
 
                 {isAnomaliesOpen && (
-                  <div className="absolute right-0 mt-2 w-80 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 shadow-2xl p-3 z-40 space-y-2 animate-fadeIn">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-zinc-800">
-                      <span className="text-xs font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                        <AlertTriangle size={14} className="text-amber-500 dark:text-amber-400" />
-                        Alertas y Monitoreo Proactivo
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setIsAnomaliesOpen(false)}
-                        className="text-gray-400 hover:text-gray-600 dark:hover:text-white"
-                      >
-                        <X size={14} />
-                      </button>
+                  <>
+                    {/* Fixed invisible backdrop to dismiss popover on outside click */}
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setIsAnomaliesOpen(false)}
+                    />
+                    <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 shadow-2xl p-3 z-50 space-y-2 animate-fadeIn">
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-zinc-800">
+                        <span className="text-xs font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                          <AlertTriangle size={14} className="text-amber-500 dark:text-amber-400" />
+                          Alertas y Monitoreo Proactivo
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsAnomaliesOpen(false)}
+                          className="text-gray-400 hover:text-gray-600 dark:hover:text-white"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                      <div className="max-h-60 overflow-y-auto space-y-2">
+                        {anomaliesData.anomalies.map((a) => (
+                          <div key={a.id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 space-y-1.5">
+                            <div className="flex items-start justify-between gap-1">
+                              <p className="text-xs font-semibold text-gray-800 dark:text-zinc-200">{a.title}</p>
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 ${
+                                a.severity === 'critical'
+                                  ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300'
+                                  : a.severity === 'warning'
+                                  ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
+                                  : 'bg-blue-500/20 text-blue-700 dark:text-blue-300'
+                              }`}>
+                                {a.severity}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-gray-600 dark:text-zinc-400">{a.description}</p>
+                            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                              {a.query_prompt && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsAnomaliesOpen(false);
+                                    handleSendPrompt(a.query_prompt);
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-brand-700 dark:text-brand-300 bg-brand-500/10 hover:bg-brand-500/20 dark:bg-brand-500/20 dark:hover:bg-brand-500/30 border border-brand-500/30 px-2 py-0.5 rounded transition"
+                                >
+                                  <span>🔍 Investigar en Chat</span>
+                                </button>
+                              )}
+                              {a.action_route && (
+                                <a
+                                  href={a.action_route}
+                                  className="inline-flex items-center gap-1 text-[10px] text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 font-medium"
+                                >
+                                  <span>{a.action_label || 'Ver en Admin'}</span>
+                                  <ExternalLink size={10} />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="max-h-60 overflow-y-auto space-y-2">
-                      {anomaliesData.anomalies.map((a) => (
-                        <div key={a.id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 space-y-1">
-                          <p className="text-xs font-semibold text-gray-800 dark:text-zinc-200">{a.title}</p>
-                          <p className="text-[11px] text-gray-600 dark:text-zinc-400">{a.description}</p>
-                          {a.action_route && (
-                            <a
-                              href={a.action_route}
-                              className="inline-flex items-center gap-1 text-[10px] text-brand-600 dark:text-indigo-400 hover:text-brand-500 dark:hover:text-indigo-300 font-medium mt-1"
-                            >
-                              <span>{a.action_label}</span>
-                              <ExternalLink size={10} />
-                            </a>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  </>
                 )}
               </div>
             )}
