@@ -111,7 +111,35 @@ export interface QueryResult {
   conversational_response?: string; // Respuesta conversacional estructurada
   grounding_info?: string; // Información de las tablas o registros reales de la BD consultados
   presentation_hints?: PresentationHints;
+  thinking_process?: string;
+  suggested_questions?: string[];
+  clarification_options?: string[];
+  anomalies_detected?: Array<{
+    column: string;
+    row_index: number;
+    entity: string;
+    value: number;
+    mean: number;
+    stdev: number;
+    z_score: number;
+    direction: 'spike' | 'drop';
+    description: string;
+    probable_cause: string;
+  }>;
+  sql_explanation?: string;
   audit_log_id?: number;
+  nulls_detected?: {
+    has_nulls: boolean;
+    table_name: string;
+    columns_with_nulls: string[];
+    null_rows_count: number;
+    total_rows: number;
+    options: Array<{
+      action: string;
+      label: string;
+      prompt: string;
+    }>;
+  };
 }
 
 export interface AppSettings {

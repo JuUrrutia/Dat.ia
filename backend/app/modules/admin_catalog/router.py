@@ -12,12 +12,15 @@ from app.modules.admin_catalog.schemas import (
     DataDictionaryResponse, AutoEnrichRequest, AutoEnrichResponse,
     CorporateConnectionCreate, CorporateConnectionUpdate, CorporateConnectionOut,
     ConnectionTestRequest, ConnectionTestResult, MetadataDBTestRequest,
-    ReportExportRequest
+    ReportExportRequest, NullsAuditResponse, ApplyNullPolicyRequest
 )
+from app.modules.admin_catalog.models import CorporateConnection
 from app.modules.catalog.services.catalog_service import CatalogDomainService
 from app.modules.catalog.services.connector_service import ConnectorDomainService
+from app.modules.catalog.services.null_manager import NullManagerService
 from app.modules.reports.generator import ReportGeneratorService
 from app.modules.system.health_service import HealthService
+from fastapi import HTTPException
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -81,6 +84,34 @@ async def auto_enrich_catalog(
 ) -> Any:
     """Intelligently inspects schema and auto-generates semantic descriptions."""
     return await CatalogDomainService.auto_enrich_catalog(db, req)
+
+@router.get("/catalog/connections/{connection_id}/nulls-audit", response_model=NullsAuditResponse)
+def audit_connection_nulls(
+    connection_id: int,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin)
+) -> Any:
+    """Audits tables and columns for NULL values in the target connection (Admin only)."""
+    conn = db.query(CorporateConnection).filter(CorporateConnection.id == connection_id).first()
+    if not conn:
+        raise HTTPException(status_code=404, detail="Conexión no encontrada.")
+    return NullManagerService.audit_connection_nulls(conn, db)
+
+@router.post("/catalog/connections/{connection_id}/nulls-policy")
+def apply_connection_null_policy(
+    connection_id: int,
+    req: ApplyNullPolicyRequest,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin)
+) -> Any:
+    """Applies the selected null remediation policy (Admin only)."""
+    conn = db.query(CorporateConnection).filter(CorporateConnection.id == connection_id).first()
+    if not conn:
+        raise HTTPException(status_code=404, detail="Conexión no encontrada.")
+    try:
+        return NullManagerService.apply_null_policy(conn, req.policy, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # =========================================================================
 # CORPORATE CONNECTORS ENDPOINTS (/connectors)

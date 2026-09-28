@@ -179,11 +179,25 @@ async def get_dynamic_suggestions(
     role_name = current_user.role.name if current_user.role else (ROLE_ADMINISTRADOR if current_user.is_admin else ROLE_USUARIO)
     is_admin = current_user.is_admin or role_name in ADMIN_ROLES
 
+    # Resolve active connection when omitted
+    effective_conn_id = connection_id
+    if effective_conn_id is None and db is not None:
+        try:
+            from app.modules.admin_catalog.models import CorporateConnection
+            active_c = db.query(CorporateConnection).filter(CorporateConnection.is_active == True).order_by(CorporateConnection.id.desc()).first()
+            if not active_c:
+                active_c = db.query(CorporateConnection).order_by(CorporateConnection.id.desc()).first()
+            if active_c:
+                effective_conn_id = active_c.id
+        except Exception:
+            pass
+
     allowed_tables = QueryEngine.get_allowed_tables_for_role(
         user_role=role_name,
         is_admin=is_admin,
         db=db,
-        connection_id=connection_id
+        role_id=current_user.role_id,
+        connection_id=effective_conn_id
     )
 
     schema_prompt = ""
@@ -192,8 +206,9 @@ async def get_dynamic_suggestions(
         s_info = DynamicSchemaPruningService.get_authorized_schema_prompt(
             db=db,
             user_role=role_name,
+            role_id=current_user.role_id,
             is_admin=is_admin,
-            connection_id=connection_id
+            connection_id=effective_conn_id
         )
         schema_prompt = s_info.get("schema_prompt", "")
     except Exception:

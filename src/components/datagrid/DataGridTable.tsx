@@ -1,6 +1,101 @@
-import React, { useState } from 'react';
-import { Search, ArrowUpDown, Download, ChevronLeft, ChevronRight, Table, FileSpreadsheet, RefreshCw, Copy, Check } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import {
+  Search,
+  ArrowUpDown,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+  Table,
+  FileSpreadsheet,
+  RefreshCw,
+  Copy,
+  Check,
+  Calendar,
+  Hash,
+  DollarSign,
+  Type,
+} from 'lucide-react';
 import { reportService } from '../../features/dashboard/services/report_service';
+
+type ColumnType = 'currency' | 'number' | 'date' | 'string';
+
+const getColumnType = (col: string, sampleRows: Record<string, any>[]): ColumnType => {
+  const lower = col.toLowerCase();
+  if (/fecha|date|created_at|updated_at|timestamp|dia|mes|periodo/.test(lower)) {
+    return 'date';
+  }
+  if (/precio|monto|total|costo|ingreso|venta|revenue|price|amount|salario|sueldo|presupuesto/.test(lower)) {
+    return 'currency';
+  }
+  // Check sample rows
+  for (const r of sampleRows) {
+    const val = r[col];
+    if (val !== null && val !== undefined && val !== '') {
+      if (typeof val === 'number') {
+        return 'number';
+      }
+      if (!isNaN(Number(val)) && typeof val !== 'boolean') {
+        return 'number';
+      }
+      break;
+    }
+  }
+  return 'string';
+};
+
+const renderColumnIcon = (type: ColumnType) => {
+  switch (type) {
+    case 'currency':
+      return <DollarSign className="w-3 h-3 text-emerald-500 shrink-0" />;
+    case 'number':
+      return <Hash className="w-3 h-3 text-blue-500 shrink-0" />;
+    case 'date':
+      return <Calendar className="w-3 h-3 text-amber-500 shrink-0" />;
+    default:
+      return <Type className="w-3 h-3 text-slate-400 dark:text-zinc-500 shrink-0" />;
+  }
+};
+
+const formatCellValue = (val: any, type: ColumnType): React.ReactNode => {
+  if (val === null || val === undefined || val === '') {
+    return (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 border border-slate-200 dark:border-zinc-700/60 select-none">
+        NULL
+      </span>
+    );
+  }
+
+  if (type === 'currency') {
+    const num = Number(val);
+    if (!isNaN(num)) {
+      return (
+        <span className="font-mono tabular-nums text-slate-900 dark:text-gray-100">
+          ${' '}
+          {num.toLocaleString('es-CL', {
+            minimumFractionDigits: num % 1 !== 0 ? 2 : 0,
+            maximumFractionDigits: 2,
+          })}
+        </span>
+      );
+    }
+  }
+
+  if (type === 'number') {
+    const num = Number(val);
+    if (!isNaN(num)) {
+      return (
+        <span className="font-mono tabular-nums text-slate-900 dark:text-gray-100">
+          {num.toLocaleString('es-CL', {
+            minimumFractionDigits: num % 1 !== 0 ? 2 : 0,
+            maximumFractionDigits: 2,
+          })}
+        </span>
+      );
+    }
+  }
+
+  return <span>{String(val)}</span>;
+};
 
 interface DataGridTableProps {
   columns: string[];
@@ -17,6 +112,14 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [copiedTSV, setCopiedTSV] = useState(false);
   const [pageSize, setPageSize] = useState<number>(10);
+
+  const columnTypes = useMemo(() => {
+    const map: Record<string, ColumnType> = {};
+    for (const col of columns) {
+      map[col] = getColumnType(col, rows);
+    }
+    return map;
+  }, [columns, rows]);
 
   // Filter rows
   const filteredRows = rows.filter((row) =>
@@ -185,27 +288,44 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 dark:bg-dark-base/80 border-b border-slate-200 dark:border-dark-border text-xs text-slate-600 dark:text-gray-400 uppercase tracking-wider">
-              {columns.map((col) => (
-                <th
-                  key={col}
-                  className="px-4 py-3 font-semibold select-none"
-                >
-                  <button
-                    type="button"
-                    onClick={() => handleSort(col)}
-                    className="flex items-center space-x-1 text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white transition-colors cursor-pointer text-left focus:outline-none focus:text-slate-900 dark:focus:text-white"
-                    aria-label={`Ordenar por ${col}`}
+              {columns.map((col) => {
+                const colType = columnTypes[col] || 'string';
+                const isNumeric = colType === 'number' || colType === 'currency';
+                const isDate = colType === 'date';
+
+                return (
+                  <th
+                    key={col}
+                    className={`px-4 py-3 font-semibold select-none ${
+                      isNumeric ? 'text-right' : isDate ? 'text-center' : 'text-left'
+                    }`}
                   >
-                    <span>{col}</span>
-                    <ArrowUpDown className="w-3 h-3 text-slate-400 dark:text-gray-500" />
-                  </button>
-                </th>
-              ))}
+                    <button
+                      type="button"
+                      onClick={() => handleSort(col)}
+                      className={`inline-flex items-center space-x-1.5 text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white transition-colors cursor-pointer focus:outline-none ${
+                        isNumeric ? 'ml-auto' : isDate ? 'mx-auto' : ''
+                      }`}
+                      aria-label={`Ordenar por ${col}`}
+                    >
+                      {renderColumnIcon(colType)}
+                      <span>{col}</span>
+                      <ArrowUpDown
+                        className={`w-3 h-3 ${
+                          sortColumn === col
+                            ? 'text-brand-600 dark:text-brand-400'
+                            : 'text-slate-400 dark:text-gray-500'
+                        }`}
+                      />
+                    </button>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 dark:divide-dark-border text-xs text-slate-800 dark:text-gray-200 bg-white dark:bg-transparent">
             {paginatedRows.length > 0 ? (
-              paginatedRows.map((row, idx) => {
+              paginatedRows.map((row) => {
                 const rowKey =
                   row.id ??
                   row.id_venta ??
@@ -222,10 +342,22 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
                   <tr key={rowKey} className="hover:bg-slate-50 dark:hover:bg-dark-card/50 transition-colors">
                     {columns.map((col) => {
                       const val = row[col];
-                      const isNum = typeof val === 'number' || (!isNaN(Number(val)) && val !== '' && val !== null && typeof val !== 'boolean');
+                      const colType = columnTypes[col] || 'string';
+                      const isNumeric = colType === 'number' || colType === 'currency';
+                      const isDate = colType === 'date';
+
                       return (
-                        <td key={col} className={`px-4 py-2.5 whitespace-nowrap ${isNum ? 'font-mono tabular-nums text-slate-900 dark:text-gray-100' : ''}`}>
-                          {val !== null && val !== undefined ? String(val) : '-'}
+                        <td
+                          key={col}
+                          className={`px-4 py-2.5 whitespace-nowrap ${
+                            isNumeric
+                              ? 'text-right'
+                              : isDate
+                              ? 'text-center font-mono text-[11px]'
+                              : 'text-left'
+                          }`}
+                        >
+                          {formatCellValue(val, colType)}
                         </td>
                       );
                     })}

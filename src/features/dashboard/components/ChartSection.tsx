@@ -102,9 +102,8 @@ export const ChartSection: React.FC<ChartSectionProps> = ({
   if (
     !result.chart_type ||
     result.chart_type === 'none' ||
-    !result.chart_option ||
-    !result.chart_option.series ||
-    result.chart_option.series.length === 0
+    !result.data_rows ||
+    result.data_rows.length === 0
   ) {
     return null;
   }

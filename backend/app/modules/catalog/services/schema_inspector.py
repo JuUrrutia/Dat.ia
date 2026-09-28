@@ -146,7 +146,16 @@ class SchemaInspector:
                 return tables_metadata
 
         # 2. SQLite local file
-        target_path = db_path or (conn_obj.host if conn_obj else None) or settings.SQLITE_DB_PATH
+        target_path = db_path
+        if not target_path and conn_obj:
+            if conn_obj.database_name and os.path.exists(conn_obj.database_name):
+                target_path = conn_obj.database_name
+            elif conn_obj.host and os.path.exists(conn_obj.host):
+                target_path = conn_obj.host
+
+        if not target_path:
+            target_path = settings.SQLITE_DB_PATH
+
         if not target_path or not os.path.exists(target_path):
             return tables_metadata
 

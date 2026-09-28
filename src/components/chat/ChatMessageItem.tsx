@@ -188,22 +188,13 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
         </div>
 
         <div className="flex-1 space-y-3 sm:space-y-4 max-w-4xl min-w-0 chat-bot-response">
-          {/* Badge / Status Bar */}
-          <div className="flex flex-wrap items-center gap-2">
-            <PipelineBadge source={result.pipeline_source} />
-            <span className="text-[10px] sm:text-[11px] text-gray-500 dark:text-gray-400 font-mono tabular-nums">{result.timestamp}</span>
-            {result.traceability?.validation_status && (
-              <span
-                className={`inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-semibold px-2 py-0.5 rounded-md border ${
-                  result.traceability.validation_status.includes('APROBADO')
-                    ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/15 dark:bg-emerald-500/10 border-emerald-500/30'
-                    : 'text-rose-700 dark:text-rose-400 bg-rose-500/15 dark:bg-rose-500/10 border-rose-500/30'
-                }`}
-              >
-                <ShieldCheck className="w-3 h-3" />
-                AST: {result.traceability.validation_status}
-              </span>
-            )}
+          {/* Clean Message Info Bar */}
+          <div className="flex items-center justify-between text-[11px] text-slate-400 dark:text-zinc-500 px-1">
+            <div className="flex items-center space-x-2">
+              <span className="font-semibold text-slate-700 dark:text-zinc-300">DATIA</span>
+              <span>•</span>
+              <span className="font-mono text-[10px] tabular-nums">{result.timestamp}</span>
+            </div>
           </div>
 
           {/* Render Dynamic Dashboard Views (Report, KPIs, Charts, Tables) */}

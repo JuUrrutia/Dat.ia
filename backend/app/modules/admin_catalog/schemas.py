@@ -105,9 +105,32 @@ class CorporateConnectionOut(BaseModel):
     is_uploaded: bool = False
     requires_permission_review: bool = False
     detected_tables: Optional[List[str]] = None
+    null_policy: Optional[str] = "open"
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class NullColumnInfo(BaseModel):
+    column_name: str
+    data_type: str
+    null_count: int
+    null_percentage: float
+
+class NullTableInfo(BaseModel):
+    table_name: str
+    schema_name: str = "main"
+    total_rows: int
+    total_null_columns: int
+    columns_with_nulls: List[NullColumnInfo]
+
+class NullsAuditResponse(BaseModel):
+    has_nulls: bool
+    total_tables_with_nulls: int
+    tables: List[NullTableInfo]
+    current_policy: str = "open"
+
+class ApplyNullPolicyRequest(BaseModel):
+    policy: str # "delete_rows" | "mode" | "nearest" | "open"
 
 class ConnectionTestRequest(BaseModel):
     db_type: DatabaseType

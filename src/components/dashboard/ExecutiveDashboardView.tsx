@@ -111,6 +111,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
             result={result}
             onOpenTraceability={onOpenTraceability}
             onSwitchToReport={result.executive_report ? () => setViewMode('report') : undefined}
+            onFollowUp={onFollowUp}
           />
 
           {/* Auto-render KPIs directly under narrative if present */}

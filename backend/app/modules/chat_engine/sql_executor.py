@@ -118,16 +118,14 @@ class SQLExecutor:
         secured_sql = initial_sql
         meta = {"tables_used": list(allowed_tables)}
 
-        try:
-            _, secured_sql, meta = ASTValidator.validate_and_secure_sql(
-                initial_sql,
-                dialect=dialect,
-                allowed_tables=allowed_tables,
-                blocked_columns=blocked_columns,
-                table_columns=table_columns_map
-            )
-        except ASTValidationError:
-            pass
+        # Validate and secure SQL through ASTValidator (fails closed if RBAC rules are violated)
+        _, secured_sql, meta = ASTValidator.validate_and_secure_sql(
+            initial_sql,
+            dialect=dialect,
+            allowed_tables=allowed_tables,
+            blocked_columns=blocked_columns,
+            table_columns=table_columns_map
+        )
 
         was_self_healed = False
         validation_label = "APROBADO"
@@ -174,17 +172,13 @@ Genera la consulta SQL corregida y funcional para {engine_label}:"""
 
             if healed_sql:
                 try:
-                    try:
-                        _, healed_secured_sql, healed_meta = ASTValidator.validate_and_secure_sql(
-                            healed_sql,
-                            dialect=dialect,
-                            allowed_tables=allowed_tables,
-                            blocked_columns=blocked_columns,
-                            table_columns=table_columns_map
-                        )
-                    except Exception:
-                        healed_secured_sql, healed_meta = healed_sql, {"tables_used": list(allowed_tables)}
-
+                    _, healed_secured_sql, healed_meta = ASTValidator.validate_and_secure_sql(
+                        healed_sql,
+                        dialect=dialect,
+                        allowed_tables=allowed_tables,
+                        blocked_columns=blocked_columns,
+                        table_columns=table_columns_map
+                    )
                     rows = cls.execute_raw_sql(target_db_path, healed_secured_sql, dialect=dialect)
                     return rows, healed_secured_sql, healed_meta, True, "APROBADO (Auto-Corregido)"
                 except Exception:
@@ -196,13 +190,13 @@ Genera la consulta SQL corregida y funcional para {engine_label}:"""
             try:
                 _, secured_fb_sql, fb_meta = ASTValidator.validate_and_secure_sql(
                     raw_fb_sql,
-                    dialect="sqlite",
+                    dialect=dialect,
                     allowed_tables=allowed_tables,
                     blocked_columns=blocked_columns,
                     table_columns=table_columns_map,
                     max_limit=20
                 )
-                rows = cls.execute_raw_sql(target_db_path, secured_fb_sql)
+                rows = cls.execute_raw_sql(target_db_path, secured_fb_sql, dialect=dialect)
                 return rows, secured_fb_sql, fb_meta, False, "APROBADO (Fallback de Emergencia)"
             except Exception:
                 raise RuntimeError(f"Error al ejecutar consulta en la BD: {str(err)}")
