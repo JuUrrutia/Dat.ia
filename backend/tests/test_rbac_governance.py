@@ -99,5 +99,106 @@ class TestRBACGovernance(unittest.TestCase):
         )
         self.assertIn("cuenta_bancaria_iban", res)
 
+    def test_ti_role_asking_financial_questions_blocked_by_governance(self):
+        """TI role asking for sales/balances without business tables is denied by cross-domain guardrail."""
+        denial = QueryEngine.check_domain_governance(
+            question="¿Cuáles fueron los saldos y ventas totales del mes?",
+            user_role="TI",
+            allowed_tables={"dim_servidores", "fact_incidentes_ti"}
+        )
+        self.assertIsNotNone(denial)
+        self.assertIn("Gobernanza RBAC: Acceso denegado", denial)
+        self.assertIn("información financiera", denial)
+
+    def test_economista_role_asking_infrastructure_questions_blocked_by_governance(self):
+        """Economista role asking for servers/IT incidents without tech tables is denied by cross-domain guardrail."""
+        denial = QueryEngine.check_domain_governance(
+            question="¿Cuántos incidentes ti ocurrieron en los servidores?",
+            user_role="Economista",
+            allowed_tables={"fact_ventas", "dim_clientes"}
+        )
+        self.assertIsNotNone(denial)
+        self.assertIn("Gobernanza RBAC: Acceso denegado", denial)
+        self.assertIn("infraestructura TI", denial)
+
+    def test_admin_role_can_query_any_domain(self):
+        """Domain governance does not block allowed queries when roles match their domain."""
+        # TI querying IT infrastructure
+        ti_denial = QueryEngine.check_domain_governance(
+            question="¿Cuántos incidentes ti ocurrieron en los servidores?",
+            user_role="TI",
+            allowed_tables={"dim_servidores", "fact_incidentes_ti"}
+        )
+        self.assertIsNone(ti_denial)
+
+        # Economista querying sales
+        eco_denial = QueryEngine.check_domain_governance(
+            question="¿Cuáles son las ventas totales por cliente?",
+            user_role="Economista",
+            allowed_tables={"fact_ventas", "dim_clientes"}
+        )
+        self.assertIsNone(eco_denial)
+
+    def test_ast_validation_error_in_execute_with_self_healing_propagates(self):
+        """execute_with_self_healing strictly raises ASTValidationError on unauthorized table query (no silent pass)."""
+        import asyncio
+        from app.modules.chat_engine.sql_executor import SQLExecutor
+        from app.modules.chat_engine.ast_validator import ASTValidationError
+
+        unauthorized_sql = "SELECT * FROM fact_ventas WHERE id = 1;"
+        ti_allowed_tables = {"dim_servidores", "fact_incidentes_ti"}
+
+        with self.assertRaises(ASTValidationError):
+            asyncio.run(SQLExecutor.execute_with_self_healing(
+                target_db_path="./datia_demo.db",
+                question="ventas",
+                initial_sql=unauthorized_sql,
+                allowed_tables=ti_allowed_tables,
+                blocked_columns=set(),
+                table_columns_map={"dim_servidores": ["id", "nombre"]}
+            ))
+
+    def test_execute_query_blocks_ti_for_financial_question(self):
+        """QueryEngine.execute_query cleanly rejects TI asking for sales/financial data with RECHAZADO_RBAC."""
+        import asyncio
+        mock_db = MagicMock()
+        # Mock TI permissions having only server tables
+        mock_perm = MagicMock(table_name="dim_servidores", is_allowed=True)
+        mock_db.query().filter().all.return_value = [mock_perm]
+
+        resp = asyncio.run(QueryEngine.execute_query(
+            question="¿Cuáles son los saldos totales de ventas del año?",
+            user_role="TI",
+            is_admin=False,
+            db=mock_db,
+            role_id=11,
+            connection_id=1
+        ))
+
+        self.assertEqual(resp.traceability.validation_status, "RECHAZADO_RBAC")
+        self.assertIn("Gobernanza RBAC: Acceso denegado", resp.summary_text)
+        self.assertIn("información financiera", resp.summary_text)
+
+    def test_execute_query_blocks_economista_for_infrastructure_question(self):
+        """QueryEngine.execute_query cleanly rejects Economista asking for server/IT data with RECHAZADO_RBAC."""
+        import asyncio
+        mock_db = MagicMock()
+        # Mock Economista permissions having only sales tables
+        mock_perm = MagicMock(table_name="fact_ventas", is_allowed=True)
+        mock_db.query().filter().all.return_value = [mock_perm]
+
+        resp = asyncio.run(QueryEngine.execute_query(
+            question="¿Cuántos incidentes ti ocurrieron en los servidores?",
+            user_role="Economista",
+            is_admin=False,
+            db=mock_db,
+            role_id=10,
+            connection_id=1
+        ))
+
+        self.assertEqual(resp.traceability.validation_status, "RECHAZADO_RBAC")
+        self.assertIn("Gobernanza RBAC: Acceso denegado", resp.summary_text)
+        self.assertIn("infraestructura TI", resp.summary_text)
+
 if __name__ == "__main__":
     unittest.main()

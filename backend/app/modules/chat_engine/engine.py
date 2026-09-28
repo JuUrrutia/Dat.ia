@@ -9,11 +9,12 @@ from app.modules.chat_engine.ast_validator import ASTValidator, ASTValidationErr
 from app.modules.chat_engine.llm_service import LLMService
 from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
 from app.core.prompts import PromptManager
-from app.modules.chat_engine.schemas import QueryResponse
+from app.modules.chat_engine.schemas import QueryResponse, PresentationHints
 from app.modules.chat_engine.intent_classifier import IntentClassifier
 from app.modules.chat_engine.sql_executor import SQLExecutor
-from app.modules.chat_engine.kpi_calculator import KPICalculator
+from app.modules.chat_engine.kpi_calculator import KPICalculator, is_true_numeric_metric
 from app.modules.chat_engine.response_builder import ResponseBuilder
+from app.modules.catalog.services.null_manager import NullManagerService
 
 DEMO_DB_PATH = settings.SQLITE_DB_PATH
 
@@ -149,10 +150,15 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         except Exception:
             pass
 
-        return cls.get_dynamic_suggestions(user_role, allowed_tables)
+        return cls.get_dynamic_suggestions(user_role, allowed_tables, schema_prompt=schema_prompt)
 
     @classmethod
-    def get_dynamic_suggestions(cls, user_role: str, allowed_tables: Set[str]) -> List[str]:
+    def get_dynamic_suggestions(
+        cls,
+        user_role: str,
+        allowed_tables: Set[str],
+        schema_prompt: str = ""
+    ) -> List[str]:
         if not allowed_tables:
             return [
                 "¿Qué información puedo consultar con mi perfil?",
@@ -162,27 +168,73 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         suggestions = []
         sorted_tables = sorted(list(allowed_tables), key=lambda t: (0 if t.lower().startswith("fact_") else 1, t.lower()))
 
-        templates = [
-            "📊 Distribución y resumen de registros en {name}",
-            "📈 Métricas acumuladas y evolución en {name}",
-            "📋 Listado detallado y consulta de {name}",
-            "💡 Indicadores clave y registros principales de {name}"
-        ]
+        # Attempt to extract physical metrics & dimensions from schema_prompt
+        extracted_metrics = []
+        extracted_categories = []
+        extracted_dates = []
 
-        for i, tbl in enumerate(sorted_tables):
+        if schema_prompt:
+            col_matches = re.findall(r'^\s*-\s*([a-zA-Z0-9_]+)\s*\(([^)]+)\)', schema_prompt, re.MULTILINE)
+            for c_name, c_type in col_matches:
+                c_low = c_name.lower()
+                t_low = c_type.lower()
+                if c_low in {"id", "id_tabla"} or c_low.endswith("_id") or c_low.endswith("_key"):
+                    continue
+                if any(m in c_low for m in ["monto", "total", "precio", "ingreso", "costo", "venta", "salario", "sueldo", "cantidad", "consumo", "cpu", "ram", "incidente", "unidades", "horas", "duracion"]) or any(it in t_low for it in ["int", "real", "float", "numeric", "decimal", "double"]):
+                    extracted_metrics.append(c_name)
+                elif any(d in c_low for d in ["fecha", "mes", "anio", "date", "periodo", "created_at", "timestamp"]):
+                    extracted_dates.append(c_name)
+                elif any(cat in c_low for cat in ["categoria", "producto", "cliente", "departamento", "region", "sucursal", "canal", "tipo", "estado", "ciudad", "pais", "marca", "servidor", "usuario", "proveedor"]):
+                    extracted_categories.append(c_name)
+
+        clean_table_names = []
+        for tbl in sorted_tables:
             clean_name = tbl
             for prefix in ["fact_", "dim_", "tbl_", "table_"]:
                 if clean_name.lower().startswith(prefix):
                     clean_name = clean_name[len(prefix):]
                     break
-            clean_spaced = clean_name.replace("_", " ").strip()
+            clean_table_names.append((tbl, clean_name.replace("_", " ").strip()))
 
-            tmpl = templates[i % len(templates)]
-            suggestions.append(tmpl.format(name=clean_spaced))
+        # If we have extracted metrics and categories from the active database schema
+        if extracted_metrics and (extracted_categories or clean_table_names):
+            best_metric = extracted_metrics[0].replace("_", " ").strip()
+            best_cat = (extracted_categories[0].replace("_", " ").strip()) if extracted_categories else clean_table_names[0][1]
+            primary_tbl = clean_table_names[0][1]
 
-            if len(sorted_tables) == 1:
-                suggestions.append(f"🔍 Top registros con mayores valores en {clean_spaced}")
-                suggestions.append(f"⚡ Totales agregados y promedio general de {clean_spaced}")
+            suggestions.append(f"📊 ¿Cuál es el total de {best_metric} agrupado por {best_cat}?")
+            suggestions.append(f"📈 Top 5 {best_cat} con mayor {best_metric}")
+            if extracted_dates:
+                best_date = extracted_dates[0].replace("_", " ").strip()
+                suggestions.append(f"📅 Evolución temporal de {best_metric} por {best_date}")
+            elif len(extracted_metrics) > 1:
+                sec_metric = extracted_metrics[1].replace("_", " ").strip()
+                suggestions.append(f"⚡ Comparativa de {best_metric} y {sec_metric} en {primary_tbl}")
+            else:
+                suggestions.append(f"🔍 Promedio y registros destacados de {best_metric} en {primary_tbl}")
+
+            if len(clean_table_names) > 1:
+                sec_tbl = clean_table_names[1][1]
+                suggestions.append(f"💡 Resumen consolidado y principales indicadores de {sec_tbl}")
+            else:
+                suggestions.append(f"📋 Desglose detallado y análisis de {primary_tbl}")
+
+        # Fallback table-based templates
+        if len(suggestions) < 4:
+            templates = [
+                "📊 Distribución y resumen de registros en {name}",
+                "📈 Métricas acumuladas y evolución en {name}",
+                "📋 Listado detallado y consulta de {name}",
+                "💡 Indicadores clave y registros principales de {name}"
+            ]
+
+            for i, (orig_tbl, clean_spaced) in enumerate(clean_table_names):
+                tmpl = templates[i % len(templates)]
+                suggestions.append(tmpl.format(name=clean_spaced))
+
+                if len(clean_table_names) == 1:
+                    suggestions.append(f"🔍 Top registros con mayores valores en {clean_spaced}")
+                    suggestions.append(f"⚡ Totales agregados y promedio general de {clean_spaced}")
 
         seen = set()
         unique = []
@@ -193,9 +245,66 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
 
         return unique[:4]
 
-    # Delegates to ResponseBuilder
+    @classmethod
+    def check_domain_governance(cls, question: str, user_role: str, allowed_tables: Set[str]) -> Optional[str]:
+        """
+        Enforces cross-domain governance guardrails.
+        Detects if a user role attempts to query topics strictly outside their business domain.
+        Returns a denial reason string if violated, or None if permitted.
+        """
+        role_lower = (user_role or "").lower()
+        q_lower = (question or "").lower()
+        allowed_lower = {t.lower() for t in allowed_tables}
+
+        # Domain 1: Tech / TI roles attempting to access financial / commercial / sales data
+        is_tech_role = any(k in role_lower for k in ["ti", "infraestructura", "tecnolog", "sistemas"])
+        if is_tech_role:
+            business_tables = {
+                "fact_ventas", "fact_ingresos_costos", "dim_clientes", "dim_productos",
+                "dim_categorias", "vbak_cabpedidoventa", "vbap_pospedidoventa",
+                "ekko_cabpedidocompra", "ekpo_pospedidocompra", "kna1_clientes"
+            }
+            if not (allowed_lower & business_tables):
+                financial_pattern = r'\b(saldo|saldos|venta|ventas|ingreso|ingresos|ganancia|ganancias|precio|precios|facturaci[oó]n|margen|ebitda|rentabilidad|costo|costos)\b'
+                if re.search(financial_pattern, q_lower):
+                    return (
+                        f"Gobernanza RBAC: Acceso denegado. El perfil '{user_role}' no tiene autorización "
+                        "para consultar información financiera, saldos, ventas ni ingresos de la organización."
+                    )
+
+        # Domain 2: Business / Financial / Economic roles attempting to access technical IT infrastructure
+        is_fin_role = any(k in role_lower for k in ["economista", "financiero", "finanzas", "comercial", "negocio"])
+        if is_fin_role:
+            tech_tables = {
+                "dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos"
+            }
+            if not (allowed_lower & tech_tables):
+                tech_pattern = r'\b(servidor|servidores|cpu|memoria ram|incidente|incidentes ti|incidentes_ti|consumo de recursos|uptime|downtime)\b'
+                if re.search(tech_pattern, q_lower):
+                    return (
+                        f"Gobernanza RBAC: Acceso denegado. El perfil '{user_role}' no tiene autorización "
+                        "para consultar servidores, incidentes técnicos ni métricas de infraestructura TI."
+                    )
+
+        return None
+
+    # Delegates to ResponseBuilder and NullManagerService
     _build_llm_offline_response = ResponseBuilder.build_llm_offline_response
     _build_rbac_denied_response = ResponseBuilder.build_rbac_denied_response
+    _apply_in_memory_null_remediation = NullManagerService.apply_in_memory_remediation
+
+    @classmethod
+    def _detect_remediation_intent(cls, text: str) -> Optional[str]:
+        if not text:
+            return None
+        t_low = text.lower()
+        if any(k in t_low for k in ["eliminar filas", "eliminar registros", "eliminar nulos", "quitar nulos", "delete_rows"]):
+            return "delete_rows"
+        if any(k in t_low for k in ["adaptar a la moda", "moda estadística", "imputar moda", "tratar nulos: moda", "a la moda"]) or ("moda" in t_low and ("nulo" in t_low or "tratar" in t_low)):
+            return "mode"
+        if any(k in t_low for k in ["adaptar al más cercano", "más cercano", "mas cercano", "nearest", "imputar cercano"]) or (("cercano" in t_low or "nearest" in t_low) and ("nulo" in t_low or "tratar" in t_low)):
+            return "nearest"
+        return None
 
     @classmethod
     async def execute_query(
@@ -209,33 +318,61 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         conversation_history: Optional[List[Dict[str, Any]]] = None
     ) -> QueryResponse:
 
+        # 0. Check if question is a null remediation directive for a previous query
+        remediation_action = cls._detect_remediation_intent(question)
+        original_question = None
+        original_sql = None
+
+        if remediation_action:
+            m_para = re.search(r'(?:para|sobre)\s+la\s+consulta:\s*[\'"]?([^\r\n]+?)[\'"]?$', question, re.IGNORECASE)
+            if m_para:
+                original_question = m_para.group(1).strip()
+
+            if conversation_history:
+                for turn in reversed(conversation_history):
+                    t_q = turn.get("question", "").strip()
+                    if t_q and not cls._detect_remediation_intent(t_q):
+                        if not original_question:
+                            original_question = t_q
+                        if turn.get("sql") and not original_sql:
+                            original_sql = turn.get("sql")
+                        break
+
+        effective_question = original_question or question
 
         # 1. RBAC check for unassigned "Usuario" role
         if not is_admin and (user_role == ROLE_USUARIO or not user_role):
             return ResponseBuilder.build_rbac_denied_response(
-                question,
+                effective_question,
                 "Tu cuenta se encuentra registrada con el perfil inicial 'Usuario'. Un Administrador debe asignarte un rol (Economista o TI) para acceder a los datos corporativos."
             )
 
         # 2. INTENT CLASSIFICATION
-        response_type = await IntentClassifier.classify_intent(question)
+        response_type = await IntentClassifier.classify_intent(effective_question)
 
         allowed_tables = cls.get_allowed_tables_for_role(user_role, is_admin, db=db, role_id=role_id, connection_id=connection_id)
 
         # BRANCH 0: GREETING / GENERAL CONVERSATION
-        if response_type == "greeting":
+        if response_type == "greeting" and not remediation_action:
+            clarification_opts = IntentClassifier.detect_ambiguity_and_options(effective_question, allowed_tables)
             conversational = await IntentClassifier.generate_conversational_response(
-                question, user_role, "greeting", columns=list(allowed_tables), is_llm_active=True
+                effective_question, user_role, "greeting", columns=list(allowed_tables), is_llm_active=True
             )
             return ResponseBuilder.build_greeting_response(
-                question, user_role, allowed_tables, conversational
+                effective_question, user_role, allowed_tables, conversational, clarification_options=clarification_opts
             )
 
         if not allowed_tables:
             return ResponseBuilder.build_rbac_denied_response(
-                question,
+                effective_question,
                 f"El rol '{user_role}' no tiene tablas asignadas en la matriz RBAC."
             )
+
+        # Cross-domain RBAC governance check
+        if not is_admin and user_role not in ADMIN_ROLES:
+            domain_denial = cls.check_domain_governance(effective_question, user_role, allowed_tables)
+            if domain_denial:
+                return ResponseBuilder.build_rbac_denied_response(effective_question, domain_denial)
 
         blocked_columns = cls.get_blocked_columns_for_role(user_role, is_admin, db=db, role_id=role_id, connection_id=connection_id)
         start_time = time.time()
@@ -255,6 +392,14 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             except Exception:
                 pass
 
+        if remediation_action and conn_record and db:
+            try:
+                NullManagerService.apply_null_policy(conn_record, remediation_action, db)
+                conn_record.null_policy = 'open'
+                db.commit()
+            except Exception as ex:
+                logger.warning(f"Error applying null remediation to DB: {ex}")
+
         is_pg = conn_record is not None and (conn_record.db_type == DatabaseType.POSTGRESQL or str(conn_record.db_type).lower() == "postgresql")
         engine_dialect = "postgres" if is_pg else "sqlite"
         target_db_path = DynamicSchemaPruningService.resolve_db_path(db, connection_id)
@@ -268,8 +413,8 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             table_columns_map[tbl.lower()] = [c["name"] for c in phys_cols_info if "name" in c]
 
         # BRANCH A: CONVERSATIONAL ASSISTANT
-        if response_type == "conversational":
-            grounding_sql = SQLExecutor.get_grounding_query(question, user_role, allowed_tables)
+        if response_type == "conversational" and not remediation_action:
+            grounding_sql = SQLExecutor.get_grounding_query(effective_question, user_role, allowed_tables)
             try:
                 _, secured_sql, meta = ASTValidator.validate_and_secure_sql(
                     grounding_sql,
@@ -278,47 +423,65 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                     blocked_columns=blocked_columns,
                     table_columns=table_columns_map
                 )
-            except ASTValidationError:
-                secured_sql = grounding_sql
-                meta = {"tables_used": list(allowed_tables)}
-
-            try:
                 rows = SQLExecutor.execute_raw_sql(exec_target, secured_sql, dialect=engine_dialect)
+            except ASTValidationError:
+                secured_sql = "-- CONSULTA NO AUTORIZADA POR GOBERNANZA RBAC"
+                meta = {"tables_used": []}
+                rows = []
             except Exception:
                 rows = []
 
             exec_time_ms = int((time.time() - start_time) * 1000)
             conversational = await IntentClassifier.generate_conversational_response(
-                question, user_role, "conversational", rows, list(rows[0].keys()) if rows else [], is_llm_active=True
+                effective_question, user_role, "conversational", rows, list(rows[0].keys()) if rows else [], is_llm_active=True
             )
 
             if not conversational:
-                return ResponseBuilder.build_llm_offline_response(question, exec_time_ms)
+                return ResponseBuilder.build_llm_offline_response(effective_question, exec_time_ms)
+
+            suggested_questions: List[str] = []
+            if conversational:
+                sugg_match = re.search(r'<preguntas_sugeridas>\s*(.*?)\s*</preguntas_sugeridas>', conversational, re.DOTALL | re.IGNORECASE)
+                if sugg_match:
+                    raw_suggs = sugg_match.group(1).strip().split("\n")
+                    suggested_questions = [re.sub(r'^[-*0-9.)\s]+', '', s).strip() for s in raw_suggs if s.strip()]
+                    conversational = re.sub(r'<preguntas_sugeridas>[\s\S]*?</preguntas_sugeridas>', '', conversational).strip()
+
+            clarification_opts = IntentClassifier.detect_ambiguity_and_options(effective_question, allowed_tables)
+            anomalies_detected = KPICalculator.detect_statistical_anomalies(rows, list(rows[0].keys()) if rows else [])
+            sql_explanation = ASTValidator.generate_sql_explanation(secured_sql, dialect=engine_dialect)
 
             return ResponseBuilder.build_conversational_response(
-                question, user_role, secured_sql, rows, meta, conversational, exec_time_ms, allowed_tables
+                effective_question, user_role, secured_sql, rows, meta, conversational, exec_time_ms, allowed_tables,
+                suggested_questions=suggested_questions,
+                clarification_options=clarification_opts,
+                anomalies_detected=anomalies_detected,
+                sql_explanation=sql_explanation
             )
 
         # BRANCH B: DATA ANALYSIS / REPORT / HYBRID
-
-        q_strip = question.strip().rstrip(';')
-        if q_strip.upper().startswith(("SELECT", "WITH", "DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "TRUNCATE", "CREATE")):
-            try:
-                _, secured_sql, meta = ASTValidator.validate_and_secure_sql(
-                    q_strip,
-                    dialect=engine_dialect,
-                    allowed_tables=allowed_tables,
-                    blocked_columns=blocked_columns,
-                    table_columns=table_columns_map
-                )
-                candidate_sql = secured_sql
-                is_llm_active = True
-            except ASTValidationError as e:
-                return ResponseBuilder.build_rbac_denied_response(question, str(e))
+        candidate_sql = None
+        if remediation_action and original_sql:
+            candidate_sql = original_sql
+            is_llm_active = True
         else:
-            candidate_sql = None
+            q_strip = effective_question.strip().rstrip(';')
+            if q_strip.upper().startswith(("SELECT", "WITH", "DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "TRUNCATE", "CREATE")):
+                try:
+                    _, secured_sql, meta = ASTValidator.validate_and_secure_sql(
+                        q_strip,
+                        dialect=engine_dialect,
+                        allowed_tables=allowed_tables,
+                        blocked_columns=blocked_columns,
+                        table_columns=table_columns_map
+                    )
+                    candidate_sql = secured_sql
+                    is_llm_active = True
+                except ASTValidationError as e:
+                    return ResponseBuilder.build_rbac_denied_response(effective_question, str(e))
 
         schema_context = ""
+        thinking_process: Optional[str] = None
         if not candidate_sql:
             try:
                 s_info = DynamicSchemaPruningService.get_authorized_schema_prompt(
@@ -332,24 +495,32 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             except Exception:
                 pass
 
-            few_shots = SQLExecutor.retrieve_few_shot_memories(db, question, connection_id)
+            few_shots = SQLExecutor.retrieve_few_shot_memories(db, effective_question, connection_id)
             conv_context = PromptManager.format_conversation_context(conversation_history) if conversation_history else ""
             try:
                 system_prompt = PromptManager.get_text_to_sql_system_prompt(user_role, allowed_tables)
                 prompt_llm = PromptManager.get_text_to_sql_user_prompt(
-                    question, user_role, schema_context, allowed_tables, few_shots, conversation_context=conv_context
+                    effective_question, user_role, schema_context, allowed_tables, few_shots, conversation_context=conv_context
                 )
-
 
                 llm_response_text = await LLMService.generate_completion(
                     prompt_llm,
                     system_prompt=system_prompt,
                     temperature=0.05,
-                    max_tokens=200
+                    max_tokens=600
                 )
 
                 if llm_response_text:
                     is_llm_active = True
+                    denied_match = re.search(r'<acceso_denegado>\s*(.*?)\s*</acceso_denegado>', llm_response_text, re.DOTALL | re.IGNORECASE)
+                    if denied_match:
+                        denied_reason = denied_match.group(1).strip()
+                        return ResponseBuilder.build_rbac_denied_response(effective_question, denied_reason)
+
+                    thinking_match = re.search(r'<pensamiento>\s*(.*?)\s*</pensamiento>', llm_response_text, re.DOTALL | re.IGNORECASE)
+                    if thinking_match:
+                        thinking_process = thinking_match.group(1).strip()
+
                     sql_match = re.search(r'```sql\s*(.*?)\s*```', llm_response_text, re.DOTALL | re.IGNORECASE)
                     if sql_match:
                         extracted = sql_match.group(1).strip()
@@ -364,12 +535,12 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
 
         if not candidate_sql or not is_llm_active:
             exec_time_ms = int((time.time() - start_time) * 1000)
-            return ResponseBuilder.build_llm_offline_response(question, exec_time_ms)
+            return ResponseBuilder.build_llm_offline_response(effective_question, exec_time_ms)
 
         try:
             rows, secured_sql, meta, was_self_healed, validation_label = await SQLExecutor.execute_with_self_healing(
                 target_db_path=exec_target,
-                question=question,
+                question=effective_question,
                 initial_sql=candidate_sql,
                 allowed_tables=allowed_tables,
                 blocked_columns=blocked_columns,
@@ -379,11 +550,11 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 dialect=engine_dialect
             )
         except Exception as e:
-            return ResponseBuilder.build_rbac_denied_response(question, str(e))
+            return ResponseBuilder.build_rbac_denied_response(effective_question, str(e))
 
         SQLExecutor.persist_learning_memory(
             db=db,
-            question=question,
+            question=effective_question,
             sql=secured_sql,
             connection_id=connection_id,
             user_role=user_role,
@@ -394,19 +565,122 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         exec_time_ms = int((time.time() - start_time) * 1000)
         columns = list(rows[0].keys()) if rows else []
 
+        # --- NULL DETECTION & REMEDIATION (Policy: 'open') ---
+        null_cols_in_rows = set()
+        null_rows_count = 0
+        for r in rows:
+            row_has_null = False
+            for c_name, val in r.items():
+                if val is None or str(val).strip().lower() in ("none", "null"):
+                    null_cols_in_rows.add(c_name)
+                    row_has_null = True
+            if row_has_null:
+                null_rows_count += 1
+
+        if remediation_action and null_cols_in_rows:
+            rows = NullManagerService.apply_in_memory_remediation(rows, columns, remediation_action)
+            null_cols_in_rows = set()
+            null_rows_count = 0
+
+        nulls_detected = None
+        conn_policy = getattr(conn_record, 'null_policy', 'open') or 'open'
+        is_remediation = bool(remediation_action)
+
+        # Early pause on Prompt 1 when nulls are found under policy 'open':
+        # Do NOT compute distorted KPIs or false conclusions analyzing "null" as a data category!
+        if null_rows_count > 0 and conn_policy == 'open' and not is_remediation:
+            primary_table = meta.get("tables_used", ["la tabla"])[0] if meta.get("tables_used") else "la tabla activa"
+            cols_sorted = sorted(list(null_cols_in_rows))
+            cols_text = ", ".join(f"`{c}`" for c in cols_sorted)
+            nulls_detected = {
+                "has_nulls": True,
+                "table_name": primary_table,
+                "columns_with_nulls": cols_sorted,
+                "null_rows_count": null_rows_count,
+                "total_rows": len(rows),
+                "options": [
+                    {
+                        "action": "delete_rows",
+                        "label": "Eliminar registros con nulos",
+                        "prompt": f"Tratar nulos en {primary_table} (eliminar registros con nulos) para la consulta: {effective_question}"
+                    },
+                    {
+                        "action": "mode",
+                        "label": "Adaptar a la moda",
+                        "prompt": f"Tratar nulos en {primary_table} (adaptar a la moda) para la consulta: {effective_question}"
+                    },
+                    {
+                        "action": "nearest",
+                        "label": "Adaptar al más cercano",
+                        "prompt": f"Tratar nulos en {primary_table} (adaptar al más cercano) para la consulta: {effective_question}"
+                    }
+                ]
+            }
+
+            conversational = (
+                f"⚠️ **Valores nulos detectados en la consulta**\n\n"
+                f"Se detectaron valores nulos en la tabla `{primary_table}` (columnas: {cols_text}), "
+                f"afectando a {null_rows_count} de {len(rows)} registros analizados.\n\n"
+                f"Para entregarte un análisis confiable y evitar distorsiones en los resultados o gráficos "
+                f"(como considerar los valores nulos como una categoría de datos), "
+                f"por favor selecciona cómo deseas procesar estos registros antes de calcular la respuesta definitiva:"
+            )
+            fallback_summary = conversational
+            kpis = []
+            chart_type = "none"
+            chart_option = {"series": []}
+            final_exec_report = None
+            suggested_questions = []
+            anomalies_detected = []
+            clarification_opts = []
+            sql_explanation = ASTValidator.generate_sql_explanation(secured_sql, dialect=engine_dialect)
+            pres_hints = PresentationHints(
+                show_executive_report=False,
+                show_kpis=False,
+                show_chart=False,
+                preferred_view="assistant",
+                summary_style="detailed"
+            )
+
+            return ResponseBuilder.build_analytics_response(
+                question=effective_question,
+                response_type=response_type,
+                rows=rows,
+                columns=columns,
+                meta=meta,
+                allowed_tables=allowed_tables,
+                secured_sql=secured_sql,
+                validation_label=validation_label,
+                exec_time_ms=exec_time_ms,
+                is_llm_active=is_llm_active,
+                pres_hints=pres_hints,
+                kpis=kpis,
+                chart_type=chart_type,
+                chart_option=chart_option,
+                final_summary=fallback_summary,
+                final_exec_report=final_exec_report,
+                conversational=conversational,
+                thinking_process=thinking_process,
+                suggested_questions=suggested_questions,
+                clarification_options=clarification_opts,
+                anomalies_detected=anomalies_detected,
+                sql_explanation=sql_explanation,
+                nulls_detected=nulls_detected
+            )
+
         pres_hints = await IntentClassifier.classify_presentation_format(
-            question, response_type, rows, columns
+            effective_question, response_type, rows, columns
         )
 
         kpis, chart_type, chart_option, fallback_summary, fallback_exec_report = KPICalculator.build_dynamic_visualization(
-            question, columns, rows, user_role
+            effective_question, columns, rows, user_role
         )
 
         final_exec_report = fallback_exec_report
 
         if is_llm_active:
             semantic_res = await KPICalculator.generate_semantic_analysis_with_llm(
-                question=question,
+                question=effective_question,
                 user_role=user_role,
                 rows=rows,
                 columns=columns,
@@ -419,7 +693,7 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 fallback_summary = semantic_overview
             elif pres_hints.show_executive_report:
                 llm_exec_report = await KPICalculator.generate_deep_executive_report_with_llm(
-                    question, user_role, rows, columns, secured_sql, is_llm_active
+                    effective_question, user_role, rows, columns, secured_sql, is_llm_active
                 )
                 if llm_exec_report:
                     final_exec_report = llm_exec_report
@@ -433,8 +707,58 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             chart_option = {"series": []}
 
         conversational = await IntentClassifier.generate_conversational_response(
-            question, user_role, response_type, rows, columns, is_llm_active
+            effective_question, user_role, response_type, rows, columns, is_llm_active
         )
+
+        if is_remediation:
+            action_labels = {
+                "delete_rows": "Eliminación de registros con nulos",
+                "mode": "Adaptación a la moda estadística",
+                "nearest": "Adaptación al valor más cercano"
+            }
+            lbl = action_labels.get(remediation_action, remediation_action)
+            banner = f"✅ **Tratamiento de nulos ({lbl}) aplicado para responder a:** *\"{effective_question}\"*\n\n"
+            if conversational:
+                conversational = banner + conversational
+            if fallback_summary:
+                fallback_summary = banner + fallback_summary
+
+        suggested_questions: List[str] = []
+        if conversational:
+            # 1. Extract from XML tags <preguntas_sugeridas>
+            sugg_match = re.search(r'<preguntas_sugeridas>\s*(.*?)\s*</preguntas_sugeridas>', conversational, re.DOTALL | re.IGNORECASE)
+            if sugg_match:
+                raw_suggs = sugg_match.group(1).strip().split("\n")
+                suggested_questions = [re.sub(r'^[-*0-9.)\s]+', '', s).strip() for s in raw_suggs if s.strip()]
+                conversational = re.sub(r'<preguntas_sugeridas>[\s\S]*?</preguntas_sugeridas>', '', conversational).strip()
+
+            # 2. Also strip any un-tagged question headers like 'Preguntas de Profundización:' from text body
+            text_sugg_match = re.search(r'(?:###?\s*)?(?:Preguntas\s+de\s+Profundización|Próximas\s+Preguntas|Preguntas\s+Sugeridas)[\s:]*([\s\S]*)$', conversational, re.IGNORECASE)
+            if text_sugg_match:
+                lines = [re.sub(r'^[-*0-9.)\s]+', '', l).strip() for l in text_sugg_match.group(1).strip().split("\n") if l.strip()]
+                if not suggested_questions and lines:
+                    suggested_questions = [l for l in lines if l.startswith("¿") or len(l) > 10][:3]
+                conversational = conversational[:text_sugg_match.start()].strip()
+
+        if not suggested_questions and rows and columns:
+            first_col = columns[0]
+            num_cols = [c for c in columns if is_true_numeric_metric(c, rows[0].get(c))]
+            if num_cols:
+                suggested_questions = [
+                    f"¿Cuál es la evolución temporal de {num_cols[0]}?",
+                    f"¿Cómo se distribuye {num_cols[0]} según {first_col}?",
+                    f"¿Cuáles son los valores más destacados de {num_cols[0]}?"
+                ]
+            else:
+                suggested_questions = [
+                    f"¿Cuántos registros totales existen en {meta.get('tables_used', ['esta tabla'])[0]}?",
+                    f"¿Cuáles son los registros más recientes?",
+                    f"¿Cómo se desglosan por {first_col}?"
+                ]
+
+        clarification_opts = IntentClassifier.detect_ambiguity_and_options(effective_question, allowed_tables)
+        anomalies_detected = KPICalculator.detect_statistical_anomalies(rows, columns)
+        sql_explanation = ASTValidator.generate_sql_explanation(secured_sql, dialect=engine_dialect)
 
         if conversational:
             first_block = conversational.split("\n\n")[0].replace("#", "").strip()
@@ -446,13 +770,13 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         elif pres_hints.summary_style == "concise":
             final_summary = (
                 f"Se obtuvieron {len(rows)} registros de "
-                f"{', '.join(meta.get('tables_used', []))} para la consulta '{question}'."
+                f"{', '.join(meta.get('tables_used', []))} para la consulta '{effective_question}'."
             )
         else:
             final_summary = final_exec_report.overview if final_exec_report and final_exec_report.overview else fallback_summary
 
         return ResponseBuilder.build_analytics_response(
-            question=question,
+            question=effective_question,
             response_type=response_type,
             rows=rows,
             columns=columns,
@@ -468,7 +792,13 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             chart_option=chart_option,
             final_summary=final_summary,
             final_exec_report=final_exec_report,
-            conversational=conversational
+            conversational=conversational,
+            thinking_process=thinking_process,
+            suggested_questions=suggested_questions,
+            clarification_options=clarification_opts,
+            anomalies_detected=anomalies_detected,
+            sql_explanation=sql_explanation,
+            nulls_detected=nulls_detected
         )
 
     # Legacy static method aliases

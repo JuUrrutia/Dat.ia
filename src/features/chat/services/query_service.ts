@@ -4,9 +4,13 @@ import { llmClientService } from './llm_service';
 import { DEFAULT_OLLAMA_URL, DEFAULT_LLM_MODEL, DEFAULT_LLM_PROVIDER } from '../../../constants';
 
 export const queryService = {
-  async getSuggestions(userRole: string = 'Economista'): Promise<string[]> {
+  async getSuggestions(userRole: string = 'Economista', connectionId?: number): Promise<string[]> {
     try {
-      const res = await apiClient.get('/chat/suggestions');
+      const params: Record<string, any> = {};
+      if (connectionId) {
+        params.connection_id = connectionId;
+      }
+      const res = await apiClient.get('/chat/suggestions', { params });
       if (res.data && Array.isArray(res.data.suggestions) && res.data.suggestions.length > 0) {
         return res.data.suggestions;
       }
@@ -337,7 +341,7 @@ export const queryService = {
     }
   },
 
-  async getAnomalies(): Promise<{
+  async getAnomalies(connectionId?: number): Promise<{
     count: number;
     anomalies: Array<{
       id: string;
@@ -346,12 +350,17 @@ export const queryService = {
       title: string;
       description: string;
       action_label: string;
-      action_route: string;
+      action_route?: string;
+      query_prompt?: string;
     }>;
     has_critical: boolean;
   }> {
     try {
-      const res = await apiClient.get('/system/anomalies');
+      const params: Record<string, any> = {};
+      if (connectionId) {
+        params.connection_id = connectionId;
+      }
+      const res = await apiClient.get('/system/anomalies', { params });
       return res.data || { count: 0, anomalies: [], has_critical: false };
     } catch {
       return { count: 0, anomalies: [], has_critical: false };

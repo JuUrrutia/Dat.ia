@@ -1,5 +1,6 @@
 import json
 import re
+import statistics
 from typing import List, Dict, Any, Tuple, Optional
 from app.core.constants import DATE_COLUMN_KEYWORDS, CURRENCY_COLUMN_KEYWORDS, PERCENTAGE_COLUMN_KEYWORDS
 from app.core.prompts import PromptManager
@@ -16,6 +17,10 @@ NON_METRIC_KEYWORDS = {
 def is_true_numeric_metric(col_name: str, sample_val: Any) -> bool:
     col_lower = col_name.lower().strip()
     if col_lower.startswith("id_") or col_lower.endswith("_id") or col_lower == "id":
+        return False
+    if col_lower.startswith("campo_") or col_lower.startswith("col_") or col_lower.startswith("columna_") or col_lower.startswith("field_"):
+        return False
+    if any(k in col_lower for k in ("folio", "rut", "codigo", "cod_", "numero_doc", "num_doc", "documento", "doc_")):
         return False
     if any(col_lower == k or col_lower.startswith(f"{k}_") or col_lower.endswith(f"_{k}") for k in NON_METRIC_KEYWORDS):
         return False
@@ -170,7 +175,43 @@ class KPICalculator:
         else:
             chart_type = "bar"
 
-        chart_option = {"series": []}
+        categories = [str(r.get(primary_cat, f'Item {i+1}')) for i, r in enumerate(rows[:20])]
+        values = [(float(r.get(primary_num, 0)) if isinstance(r.get(primary_num), (int, float)) else 0) for r in rows[:20]]
+
+        if chart_type == "pie":
+            pie_data = [{"name": str(r.get(primary_cat, f'Item {i+1}')), "value": float(r.get(primary_num, 0)) if isinstance(r.get(primary_num), (int, float)) else 0} for i, r in enumerate(rows[:8])]
+            chart_option = {
+                "tooltip": {"trigger": "item"},
+                "series": [{
+                    "name": kpi_title,
+                    "type": "pie",
+                    "radius": ["40%", "70%"],
+                    "data": pie_data
+                }]
+            }
+        elif chart_type == "line":
+            chart_option = {
+                "tooltip": {"trigger": "axis"},
+                "xAxis": {"type": "category", "data": categories},
+                "yAxis": {"type": "value"},
+                "series": [{
+                    "name": kpi_title,
+                    "type": "line",
+                    "smooth": True,
+                    "data": values
+                }]
+            }
+        else:
+            chart_option = {
+                "tooltip": {"trigger": "axis"},
+                "xAxis": {"type": "category", "data": categories},
+                "yAxis": {"type": "value"},
+                "series": [{
+                    "name": kpi_title,
+                    "type": "bar",
+                    "data": values
+                }]
+            }
 
         pct_top = round((top_val / total_val * 100), 1) if total_val > 0 else 0
 
@@ -266,10 +307,30 @@ Genera la síntesis semántica, las 3 tarjetas KPI contextuales y el informe eje
                     if isinstance(kpis_raw, list):
                         for k in kpis_raw[:3]:
                             if isinstance(k, dict) and k.get("title") and k.get("value"):
+                                raw_title = str(k["title"]).strip()
+                                raw_val = str(k["value"]).strip()
+                                raw_sub = str(k.get("subtitle", "")).strip()
+
+                                # Strip AI filler boilerplate from subtitle
+                                raw_sub = re.sub(r'^[Ee]ste KPI (?:indica|muestra|refleja|calcula)(?: la| el| los| las)?\s*', '', raw_sub)
+                                if raw_sub:
+                                    raw_sub = raw_sub[0].upper() + raw_sub[1:]
+
+                                # If percentage title but raw number without %, format it
+                                if any(p in raw_title.lower() for p in ('porcentaje', 'tasa', 'ratio', 'pct')) and '%' not in raw_val and '$' not in raw_val:
+                                    try:
+                                        num = float(raw_val.replace(',', '.'))
+                                        if 0 < num <= 1:
+                                            raw_val = f"{num * 100:.1f}%"
+                                        else:
+                                            raw_val = f"{num:.1f}%" if num % 1 != 0 else f"{int(num)}%"
+                                    except Exception:
+                                        raw_val = f"{raw_val}%"
+
                                 parsed_kpis.append(KPICard(
-                                    title=str(k["title"]),
-                                    value=str(k["value"]),
-                                    subtitle=str(k.get("subtitle", "")),
+                                    title=raw_title,
+                                    value=raw_val,
+                                    subtitle=raw_sub,
                                     change_direction=str(k.get("change_direction", "neutral"))
                                 ))
 
@@ -352,3 +413,94 @@ Analiza la información devuelta y genera el informe ejecutivo en formato JSON."
         except Exception:
             pass
         return None
+
+    @classmethod
+    def detect_statistical_anomalies(
+        cls,
+        rows: List[Dict[str, Any]],
+        columns: List[str]
+    ) -> List[Dict[str, Any]]:
+        """
+        Detects statistical outliers (|z| >= 2.0) across numeric columns using stdlib statistics,
+        providing diagnostic causal notes without adding third-party dependencies (Ideas #13 & #14).
+        """
+        if not rows or len(rows) < 4 or not columns:
+            return []
+
+        # Find descriptive column for labeling rows (e.g. name, date, category)
+        label_col = None
+        for col in columns:
+            col_l = col.lower()
+            if not is_true_numeric_metric(col, rows[0].get(col)):
+                if not col_l.startswith("id") and not col_l.endswith("_id"):
+                    label_col = col
+                    break
+        if not label_col:
+            label_col = columns[0]
+
+        anomalies = []
+
+        EXPLICIT_METRIC_KEYWORDS = (
+            "monto", "precio", "total", "costo", "ingreso", "venta", "revenue", "price",
+            "amount", "salario", "sueldo", "ganancia", "margen", "volumen", "consumo",
+            "uptime", "downtime", "duracion", "tiempo", "cantidad", "score", "rating",
+            "pct", "porcentaje", "toneladas", "pacientes", "visitas", "usuarios", "tasa",
+            "eficiencia", "despachadas", "atendidos"
+        )
+
+        for col in columns:
+            col_l = col.lower()
+            if not any(k in col_l for k in EXPLICIT_METRIC_KEYWORDS):
+                continue
+            sample_val = rows[0].get(col)
+            if not is_true_numeric_metric(col, sample_val):
+                continue
+
+            # Collect valid numeric values
+            num_data = []
+            for i, r in enumerate(rows):
+                val = r.get(col)
+                if val is not None and isinstance(val, (int, float)):
+                    num_data.append((i, val, r.get(label_col, f"Fila {i+1}")))
+
+            if len(num_data) < 4:
+                continue
+
+            values_only = [item[1] for item in num_data]
+            try:
+                mean_val = statistics.mean(values_only)
+                stdev_val = statistics.stdev(values_only)
+            except Exception:
+                continue
+
+            if stdev_val <= 0:
+                continue
+
+            for idx, val, entity_label in num_data:
+                z_score = (val - mean_val) / stdev_val
+                if abs(z_score) >= 2.0:
+                    is_spike = z_score > 0
+                    dir_str = "superior" if is_spike else "inferior"
+                    anomalies.append({
+                        "column": col,
+                        "row_index": idx,
+                        "entity": str(entity_label),
+                        "value": val,
+                        "mean": round(mean_val, 2),
+                        "stdev": round(stdev_val, 2),
+                        "z_score": round(z_score, 2),
+                        "direction": "spike" if is_spike else "drop",
+                        "description": (
+                            f"El valor {val:,} en '{col}' ({entity_label}) es significativamente "
+                            f"{dir_str} al promedio ({mean_val:,.1f})."
+                        ),
+                        "probable_cause": (
+                            f"Desviación atípica de {abs(round(z_score, 1))}σ respecto a la media. "
+                            f"Posible {'pico inusual de demanda o registro concentrado' if is_spike else 'caída crítica o interrupción de actividad'}."
+                        )
+                    })
+
+        # Return top 3 most extreme anomalies
+        anomalies.sort(key=lambda a: abs(a["z_score"]), reverse=True)
+        return anomalies[:3]
+

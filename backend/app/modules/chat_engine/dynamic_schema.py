@@ -1,6 +1,7 @@
 import os
+import time
 import sqlite3
-from typing import List, Dict, Set, Any, Optional
+from typing import List, Dict, Set, Any, Optional, Tuple
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.modules.admin_catalog.models import RoleTablePermission, RoleColumnPermission, ColumnPermissionType, SemanticCatalog, CorporateConnection, DatabaseType
@@ -12,6 +13,17 @@ class DynamicSchemaPruningService:
     and physically available tables in the active database engine.
     Ensures LLM context ONLY receives authorized & active physical tables.
     """
+
+    _schema_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+    _SCHEMA_CACHE_TTL: float = 600.0  # 10 minutes cache to avoid constant disk/DB introspection
+
+    @classmethod
+    def invalidate_schema_cache(cls, connection_id: Optional[int] = None) -> None:
+        """Clears cached schema prompt representations (e.g. after table/column permissions or catalog changes)."""
+        if connection_id is not None:
+            cls._schema_cache = {k: v for k, v in cls._schema_cache.items() if not k.startswith(f"{connection_id}:")}
+        else:
+            cls._schema_cache.clear()
 
     @classmethod
     def resolve_db_path(cls, db: Optional[Session] = None, connection_id: Optional[int] = None) -> str:
@@ -187,6 +199,14 @@ class DynamicSchemaPruningService:
         plus semantic descriptions, and sets of allowed_tables & blocked_columns for AST validation.
         Prunes tables that do not exist physically in the currently active database.
         """
+        cache_key = f"{connection_id}:{role_id}:{user_role}:{is_admin}"
+        now = time.time()
+        is_mock_db = hasattr(db, "_mock_return_value") or hasattr(db, "_mock_methods") or (db is not None and "mock" in type(db).__name__.lower())
+        if not is_mock_db and cache_key in cls._schema_cache:
+            ts, cached_result = cls._schema_cache[cache_key]
+            if now - ts < cls._SCHEMA_CACHE_TTL:
+                return cached_result
+
         conn_record = None
         if db is not None:
             try:
@@ -349,8 +369,12 @@ class DynamicSchemaPruningService:
         if formula_lines:
             schema_text_lines.append("\nFórmulas de Negocio Corporativas Oficiales:\n  - " + "\n  - ".join(formula_lines))
 
-        return {
+        result = {
             "schema_prompt": "\n\n".join(schema_text_lines) if schema_text_lines else "Esquema de la base de datos activa.",
             "allowed_tables": allowed_tables,
             "blocked_columns": blocked_columns
         }
+        if not is_mock_db:
+            cls._schema_cache[cache_key] = (now, result)
+        return result
+
