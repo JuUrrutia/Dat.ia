@@ -28,24 +28,24 @@ export const ConnectorModal: React.FC<ConnectorModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
-      <div className="glass-panel w-full max-w-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="glass-panel w-full max-w-xl rounded-2xl border border-slate-200 dark:border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] bg-white dark:bg-zinc-900">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-dark-border flex items-center justify-between bg-dark-surface/90">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-dark-border flex items-center justify-between bg-slate-50 dark:bg-dark-surface/90">
           <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+            <div className="p-2 rounded-xl bg-brand-50 text-brand-700 border border-brand-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20">
               <Database className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-white">
+              <h3 className="text-base font-semibold text-slate-900 dark:text-white">
                 {editingConnector ? 'Editar Conexión BD Corporativa' : 'Registrar Nueva Conexión BD Corporativa'}
               </h3>
-              <p className="text-xs text-gray-400">Modo estricto de Solo Lectura (`READ ONLY`) con cifrado AES-256</p>
+              <p className="text-xs text-slate-600 dark:text-gray-400">Modo estricto de Solo Lectura (`READ ONLY`) con cifrado AES-256</p>
             </div>
           </div>
           <button
             onClick={onClose}
             aria-label="Cerrar modal"
-            className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-dark-card transition-colors"
+            className="text-slate-400 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-dark-card transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -54,7 +54,7 @@ export const ConnectorModal: React.FC<ConnectorModalProps> = ({
         {/* Form Body */}
         <form id="connector-modal-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto min-h-0 p-5 sm:p-6 space-y-4">
           {state.errorMessage && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center space-x-2">
+            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-800 dark:text-rose-400 text-xs flex items-center space-x-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{state.errorMessage}</span>
             </div>
@@ -79,8 +79,8 @@ export const ConnectorModal: React.FC<ConnectorModalProps> = ({
             <div
               className={`p-3 rounded-xl border text-xs flex items-center space-x-2 animate-fadeIn ${
                 state.testResult.success
-                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                  : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400'
+                  : 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-500/10 dark:border-rose-500/20 dark:text-rose-400'
               }`}
             >
               <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -90,12 +90,12 @@ export const ConnectorModal: React.FC<ConnectorModalProps> = ({
         </form>
 
         {/* Fixed Sticky Footer Actions */}
-        <div className="shrink-0 px-5 sm:px-6 py-3.5 border-t border-dark-border bg-dark-surface/95 backdrop-blur flex items-center justify-between z-10">
+        <div className="shrink-0 px-5 sm:px-6 py-3.5 border-t border-slate-200 dark:border-dark-border bg-slate-50/95 dark:bg-dark-surface/95 backdrop-blur flex items-center justify-between z-10">
           <button
             type="button"
             onClick={handleTestConnection}
             disabled={state.testingConn}
-            className="flex items-center space-x-1.5 text-xs bg-dark-base hover:bg-dark-border text-brand-400 border border-brand-500/30 px-3.5 py-2 rounded-xl transition-colors"
+            className="flex items-center space-x-1.5 text-xs bg-slate-100 hover:bg-slate-200 text-brand-700 dark:bg-dark-base dark:hover:bg-dark-border dark:text-brand-400 border border-slate-300 dark:border-brand-500/30 px-3.5 py-2 rounded-xl transition-colors font-medium cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${state.testingConn ? 'animate-spin' : ''}`} />
             <span>{state.testingConn ? 'Probando Red...' : 'Probar Conexión BD'}</span>
@@ -105,7 +105,7 @@ export const ConnectorModal: React.FC<ConnectorModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-dark-card hover:bg-dark-border text-gray-300 text-xs font-medium transition-colors"
+              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-dark-card dark:hover:bg-dark-border dark:text-gray-300 text-xs font-medium transition-colors cursor-pointer"
             >
               Cancelar
             </button>
@@ -114,7 +114,7 @@ export const ConnectorModal: React.FC<ConnectorModalProps> = ({
               form="connector-modal-form"
               type="submit"
               disabled={state.isSubmitting}
-              className="flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold px-5 py-2 rounded-xl shadow-lg shadow-purple-600/30 transition-colors"
+              className="flex items-center space-x-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold px-5 py-2 rounded-xl shadow-xs transition-colors cursor-pointer"
             >
               <Save className="w-4 h-4" />
               <span>{editingConnector ? 'Guardar Cambios' : 'Registrar Conexión BD'}</span>

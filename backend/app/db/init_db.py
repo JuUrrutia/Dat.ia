@@ -40,6 +40,12 @@ def init_db(db: Session):
             with engine.begin() as conn:
                 if "result_snapshot" not in audit_cols:
                     conn.execute(text("ALTER TABLE audit_logs ADD COLUMN result_snapshot TEXT NULL"))
+
+        if "query_learning_memories" in inspector.get_table_names():
+            mem_cols = {c["name"] for c in inspector.get_columns("query_learning_memories")}
+            with engine.begin() as conn:
+                if "is_golden" not in mem_cols:
+                    conn.execute(text("ALTER TABLE query_learning_memories ADD COLUMN is_golden BOOLEAN DEFAULT FALSE NOT NULL"))
     except Exception:
         pass
 
@@ -233,6 +239,17 @@ def init_db(db: Session):
             RoleTablePermission.table_name.in_(["dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos"])
         ).delete(synchronize_session=False)
 
+    # Ensure TI roles strictly do NOT have access to financial/business tables
+    for r_obj in all_ti_roles:
+        db.query(RoleTablePermission).filter(
+            RoleTablePermission.role_id == r_obj.id,
+            RoleTablePermission.table_name.in_([
+                "fact_ventas", "fact_ingresos_costos", "dim_clientes", 
+                "dim_productos", "dim_categorias", "vbak_cabpedidoventa",
+                "vbap_pospedidoventa", "ekko_cabpedidocompra", "ekpo_pospedidocompra", "kna1_clientes"
+            ])
+        ).delete(synchronize_session=False)
+
     # Seed permissions for uploaded user datasets (is_uploaded == True)
     from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
     uploaded_connections = db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == True).all()
@@ -247,7 +264,18 @@ def init_db(db: Session):
             cat_entries = db.query(SemanticCatalog).filter(SemanticCatalog.connection_id == o_conn.id).all()
             phys_tables = {e.table_name for e in cat_entries if e.table_name}
         for r_obj in operational_roles:
+            is_r_ti = any(k in r_obj.name.lower() for k in ["ti", "infraestructura"])
+            is_r_fin = any(k in r_obj.name.lower() for k in ["economista", "financiero"])
             for tbl in phys_tables:
+                t_lower = tbl.lower()
+                if is_r_ti and t_lower in [
+                    "fact_ventas", "fact_ingresos_costos", "dim_clientes",
+                    "dim_productos", "dim_categorias", "vbak_cabpedidoventa",
+                    "vbap_pospedidoventa", "ekko_cabpedidocompra", "ekpo_pospedidocompra", "kna1_clientes"
+                ]:
+                    continue
+                if is_r_fin and t_lower in ["dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos"]:
+                    continue
                 existing_perm = db.query(RoleTablePermission).filter(
                     RoleTablePermission.role_id == r_obj.id,
                     RoleTablePermission.connection_id == o_conn.id,
