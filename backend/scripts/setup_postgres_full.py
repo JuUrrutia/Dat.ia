@@ -360,6 +360,14 @@ def setup_metadata_database():
     # 1. Create all tables defined in SQLAlchemy Base
     Base.metadata.create_all(bind=m_engine)
 
+    # Safe migration for newly added columns
+    try:
+        with m_engine.connect() as migration_conn:
+            migration_conn.execute(text("ALTER TABLE corporate_connections ADD COLUMN IF NOT EXISTS null_policy VARCHAR(50) DEFAULT 'open';"))
+            migration_conn.commit()
+    except Exception as e:
+        logger.warning(f"Aviso en migración de null_policy: {e}")
+
     Session = sessionmaker(bind=m_engine)
     db = Session()
 

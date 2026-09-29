@@ -48,5 +48,47 @@ class TestAgnosticVisualization(unittest.TestCase):
         self.assertIn("180", kpis[1].value)  # Valor Máximo
         self.assertIn("2026-03", kpis[1].subtitle)
 
+    def test_kpi_sanitization_and_units(self):
+        """Verifica que los KPIs limpien frases de relleno de IA y garanticen unidades como %."""
+        import asyncio
+        from unittest.mock import patch, AsyncMock
+        from app.modules.chat_engine.kpi_calculator import KPICalculator
+
+        mock_llm_json = """{
+            "overview": "Resumen ejecutivo de prueba.",
+            "kpis": [
+                {"title": "Número Total de Registros", "value": "36.4K", "subtitle": "Este KPI indica la cantidad de registros evaluados.", "change_direction": "neutral"},
+                {"title": "Porcentaje de Registros", "value": "24", "subtitle": "Este KPI muestra la proporción sobre el total.", "change_direction": "neutral"},
+                {"title": "Densidad de Registros", "value": "1.42M", "subtitle": "Este KPI calcula la densidad observada.", "change_direction": "positive"}
+            ],
+            "key_findings": ["Hallazgo 1"],
+            "recommendations": ["Recomendación 1"],
+            "risk_level": "BAJO",
+            "business_impact": "Impacto bajo"
+        }"""
+
+        with patch("app.modules.chat_engine.llm_service.LLMService.generate_completion", new_callable=AsyncMock) as mock_llm:
+            mock_llm.return_value = mock_llm_json
+            result = asyncio.run(KPICalculator.generate_semantic_analysis_with_llm(
+                question="¿Cuál es el conteo?",
+                user_role="Admin",
+                rows=[{"campo": 1}],
+                columns=["campo"],
+                secured_sql="SELECT 1",
+                is_llm_active=True
+            ))
+            self.assertIsNotNone(result)
+            parsed_kpis, overview, exec_rep = result
+            self.assertEqual(len(parsed_kpis), 3)
+
+            # Subtitles must be sanitized from AI filler
+            self.assertNotIn("Este KPI indica", parsed_kpis[0].subtitle)
+            self.assertNotIn("Este KPI muestra", parsed_kpis[1].subtitle)
+            self.assertNotIn("Este KPI calcula", parsed_kpis[2].subtitle)
+
+            # Percentage must have % symbol
+            self.assertTrue(parsed_kpis[1].value.endswith("%"))
+            self.assertEqual(parsed_kpis[1].value, "24%")
+
 if __name__ == "__main__":
     unittest.main()

@@ -153,3 +153,26 @@ class TestSystemHealth(unittest.TestCase):
         data = response.json()
         self.assertTrue(data["success"])
         self.assertEqual(data["latency_ms"], 8)
+
+    def test_system_anomalies_endpoint(self):
+        response = self.client.get("/api/v1/system/anomalies", headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("count", data)
+        self.assertIn("anomalies", data)
+        self.assertIn("has_critical", data)
+        self.assertIsInstance(data["anomalies"], list)
+
+    def test_system_anomalies_with_connection_id(self):
+        response = self.client.get("/api/v1/system/anomalies?connection_id=1", headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("count", data)
+        self.assertIn("anomalies", data)
+        self.assertIsInstance(data["anomalies"], list)
+        for a in data["anomalies"]:
+            self.assertIn("id", a)
+            self.assertIn("type", a)
+            self.assertIn("title", a)
+            self.assertIn("description", a)
+

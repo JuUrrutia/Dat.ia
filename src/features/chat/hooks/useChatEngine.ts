@@ -26,6 +26,7 @@ export function useChatEngine() {
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const userRole = user?.role_name || (user?.is_admin ? 'Administrador' : 'Usuario');
   const [promptSuggestions, setPromptSuggestions] = useState<string[]>([]);
@@ -48,6 +49,11 @@ export function useChatEngine() {
         const active = conns.find((c) => c.is_active) || conns[0];
         setActiveConnectionId(active.id);
         setActiveDatabaseName(`${active.name} (${active.db_type.toUpperCase()})`);
+        queryService.getSuggestions(userRole, active.id).then((suggs) => {
+          if (isMounted) {
+            setPromptSuggestions(suggs);
+          }
+        });
       }
     });
     return () => {
@@ -61,7 +67,7 @@ export function useChatEngine() {
       setActiveConnectionId(target.id);
       setActiveDatabaseName(`${target.name} (${target.db_type.toUpperCase()})`);
       notify('info', `Fuente de datos activa: ${target.name} (${target.db_type.toUpperCase()})`);
-      queryService.getSuggestions(userRole).then((suggs) => {
+      queryService.getSuggestions(userRole, target.id).then((suggs) => {
         setPromptSuggestions(suggs);
       });
     }
@@ -78,6 +84,7 @@ export function useChatEngine() {
   });
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const [generatingPhase, setGeneratingPhase] = useState<string>('Interpretando consulta en lenguaje natural...');
 
   // Sync threads from backend on login
   useEffect(() => {
@@ -87,29 +94,17 @@ export function useChatEngine() {
     const loadBackendThreads = async () => {
       try {
         const remoteSummaries = await queryService.getThreads();
-        if (remoteSummaries && remoteSummaries.length > 0) {
-          // Fetch full details for recent threads (up to 10)
-          const detailedThreads: FullThread[] = [];
-          for (const s of remoteSummaries.slice(0, 10)) {
-            const detail = await queryService.getThread(s.id);
-            if (detail) {
-              detailedThreads.push({
-                id: detail.id,
-                title: detail.title,
-                timestamp: detail.updated_at ? new Date(detail.updated_at).toLocaleDateString() : 'Reciente',
-                connection_id: detail.connection_id,
-                results: detail.results || [],
-              });
-            }
-          }
-          if (isMounted && detailedThreads.length > 0) {
-            setThreads(detailedThreads);
-            try {
-              localStorage.setItem(storageKey, JSON.stringify(detailedThreads));
-            } catch {
-              // ignore quota
-            }
-          }
+        if (remoteSummaries && remoteSummaries.length > 0 && isMounted) {
+          setThreads((prev) => {
+            const prevMap = new Map(prev.map((t) => [t.id, t]));
+            return remoteSummaries.map((s) => ({
+              id: s.id,
+              title: s.title,
+              timestamp: s.updated_at ? new Date(s.updated_at).toLocaleDateString() : 'Reciente',
+              connection_id: s.connection_id,
+              results: prevMap.get(s.id)?.results || [],
+            }));
+          });
         }
       } catch {
         // use local cache
@@ -121,6 +116,34 @@ export function useChatEngine() {
       isMounted = false;
     };
   }, [user, storageKey]);
+
+  // Check for shared thread URL parameter ?thread=<id>
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const sharedId = params.get('thread');
+    if (sharedId) {
+      queryService.getSharedThread(sharedId).then((sharedThread) => {
+        if (sharedThread) {
+          const formatted: FullThread = {
+            id: sharedThread.id,
+            title: sharedThread.title,
+            timestamp: sharedThread.updated_at ? new Date(sharedThread.updated_at).toLocaleDateString() : 'Compartido',
+            connection_id: sharedThread.connection_id,
+            results: sharedThread.results || [],
+          };
+          setThreads((prev) => {
+            if (prev.some((t) => t.id === sharedThread.id)) {
+              return prev.map((t) => (t.id === sharedThread.id ? formatted : t));
+            }
+            return [formatted, ...prev];
+          });
+          setActiveThreadId(sharedThread.id);
+          notify('info', `Consulta compartida cargada: "${sharedThread.title}"`);
+        }
+      });
+    }
+  }, []);
 
   // Persist threads to localStorage on change
   useEffect(() => {
@@ -144,13 +167,34 @@ export function useChatEngine() {
     timestamp: t.timestamp,
   }));
 
-  const handleSelectThread = (id: string) => {
+  const handleSelectThread = async (id: string) => {
     setActiveThreadId(id);
+    const target = threads.find((t) => t.id === id);
+    if (target && target.results.length === 0) {
+      try {
+        const detail = await queryService.getThread(id);
+        if (detail?.results?.length) {
+          setThreads((prev) =>
+            prev.map((t) => (t.id === id ? { ...t, results: detail.results } : t))
+          );
+        }
+      } catch {
+        // use existing thread state
+      }
+    }
   };
 
   const handleNewThread = useCallback(() => {
-    setActiveThreadId(null);
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
+    setIsGenerating(false);
+    setPromptInput('');
     setPendingPrompt(null);
+    setActiveTraceability(null);
+    setActiveThreadId(null);
     setTimeout(() => {
       promptTextareaRef.current?.focus();
     }, 50);
@@ -190,8 +234,6 @@ export function useChatEngine() {
     promptTextareaRef.current?.focus();
     notify('info', 'Pregunta cargada en el editor para reintentar.');
   };
-
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   const handleSendPrompt = async (text: string) => {
     const trimmed = text.trim();
@@ -234,6 +276,17 @@ export function useChatEngine() {
     setPendingPrompt(trimmed);
     setPromptInput('');
     setIsGenerating(true);
+    setGeneratingPhase('Interpretando consulta en lenguaje natural...');
+
+    const phaseTimer1 = setTimeout(() => {
+      setGeneratingPhase('Validando permisos RBAC y reglas de seguridad AST...');
+    }, 1400);
+    const phaseTimer2 = setTimeout(() => {
+      setGeneratingPhase('Ejecutando consulta en base de datos corporativa...');
+    }, 3200);
+    const phaseTimer3 = setTimeout(() => {
+      setGeneratingPhase('Estructurando análisis ejecutivo y visualizaciones...');
+    }, 5500);
 
     const timeoutId = setTimeout(() => {
       if (abortControllerRef.current === controller) {
@@ -286,6 +339,9 @@ export function useChatEngine() {
       notify('error', err.message || 'Error al conectar con la base de datos o el motor LLM local.');
     } finally {
       clearTimeout(timeoutId);
+      clearTimeout(phaseTimer1);
+      clearTimeout(phaseTimer2);
+      clearTimeout(phaseTimer3);
       setIsGenerating(false);
       setPendingPrompt(null);
     }
@@ -319,6 +375,7 @@ export function useChatEngine() {
     promptInput,
     setPromptInput,
     isGenerating,
+    generatingPhase,
     activeTraceability,
     setActiveTraceability,
     isMobileHistoryOpen,

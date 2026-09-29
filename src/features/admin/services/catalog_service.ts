@@ -53,6 +53,28 @@ export interface AutoEnrichResponse {
   catalog_items: CatalogItem[];
 }
 
+export interface NullColumnInfo {
+  column_name: string;
+  data_type: string;
+  null_count: number;
+  null_percentage: number;
+}
+
+export interface NullTableInfo {
+  table_name: string;
+  schema_name: string;
+  total_rows: number;
+  total_null_columns: number;
+  columns_with_nulls: NullColumnInfo[];
+}
+
+export interface NullsAuditResponse {
+  has_nulls: boolean;
+  total_tables_with_nulls: number;
+  tables: NullTableInfo[];
+  current_policy: string;
+}
+
 export const catalogService = {
   async getCatalog(connectionId?: number, tableName?: string): Promise<CatalogItem[]> {
     try {
@@ -132,6 +154,16 @@ export const catalogService = {
       connection_id: connectionId || null,
       table_name: tableName || null,
     });
+    return res.data;
+  },
+
+  async getNullsAudit(connectionId: number): Promise<NullsAuditResponse> {
+    const res = await apiClient.get<NullsAuditResponse>(`/catalog/connections/${connectionId}/nulls-audit`);
+    return res.data;
+  },
+
+  async applyNullPolicy(connectionId: number, policy: 'delete_rows' | 'mode' | 'nearest' | 'open'): Promise<{ status: string; policy: string; message: string }> {
+    const res = await apiClient.post(`/catalog/connections/${connectionId}/nulls-policy`, { policy });
     return res.data;
   },
 };
