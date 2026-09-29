@@ -31,7 +31,7 @@ export const ConnectorFormFields: React.FC<FormFieldsProps> = ({
   return (
     <>
       <div>
-        <label htmlFor="conn-name" className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
+        <label htmlFor="conn-name" className="block text-xs font-semibold text-slate-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
           Nombre Identificador de la Conexión
         </label>
         <input
@@ -40,21 +40,21 @@ export const ConnectorFormFields: React.FC<FormFieldsProps> = ({
           value={name}
           onChange={(e) => onFieldChange('name', e.target.value)}
           placeholder="ej. BD_FINANZAS_PROD"
-          className="w-full bg-dark-base border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500"
+          className="w-full bg-slate-50 dark:bg-dark-base border border-slate-300 dark:border-dark-border rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-gray-500 focus:outline-none focus:border-brand-500"
           required
         />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label htmlFor="conn-db-type" className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
+          <label htmlFor="conn-db-type" className="block text-xs font-semibold text-slate-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
             Motor de Base de Datos
           </label>
           <select
             id="conn-db-type"
             value={dbType}
             onChange={(e: any) => onDbTypeChange(e.target.value)}
-            className="w-full bg-dark-base border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-brand-500"
+            className="w-full bg-slate-50 dark:bg-dark-base border border-slate-300 dark:border-dark-border rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
           >
             <option value="postgresql">PostgreSQL</option>
             <option value="mssql">Microsoft SQL Server</option>
@@ -64,9 +64,8 @@ export const ConnectorFormFields: React.FC<FormFieldsProps> = ({
           </select>
         </div>
 
-
         <div>
-          <label htmlFor="conn-port" className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
+          <label htmlFor="conn-port" className="block text-xs font-semibold text-slate-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
             Puerto Red
           </label>
           <input
@@ -74,7 +73,7 @@ export const ConnectorFormFields: React.FC<FormFieldsProps> = ({
             type="number"
             value={port || ''}
             onChange={(e) => onFieldChange('port', parseInt(e.target.value, 10) || 0)}
-            className="w-full bg-dark-base border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-brand-500"
+            className="w-full bg-slate-50 dark:bg-dark-base border border-slate-300 dark:border-dark-border rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
             required
           />
         </div>
@@ -82,7 +81,7 @@ export const ConnectorFormFields: React.FC<FormFieldsProps> = ({
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label htmlFor="conn-host" className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
+          <label htmlFor="conn-host" className="block text-xs font-semibold text-slate-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
             Host / Dirección IP Servidor
           </label>
           <input
@@ -91,13 +90,13 @@ export const ConnectorFormFields: React.FC<FormFieldsProps> = ({
             value={host}
             onChange={(e) => onFieldChange('host', e.target.value)}
             placeholder="10.0.1.45 o localhost"
-            className="w-full bg-dark-base border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500"
+            className="w-full bg-slate-50 dark:bg-dark-base border border-slate-300 dark:border-dark-border rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-gray-500 focus:outline-none focus:border-brand-500"
             required
           />
         </div>
 
         <div>
-          <label htmlFor="conn-dbname" className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
+          <label htmlFor="conn-dbname" className="block text-xs font-semibold text-slate-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
             Nombre de la Base de Datos
           </label>
           <input
@@ -106,7 +105,7 @@ export const ConnectorFormFields: React.FC<FormFieldsProps> = ({
             value={databaseName}
             onChange={(e) => onFieldChange('databaseName', e.target.value)}
             placeholder="ej. corp_finanzas"
-            className="w-full bg-dark-base border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500"
+            className="w-full bg-slate-50 dark:bg-dark-base border border-slate-300 dark:border-dark-border rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-gray-500 focus:outline-none focus:border-brand-500"
             required
           />
         </div>
@@ -114,7 +113,7 @@ export const ConnectorFormFields: React.FC<FormFieldsProps> = ({
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label htmlFor="conn-user" className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
+          <label htmlFor="conn-user" className="block text-xs font-semibold text-slate-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
             Usuario Solo Lectura (READ ONLY)
           </label>
           <input
@@ -123,13 +122,13 @@ export const ConnectorFormFields: React.FC<FormFieldsProps> = ({
             value={username}
             onChange={(e) => onFieldChange('username', e.target.value)}
             placeholder="usr_read_only"
-            className="w-full bg-dark-base border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500"
+            className="w-full bg-slate-50 dark:bg-dark-base border border-slate-300 dark:border-dark-border rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-gray-500 focus:outline-none focus:border-brand-500"
             required
           />
         </div>
 
         <div>
-          <label htmlFor="conn-pass" className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
+          <label htmlFor="conn-pass" className="block text-xs font-semibold text-slate-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
             Contraseña {editingConnector && '(Dejar vacío para no cambiar)'}
           </label>
           <input
@@ -138,7 +137,7 @@ export const ConnectorFormFields: React.FC<FormFieldsProps> = ({
             value={password}
             onChange={(e) => onFieldChange('password', e.target.value)}
             placeholder="••••••••"
-            className="w-full bg-dark-base border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500"
+            className="w-full bg-slate-50 dark:bg-dark-base border border-slate-300 dark:border-dark-border rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-gray-500 focus:outline-none focus:border-brand-500"
             required={!editingConnector}
           />
         </div>
@@ -150,9 +149,9 @@ export const ConnectorFormFields: React.FC<FormFieldsProps> = ({
           id="isActiveCheck"
           checked={isActive}
           onChange={(e) => onFieldChange('isActive', e.target.checked)}
-          className="w-4 h-4 text-brand-600 rounded bg-dark-base border-dark-border focus:ring-brand-500"
+          className="w-4 h-4 text-brand-600 rounded bg-slate-50 dark:bg-dark-base border-slate-300 dark:border-dark-border focus:ring-brand-500"
         />
-        <label htmlFor="isActiveCheck" className="text-xs text-gray-300 font-medium cursor-pointer">
+        <label htmlFor="isActiveCheck" className="text-xs text-slate-700 dark:text-gray-300 font-medium cursor-pointer">
           Habilitar esta fuente de datos para consultas analíticas
         </label>
       </div>

@@ -15,7 +15,8 @@ from app.modules.chat_engine.schemas import (
     QueryRequest, QueryResponse, SuggestionsResponse,
     ChatThreadCreate, ChatThreadSummary, ChatThreadDetail,
     ChatFeedbackRequest, ChatFeedbackResponse,
-    DashboardWidgetCreate, DashboardWidgetOut
+    DashboardWidgetCreate, DashboardWidgetOut,
+    GoldenQueryRequest
 )
 from app.modules.chat_engine.engine import QueryEngine
 from app.modules.chat_engine.llm_diagnostic_router import llm_diagnostic_router
@@ -178,11 +179,25 @@ async def get_dynamic_suggestions(
     role_name = current_user.role.name if current_user.role else (ROLE_ADMINISTRADOR if current_user.is_admin else ROLE_USUARIO)
     is_admin = current_user.is_admin or role_name in ADMIN_ROLES
 
+    # Resolve active connection when omitted
+    effective_conn_id = connection_id
+    if effective_conn_id is None and db is not None:
+        try:
+            from app.modules.admin_catalog.models import CorporateConnection
+            active_c = db.query(CorporateConnection).filter(CorporateConnection.is_active == True).order_by(CorporateConnection.id.desc()).first()
+            if not active_c:
+                active_c = db.query(CorporateConnection).order_by(CorporateConnection.id.desc()).first()
+            if active_c:
+                effective_conn_id = active_c.id
+        except Exception:
+            pass
+
     allowed_tables = QueryEngine.get_allowed_tables_for_role(
         user_role=role_name,
         is_admin=is_admin,
         db=db,
-        connection_id=connection_id
+        role_id=current_user.role_id,
+        connection_id=effective_conn_id
     )
 
     schema_prompt = ""
@@ -191,8 +206,9 @@ async def get_dynamic_suggestions(
         s_info = DynamicSchemaPruningService.get_authorized_schema_prompt(
             db=db,
             user_role=role_name,
+            role_id=current_user.role_id,
             is_admin=is_admin,
-            connection_id=connection_id
+            connection_id=effective_conn_id
         )
         schema_prompt = s_info.get("schema_prompt", "")
     except Exception:
@@ -266,6 +282,29 @@ def get_chat_thread(
         updated_at=thread.updated_at.isoformat() if thread.updated_at else ""
     )
 
+@router.get("/threads/shared/{thread_id}", response_model=ChatThreadDetail)
+def get_shared_chat_thread(
+    thread_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """Gets details and all QueryResult messages for a shared conversation thread across team members."""
+    thread = db.query(ChatConversation).filter(ChatConversation.id == thread_id).first()
+    if not thread:
+        raise HTTPException(status_code=404, detail="Hilo de conversación no encontrado")
+    try:
+        results = json.loads(thread.messages_json or "[]")
+    except Exception:
+        results = []
+    return ChatThreadDetail(
+        id=thread.id,
+        title=thread.title,
+        connection_id=thread.connection_id or 1,
+        results=results,
+        created_at=thread.created_at.isoformat() if thread.created_at else "",
+        updated_at=thread.updated_at.isoformat() if thread.updated_at else ""
+    )
+
 @router.post("/threads", response_model=ChatThreadDetail)
 def save_chat_thread(
     thread_in: ChatThreadCreate,
@@ -273,14 +312,15 @@ def save_chat_thread(
     db: Session = Depends(get_db)
 ) -> Any:
     """Creates or updates a persistent chat thread with its full results stream."""
+    # Query by thread ID (primary key) to avoid unique constraint violations
     thread = db.query(ChatConversation).filter(
-        ChatConversation.id == thread_in.id,
-        ChatConversation.user_id == current_user.id
+        ChatConversation.id == thread_in.id
     ).first()
 
     msgs_json = json.dumps(thread_in.results)
 
     if thread:
+        thread.user_id = current_user.id
         thread.title = thread_in.title
         thread.connection_id = thread_in.connection_id or 1
         thread.messages_json = msgs_json
@@ -296,8 +336,23 @@ def save_chat_thread(
             updated_at=datetime.datetime.utcnow()
         )
         db.add(thread)
-    db.commit()
-    db.refresh(thread)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        # Concurrently created by another request: fetch and update
+        thread = db.query(ChatConversation).filter(ChatConversation.id == thread_in.id).first()
+        if thread:
+            thread.user_id = current_user.id
+            thread.title = thread_in.title
+            thread.connection_id = thread_in.connection_id or 1
+            thread.messages_json = msgs_json
+            thread.updated_at = datetime.datetime.utcnow()
+            db.commit()
+
+    if thread:
+        db.refresh(thread)
 
     return ChatThreadDetail(
         id=thread.id,
@@ -375,6 +430,8 @@ def submit_query_feedback(
         if existing_mem:
             existing_mem.execution_count = (existing_mem.execution_count or 1) + 5
             existing_mem.successful_sql = feedback_in.sql
+            if feedback_in.is_golden:
+                existing_mem.is_golden = True
         else:
             new_mem = QueryLearningMemory(
                 question_pattern=clean_q,
@@ -382,7 +439,8 @@ def submit_query_feedback(
                 user_role=current_user.role.name if current_user.role else "Usuario",
                 successful_sql=feedback_in.sql,
                 execution_count=5,
-                was_self_healed=False
+                was_self_healed=False,
+                is_golden=bool(feedback_in.is_golden)
             )
             db.add(new_mem)
         db.commit()
@@ -394,6 +452,36 @@ def submit_query_feedback(
         else "Gracias por tu feedback. Lo utilizaremos para mejorar futuras respuestas."
     )
     return ChatFeedbackResponse(success=True, message=msg, learning_saved=learning_saved)
+
+@router.post("/golden-query")
+def toggle_golden_query(
+    item_in: GoldenQueryRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """Marks or unmarks a query as a Golden Sample (highest priority few-shot reference)."""
+    clean_q = item_in.question.strip().lower()
+    mem = db.query(QueryLearningMemory).filter(
+        QueryLearningMemory.connection_id == item_in.connection_id,
+        QueryLearningMemory.question_pattern == clean_q
+    ).first()
+    if mem:
+        mem.is_golden = item_in.is_golden
+        mem.successful_sql = item_in.sql
+    else:
+        mem = QueryLearningMemory(
+            question_pattern=clean_q,
+            connection_id=item_in.connection_id,
+            user_role=current_user.role.name if current_user.role else "Usuario",
+            successful_sql=item_in.sql,
+            execution_count=10,
+            was_self_healed=False,
+            is_golden=item_in.is_golden
+        )
+        db.add(mem)
+    db.commit()
+    msg = "Consulta marcada como Consulta Maestra (Golden Sample)." if item_in.is_golden else "Consulta desmarcada como Consulta Maestra."
+    return {"success": True, "message": msg, "is_golden": item_in.is_golden}
 
 
 # =========================================================================

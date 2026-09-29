@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     OPENAI_COMPATIBLE_API_KEY: str = "lm-studio"
     
     # Security Defaults
-    DEFAULT_ROW_LIMIT: int = 1000
+    DEFAULT_ROW_LIMIT: int = 500
     QUERY_TIMEOUT_SECONDS: int = 15
 
     # Path to Dedicated Metadata Database (Users, Roles, Connectors, Sessions, Audit, Catalog)

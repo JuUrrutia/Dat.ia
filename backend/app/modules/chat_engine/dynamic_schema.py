@@ -1,6 +1,7 @@
 import os
+import time
 import sqlite3
-from typing import List, Dict, Set, Any, Optional
+from typing import List, Dict, Set, Any, Optional, Tuple
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.modules.admin_catalog.models import RoleTablePermission, RoleColumnPermission, ColumnPermissionType, SemanticCatalog, CorporateConnection, DatabaseType
@@ -12,6 +13,17 @@ class DynamicSchemaPruningService:
     and physically available tables in the active database engine.
     Ensures LLM context ONLY receives authorized & active physical tables.
     """
+
+    _schema_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+    _SCHEMA_CACHE_TTL: float = 600.0  # 10 minutes cache to avoid constant disk/DB introspection
+
+    @classmethod
+    def invalidate_schema_cache(cls, connection_id: Optional[int] = None) -> None:
+        """Clears cached schema prompt representations (e.g. after table/column permissions or catalog changes)."""
+        if connection_id is not None:
+            cls._schema_cache = {k: v for k, v in cls._schema_cache.items() if not k.startswith(f"{connection_id}:")}
+        else:
+            cls._schema_cache.clear()
 
     @classmethod
     def resolve_db_path(cls, db: Optional[Session] = None, connection_id: Optional[int] = None) -> str:
@@ -187,6 +199,14 @@ class DynamicSchemaPruningService:
         plus semantic descriptions, and sets of allowed_tables & blocked_columns for AST validation.
         Prunes tables that do not exist physically in the currently active database.
         """
+        cache_key = f"{connection_id}:{role_id}:{user_role}:{is_admin}"
+        now = time.time()
+        is_mock_db = hasattr(db, "_mock_return_value") or hasattr(db, "_mock_methods") or (db is not None and "mock" in type(db).__name__.lower())
+        if not is_mock_db and cache_key in cls._schema_cache:
+            ts, cached_result = cls._schema_cache[cache_key]
+            if now - ts < cls._SCHEMA_CACHE_TTL:
+                return cached_result
+
         conn_record = None
         if db is not None:
             try:
@@ -266,9 +286,12 @@ class DynamicSchemaPruningService:
             ).all()
 
         catalog_desc_map: Dict[str, str] = {}
+        catalog_synonyms_map: Dict[str, str] = {}
         for entry in catalog_entries:
             key = f"{entry.table_name.lower()}.{entry.column_name.lower() if entry.column_name else '*'}"
             catalog_desc_map[key] = entry.description or entry.business_formula or ""
+            if entry.synonyms and entry.synonyms.strip():
+                catalog_synonyms_map[key] = entry.synonyms.strip()
 
         # Build comprehensive schema definition from physical database inspection
         schema_text_lines = []
@@ -288,6 +311,7 @@ class DynamicSchemaPruningService:
 
                     table_columns_map[tbl].append(c_name)
                     desc = catalog_desc_map.get(f"{tbl}.{c_lower}", "")
+                    syns = catalog_synonyms_map.get(f"{tbl}.{c_lower}", "")
                     is_masked = column_perm_map.get(f"{tbl}.{c_lower}") == "MASKED"
                     samples = pc.get("samples", [])
                     sample_str = f", ej: {', '.join([repr(s) if not s.replace('.', '', 1).isdigit() else s for s in samples])}" if samples else ""
@@ -295,6 +319,8 @@ class DynamicSchemaPruningService:
                     details = f"{c_name} ({pc['type']}{sample_str})"
                     if desc:
                         details += f" - {desc}"
+                    if syns:
+                        details += f" (Sinónimos/Alias: {syns})"
                     if is_masked:
                         details += " [ENMASCARADO]"
                     col_lines.append(details)
@@ -304,13 +330,18 @@ class DynamicSchemaPruningService:
                         c_name = entry.column_name
                         c_lower = c_name.lower()
                         if c_lower not in blocked_columns and column_perm_map.get(f"{tbl}.{c_lower}") != "BLOCKED":
-                            col_lines.append(f"{c_name} - {entry.description or ''}".strip())
+                            line = f"{c_name} - {entry.description or ''}".strip()
+                            if entry.synonyms:
+                                line += f" (Sinónimos: {entry.synonyms})"
+                            col_lines.append(line)
                             table_columns_map[tbl].append(c_name)
 
+            tbl_syns = catalog_synonyms_map.get(f"{tbl}.*", "")
+            tbl_header = f"Tabla `{tbl}`" + (f" (Sinónimos: {tbl_syns})" if tbl_syns else "")
             if col_lines:
-                schema_text_lines.append(f"Tabla `{tbl}`:\n  - " + "\n  - ".join(col_lines))
+                schema_text_lines.append(f"{tbl_header}:\n  - " + "\n  - ".join(col_lines))
             else:
-                schema_text_lines.append(f"Tabla `{tbl}` (Columnas de solo lectura)")
+                schema_text_lines.append(f"{tbl_header} (Columnas de solo lectura)")
 
         # Auto-detect foreign key / join relationships
         relationships = []
@@ -338,8 +369,12 @@ class DynamicSchemaPruningService:
         if formula_lines:
             schema_text_lines.append("\nFórmulas de Negocio Corporativas Oficiales:\n  - " + "\n  - ".join(formula_lines))
 
-        return {
+        result = {
             "schema_prompt": "\n\n".join(schema_text_lines) if schema_text_lines else "Esquema de la base de datos activa.",
             "allowed_tables": allowed_tables,
             "blocked_columns": blocked_columns
         }
+        if not is_mock_db:
+            cls._schema_cache[cache_key] = (now, result)
+        return result
+

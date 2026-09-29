@@ -50,6 +50,12 @@ class QueryResponse(BaseModel):
     conversational_response: Optional[str] = None # Respuesta conversacional estructurada
     grounding_info: Optional[str] = None # Información de las tablas/registros reales de la BD consultados
     presentation_hints: Optional[PresentationHints] = None
+    thinking_process: Optional[str] = None # Razonamiento CoT intermedio
+    suggested_questions: List[str] = [] # Preguntas sugeridas de seguimiento (Next Best Questions)
+    clarification_options: List[str] = [] # Opciones interactivas ante ambigüedad
+    anomalies_detected: List[Dict[str, Any]] = [] # Alertas de anomalías estadísticas detectadas
+    sql_explanation: Optional[str] = None # Explicación de consulta en lenguaje ciudadano
+    nulls_detected: Optional[Dict[str, Any]] = None # Detección e intercepción proactiva de nulos para Opción 4
     traceability: TraceabilityAudit
     audit_log_id: Optional[int] = None
 
@@ -86,6 +92,13 @@ class ChatFeedbackRequest(BaseModel):
     connection_id: int = 1
     rating: str  # positive | negative
     comment: Optional[str] = None
+    is_golden: Optional[bool] = False
+
+class GoldenQueryRequest(BaseModel):
+    question: str
+    sql: str
+    connection_id: int = 1
+    is_golden: bool = True
 
 class ChatFeedbackResponse(BaseModel):
     success: bool

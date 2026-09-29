@@ -55,6 +55,76 @@ class IntentClassifier:
         return "data_analysis"
 
     @classmethod
+    def detect_ambiguity_and_options(cls, question: str, allowed_tables: Optional[Set[str]] = None) -> List[str]:
+        """
+        Detects broad or underspecified queries (<= 3 words without metrics/timeframes)
+        and offers disambiguation chips so the user can clarify in 1 click (Idea #5).
+        """
+        q = question.strip().lower()
+        clean_words = [w for w in re.sub(r'[?¿!¡.,;:\-_]', ' ', q).split() if len(w) > 1]
+
+        if len(clean_words) > 3:
+            return []
+
+        specific_qualifiers = {"cuanto", "cuantos", "total", "suma", "promedio", "maximo", "minimo", "top", "primeros", "ultimos", "entre", "desde", "hasta", "donde", "por que", "quien"}
+        if any(w in specific_qualifiers for w in clean_words):
+            return []
+
+        q_joined = " ".join(clean_words)
+
+        if any(w in q_joined for w in ["venta", "ingreso", "factur", "ventas"]):
+            return [
+                "¿Cuál es el total acumulado de ventas?",
+                "¿Cuál es la evolución mensual de ventas?",
+                "¿Cuáles son los 10 clientes con mayores compras?",
+                "¿Cuáles son los productos más vendidos?"
+            ]
+
+        if any(w in q_joined for w in ["client", "comprador", "usuario"]):
+            return [
+                "¿Cuántos clientes tenemos en total?",
+                "¿Cuáles son los mejores clientes por volumen?",
+                "¿Quiénes son los clientes más recientes?",
+                "¿Cuál es la distribución por país o región?"
+            ]
+
+        if any(w in q_joined for w in ["gasto", "costo", "egreso"]):
+            return [
+                "¿A cuánto asciende el gasto total?",
+                "¿Cuál es el desglose de costos por categoría?",
+                "¿Cuáles son los 5 mayores gastos registrados?",
+                "¿Cómo varían los costos mes a mes?"
+            ]
+
+        if any(w in q_joined for w in ["emplead", "personal", "rrhh", "trabajador"]):
+            return [
+                "¿Cuántos empleados hay por departamento?",
+                "¿Cuál es el promedio salarial por cargo?",
+                "¿Quiénes son las incorporaciones más recientes?",
+                "¿Cuál es la distribución por antigüedad laboral?"
+            ]
+
+        if any(w in q_joined for w in ["producto", "stock", "inventario", "item"]):
+            return [
+                "¿Cuáles productos tienen menor inventario disponible?",
+                "¿Cuáles son los productos de mayor precio?",
+                "¿Cuántos productos activos tenemos por categoría?",
+                "¿Cuál es el valor total del inventario?"
+            ]
+
+        if len(clean_words) <= 2 and clean_words:
+            base_entity = clean_words[0].capitalize()
+            return [
+                f"¿Cuál es el resumen general de {base_entity}?",
+                f"¿Cuáles son los 10 registros principales en {base_entity}?",
+                f"¿Cuál es el total acumulado en {base_entity}?",
+                f"¿Cómo se distribuyen los registros de {base_entity} por categoría?"
+            ]
+
+        return []
+
+
+    @classmethod
     async def classify_presentation_format(
         cls,
         question: str,

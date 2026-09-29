@@ -42,17 +42,34 @@ class ResponseBuilder:
 
     @classmethod
     def build_rbac_denied_response(cls, question: str, reason: str) -> QueryResponse:
+        conversational_denial = (
+            f"🚫 **Acceso Restringido por Gobernanza de Datos (RBAC)**\n\n"
+            f"{reason}\n\n"
+            "> **Aviso de Seguridad:** Tu perfil actual no dispone de autorización en la matriz de acceso para consultar "
+            "o manipular este dominio de datos corporativos. Si necesitas consultar estas métricas para tus funciones, "
+            "solicita la actualización de permisos a un **Administrador de Plataforma**."
+        )
         return QueryResponse(
             question=question,
             summary_text=reason,
             kpis=[
-                KPICard(title="Estado RBAC", value="DENEGADO", subtitle="Acceso Reprobado", change_direction="negative"),
-                KPICard(title="Motivo", value="Falta Permiso", subtitle="Seguridad", change_direction="neutral")
+                KPICard(title="Estado RBAC", value="DENEGADO", subtitle="Acceso Bloqueado", change_direction="negative"),
+                KPICard(title="Gobernanza", value="Restringido", subtitle="Seguridad Activa", change_direction="neutral")
             ],
-            chart_type="bar",
+            chart_type="none",
             chart_option={"series": []},
             data_columns=["mensaje_seguridad"],
             data_rows=[{"mensaje_seguridad": reason}],
+            response_type="conversational",
+            conversational_response=conversational_denial,
+            grounding_info="Consulta bloqueada por el motor de validación de seguridad RBAC",
+            presentation_hints=PresentationHints(
+                show_executive_report=False,
+                show_kpis=False,
+                show_chart=False,
+                preferred_view="assistant",
+                summary_style="conversational"
+            ),
             traceability=TraceabilityAudit(
                 sql_executed="-- CONSULTA BLOQUEADA POR GOBERNANZA RBAC",
                 execution_time_ms=0,
@@ -69,9 +86,18 @@ class ResponseBuilder:
         question: str,
         user_role: str,
         allowed_tables: Set[str],
-        conversational: Optional[str] = None
+        conversational: Optional[str] = None,
+        suggested_questions: Optional[List[str]] = None,
+        clarification_options: Optional[List[str]] = None
     ) -> QueryResponse:
         summary_text = "Asistente DATIA listo para responder tus consultas sobre la base de datos activa."
+        default_suggs = [
+            f"¿Qué datos contiene la tabla {t}?" for t in sorted(list(allowed_tables))[:3]
+        ] if allowed_tables else [
+            "¿Cuáles son las ventas totales?",
+            "¿Cuál es el resumen de clientes?",
+            "¿Cuáles son los productos principales?"
+        ]
         return QueryResponse(
             question=question,
             summary_text=summary_text,
@@ -84,6 +110,8 @@ class ResponseBuilder:
             response_type="greeting",
             conversational_response=conversational or summary_text,
             grounding_info=f"Asistente conectado al perfil {user_role} ({len(allowed_tables)} tablas autorizadas)",
+            suggested_questions=suggested_questions or default_suggs,
+            clarification_options=clarification_options or [],
             presentation_hints=PresentationHints(
                 show_executive_report=False,
                 show_kpis=False,
@@ -111,7 +139,11 @@ class ResponseBuilder:
         meta: Dict[str, Any],
         conversational: str,
         exec_time_ms: int,
-        allowed_tables: Set[str]
+        allowed_tables: Set[str],
+        suggested_questions: Optional[List[str]] = None,
+        clarification_options: Optional[List[str]] = None,
+        anomalies_detected: Optional[List[Dict[str, Any]]] = None,
+        sql_explanation: Optional[str] = None
     ) -> QueryResponse:
         return QueryResponse(
             question=question,
@@ -125,6 +157,10 @@ class ResponseBuilder:
             response_type="conversational",
             conversational_response=conversational,
             grounding_info=f"Datos contextuales consultados de {', '.join(meta.get('tables_used', []))} ({len(rows)} registros evaluados)",
+            suggested_questions=suggested_questions or [],
+            clarification_options=clarification_options or [],
+            anomalies_detected=anomalies_detected or [],
+            sql_explanation=sql_explanation,
             presentation_hints=PresentationHints(
                 show_executive_report=False,
                 show_kpis=False,
@@ -161,7 +197,13 @@ class ResponseBuilder:
         chart_option: Dict[str, Any],
         final_summary: str,
         final_exec_report: Optional[Any],
-        conversational: Optional[str]
+        conversational: Optional[str],
+        thinking_process: Optional[str] = None,
+        suggested_questions: Optional[List[str]] = None,
+        clarification_options: Optional[List[str]] = None,
+        anomalies_detected: Optional[List[Dict[str, Any]]] = None,
+        sql_explanation: Optional[str] = None,
+        nulls_detected: Optional[Dict[str, Any]] = None
     ) -> QueryResponse:
         grounding_info = f"Consulta ejecutada sobre {len(rows)} registros ({', '.join(meta.get('tables_used', []))})"
         return QueryResponse(
@@ -177,6 +219,12 @@ class ResponseBuilder:
             conversational_response=conversational,
             grounding_info=grounding_info,
             presentation_hints=pres_hints,
+            thinking_process=thinking_process,
+            suggested_questions=suggested_questions or [],
+            clarification_options=clarification_options or [],
+            anomalies_detected=anomalies_detected or [],
+            sql_explanation=sql_explanation,
+            nulls_detected=nulls_detected,
             traceability=TraceabilityAudit(
                 sql_executed=secured_sql,
                 execution_time_ms=exec_time_ms,
@@ -186,3 +234,4 @@ class ResponseBuilder:
                 explanation=f"Consulta generada y validada con IA Local ({'Qwen2.5-Coder' if is_llm_active else 'Modo Determinístico'}). Tablas autorizadas: {', '.join(allowed_tables)}."
             )
         )
+

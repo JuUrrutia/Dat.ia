@@ -239,7 +239,21 @@ class ConnectorDomainService:
             )
             if is_unassigned:
                 continue
+
+            is_role_ti = any(k in role.name.lower() for k in ["ti", "infraestructura"])
+            is_role_fin = any(k in role.name.lower() for k in ["economista", "financiero"])
+
             for tbl in detected_tables:
+                t_lower = tbl.lower()
+                if is_role_ti and t_lower in [
+                    "fact_ventas", "fact_ingresos_costos", "dim_clientes",
+                    "dim_productos", "dim_categorias", "vbak_cabpedidoventa",
+                    "vbap_pospedidoventa", "ekko_cabpedidocompra", "ekpo_pospedidocompra", "kna1_clientes"
+                ]:
+                    continue
+                if is_role_fin and t_lower in ["dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos"]:
+                    continue
+
                 existing_perm = db.query(RoleTablePermission).filter(
                     RoleTablePermission.role_id == role.id,
                     RoleTablePermission.connection_id == new_conn.id,
