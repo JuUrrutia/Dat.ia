@@ -25,6 +25,14 @@ export const AuditStatusBadge: React.FC<{ status: string }> = ({ status }) => {
       </span>
     );
   }
+  if (s.includes('FUERA_DE_ALCANCE')) {
+    return (
+      <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20">
+        <AlertTriangle className="w-3.5 h-3.5" />
+        <span>Fuera de Alcance</span>
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20">
       <AlertTriangle className="w-3.5 h-3.5" />

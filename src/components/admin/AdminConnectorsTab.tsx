@@ -116,7 +116,6 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
         </div>
       </div>
 
-
       {/* Empty State */}
       {filteredConnectors.length === 0 && (
         <div className="text-center py-12 border border-dashed border-slate-300 dark:border-dark-border/80 rounded-2xl p-8 space-y-4 bg-slate-50/50 dark:bg-dark-base/50">

@@ -19,26 +19,6 @@ export const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
   promptSuggestions,
   onSelectSuggestion,
 }) => {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    if (typeof document === 'undefined') return 'dark';
-    return document.documentElement.classList.contains('light') ? 'light' : 'dark';
-  });
-
-  useEffect(() => {
-    const syncTheme = () => {
-      const isLight = document.documentElement.classList.contains('light');
-      setTheme(isLight ? 'light' : 'dark');
-    };
-
-    syncTheme();
-    const observer = new MutationObserver(syncTheme);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-
-    return () => observer.disconnect();
-  }, []);
-
-  const currentLogo = theme === 'dark' ? logoDatiaDark : logoDatiaLight;
-
   return (
     <div className="h-full flex flex-col items-center justify-center max-w-3xl mx-auto text-center space-y-6 sm:space-y-8 p-4 font-sans relative">
       {/* Datia Brand Avatar */}
