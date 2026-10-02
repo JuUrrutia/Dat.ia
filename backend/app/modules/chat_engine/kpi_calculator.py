@@ -242,6 +242,153 @@ class KPICalculator:
         return kpis, chart_type, chart_option, summary, exec_rep
 
     @classmethod
+    def _sanitize_kpis(cls, kpis_raw: Any) -> List[KPICard]:
+        parsed_kpis: List[KPICard] = []
+        if isinstance(kpis_raw, list):
+            for k in kpis_raw[:3]:
+                if isinstance(k, dict) and k.get("title") and k.get("value"):
+                    raw_title = str(k["title"]).strip()
+                    raw_val = str(k["value"]).strip()
+                    raw_sub = str(k.get("subtitle", "")).strip()
+
+                    # Strip AI filler boilerplate from subtitle
+                    raw_sub = re.sub(r'^[Ee]ste KPI (?:indica|muestra|refleja|calcula)(?: la| el| los| las)?\s*', '', raw_sub)
+                    if raw_sub:
+                        raw_sub = raw_sub[0].upper() + raw_sub[1:]
+
+                    # If percentage title but raw number without %, format it
+                    if any(p in raw_title.lower() for p in ('porcentaje', 'tasa', 'ratio', 'pct')) and '%' not in raw_val and '$' not in raw_val:
+                        try:
+                            num = float(raw_val.replace(',', '.'))
+                            if 0 < num <= 1:
+                                raw_val = f"{num * 100:.1f}%"
+                            else:
+                                raw_val = f"{num:.1f}%" if num % 1 != 0 else f"{int(num)}%"
+                        except Exception:
+                            raw_val = f"{raw_val}%"
+
+                    parsed_kpis.append(KPICard(
+                        title=raw_title,
+                        value=raw_val,
+                        subtitle=raw_sub,
+                        change_direction=str(k.get("change_direction", "neutral"))
+                    ))
+        return parsed_kpis
+
+    @classmethod
+    def _parse_executive_report_dict(cls, data: Dict[str, Any]) -> Optional[ExecutiveReport]:
+        overview = str(data.get("overview", "")).strip()
+        if not overview:
+            return None
+        findings = [str(f) for f in data.get("key_findings", []) if f]
+        recs = [str(r) for r in data.get("recommendations", []) if r]
+        risk = str(data.get("risk_level", "BAJO")).upper()
+        if risk not in ("BAJO", "MEDIO", "ALTO", "CRITICO"):
+            risk = "BAJO"
+        impact = str(data.get("business_impact", "")).strip() or None
+        return ExecutiveReport(
+            overview=overview,
+            key_findings=findings if findings else ["Análisis contextual de los datos devueltos."],
+            recommendations=recs if recs else ["Monitorear periódicamente los indicadores observados."],
+            risk_level=risk,
+            business_impact=impact
+        )
+
+    @classmethod
+    async def generate_unified_synthesis_with_llm(
+        cls,
+        question: str,
+        user_role: str,
+        rows: List[Dict[str, Any]],
+        columns: List[str],
+        secured_sql: str,
+        conversation_context: str = "",
+        is_llm_active: bool = False
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Unified single-pass LLM inference:
+        Produces conversational narrative, 3 domain-adapted KPIs, executive report,
+        and 3 suggested questions in a single JSON payload.
+        Implements a resilient 3-tier parser for maximum robustness.
+        """
+        if not rows or not is_llm_active:
+            return None
+
+        try:
+            system_prompt = PromptManager.get_unified_synthesis_system_prompt(user_role)
+            user_prompt = PromptManager.get_unified_synthesis_user_prompt(
+                question=question,
+                user_role=user_role,
+                rows=rows,
+                columns=columns,
+                secured_sql=secured_sql,
+                conversation_context=conversation_context
+            )
+
+            resp = await LLMService.generate_completion(
+                user_prompt,
+                system_prompt=system_prompt,
+                max_tokens=1000,
+                temperature=0.15
+            )
+
+            if not resp:
+                return None
+
+            clean_resp = re.sub(r'^```(?:json)?\s*', '', resp.strip())
+            clean_resp = re.sub(r'\s*```$', '', clean_resp.strip())
+
+            # Tier 1 & 2: Regex JSON extraction & trailing comma cleanup
+            data = None
+            json_match = re.search(r'\{[\s\S]*\}', clean_resp)
+            if json_match:
+                try:
+                    data = json.loads(json_match.group(0))
+                except Exception:
+                    cleaned_str = re.sub(r',\s*([\}\]])', r'\1', json_match.group(0))
+                    try:
+                        data = json.loads(cleaned_str)
+                    except Exception:
+                        pass
+
+            if data and isinstance(data, dict):
+                narrative = str(data.get("narrative", "")).strip() or None
+                parsed_kpis = cls._sanitize_kpis(data.get("kpis", []))
+
+                exec_data = data.get("executive_report")
+                if isinstance(exec_data, dict):
+                    exec_report = cls._parse_executive_report_dict(exec_data)
+                else:
+                    exec_report = cls._parse_executive_report_dict(data)
+
+                suggested_raw = data.get("suggested_questions", [])
+                suggested_questions = None
+                if isinstance(suggested_raw, list):
+                    clean_suggs = [re.sub(r'^[-*0-9.)\s]+', '', str(q)).strip() for q in suggested_raw if str(q).strip()]
+                    suggested_questions = clean_suggs[:3] if clean_suggs else None
+
+                return {
+                    "narrative": narrative,
+                    "kpis": parsed_kpis if len(parsed_kpis) == 3 else None,
+                    "executive_report": exec_report,
+                    "suggested_questions": suggested_questions
+                }
+
+            # Tier 3: Resilient raw-text fallback if model returned markdown/text instead of JSON
+            if clean_resp:
+                return {
+                    "narrative": clean_resp,
+                    "kpis": None,
+                    "executive_report": None,
+                    "suggested_questions": None
+                }
+
+        except Exception:
+            pass
+
+        return None
+
+    @classmethod
     async def generate_semantic_analysis_with_llm(
         cls,
         question: str,
@@ -295,53 +442,10 @@ Genera la síntesis semántica, las 3 tarjetas KPI contextuales y el informe eje
 
                 if data and isinstance(data, dict):
                     overview = str(data.get("overview", "")).strip()
-                    findings = [str(f) for f in data.get("key_findings", []) if f]
-                    recs = [str(r) for r in data.get("recommendations", []) if r]
-                    risk = str(data.get("risk_level", "BAJO")).upper()
-                    if risk not in ("BAJO", "MEDIO", "ALTO", "CRITICO"):
-                        risk = "BAJO"
-                    impact = str(data.get("business_impact", "")).strip() or None
+                    parsed_kpis = cls._sanitize_kpis(data.get("kpis", []))
+                    exec_report = cls._parse_executive_report_dict(data)
 
-                    kpis_raw = data.get("kpis", [])
-                    parsed_kpis: List[KPICard] = []
-                    if isinstance(kpis_raw, list):
-                        for k in kpis_raw[:3]:
-                            if isinstance(k, dict) and k.get("title") and k.get("value"):
-                                raw_title = str(k["title"]).strip()
-                                raw_val = str(k["value"]).strip()
-                                raw_sub = str(k.get("subtitle", "")).strip()
-
-                                # Strip AI filler boilerplate from subtitle
-                                raw_sub = re.sub(r'^[Ee]ste KPI (?:indica|muestra|refleja|calcula)(?: la| el| los| las)?\s*', '', raw_sub)
-                                if raw_sub:
-                                    raw_sub = raw_sub[0].upper() + raw_sub[1:]
-
-                                # If percentage title but raw number without %, format it
-                                if any(p in raw_title.lower() for p in ('porcentaje', 'tasa', 'ratio', 'pct')) and '%' not in raw_val and '$' not in raw_val:
-                                    try:
-                                        num = float(raw_val.replace(',', '.'))
-                                        if 0 < num <= 1:
-                                            raw_val = f"{num * 100:.1f}%"
-                                        else:
-                                            raw_val = f"{num:.1f}%" if num % 1 != 0 else f"{int(num)}%"
-                                    except Exception:
-                                        raw_val = f"{raw_val}%"
-
-                                parsed_kpis.append(KPICard(
-                                    title=raw_title,
-                                    value=raw_val,
-                                    subtitle=raw_sub,
-                                    change_direction=str(k.get("change_direction", "neutral"))
-                                ))
-
-                    if overview and len(parsed_kpis) == 3:
-                        exec_report = ExecutiveReport(
-                            overview=overview,
-                            key_findings=findings if findings else ["Análisis contextual de los datos devueltos."],
-                            recommendations=recs if recs else ["Monitorear periódicamente los indicadores observados."],
-                            risk_level=risk,
-                            business_impact=impact
-                        )
+                    if overview and len(parsed_kpis) == 3 and exec_report:
                         return parsed_kpis, overview, exec_report
         except Exception:
             pass
@@ -394,22 +498,7 @@ Analiza la información devuelta y genera el informe ejecutivo en formato JSON."
                             pass
 
                 if data and isinstance(data, dict):
-                    overview = str(data.get("overview", "")).strip()
-                    findings = [str(f) for f in data.get("key_findings", []) if f]
-                    recs = [str(r) for r in data.get("recommendations", []) if r]
-                    risk = str(data.get("risk_level", "BAJO")).upper()
-                    if risk not in ("BAJO", "MEDIO", "ALTO", "CRITICO"):
-                        risk = "BAJO"
-                    impact = str(data.get("business_impact", "")).strip() or None
-
-                    if overview:
-                        return ExecutiveReport(
-                            overview=overview,
-                            key_findings=findings if findings else ["Análisis cuantitativo de los registros devueltos."],
-                            recommendations=recs if recs else ["Continuar monitoreo del dominio analizado en la base de datos."],
-                            risk_level=risk,
-                            business_impact=impact
-                        )
+                    return cls._parse_executive_report_dict(data)
         except Exception:
             pass
         return None
