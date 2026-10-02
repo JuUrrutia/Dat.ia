@@ -62,48 +62,92 @@ class CatalogEnricher:
         desc = f"Campo '{col_name}' de la tabla {table_name}"
         formula = "Columna directa"
 
-        if c_lower in ("id", "id_" + t_lower, t_lower + "_id", "uuid", "key"):
-            friendly = f"Identificador de {table_name}"
-            desc = f"Clave primaria o identificador único del registro en {table_name}."
-            formula = "Clave Primaria (PK)"
+        if c_lower in ("id", "id_" + t_lower, t_lower + "_id", "uuid", "key") or c_lower.startswith("id_") or c_lower.endswith("_id") or c_lower.startswith("cod_") or c_lower.startswith("codigo_"):
+            friendly = f"Identificador ({friendly})"
+            desc = f"Clave identificadora o código único del registro en {table_name}."
+            formula = "Clave Primaria / Foránea (ID)"
         elif "precio" in c_lower or "price" in c_lower:
             friendly = "Precio Unitario"
-            desc = f"Valor monetario unitario asignado al elemento en {table_name} en USD/moneda local."
-            formula = "ROUND(monto, 2)"
-        elif "monto" in c_lower or "total" in c_lower or "amount" in c_lower:
+            desc = f"Valor monetario unitario asignado al elemento en {table_name} en moneda local/USD."
+            formula = "ROUND(AVG(precio), 2)"
+        elif "monto" in c_lower or "total" in c_lower or "amount" in c_lower or "subtotal" in c_lower:
             friendly = "Monto Total"
             desc = f"Importe financiero o suma acumulada calculada para la transacción en {table_name}."
-            formula = "SUM(monto_total)"
-        elif "ingreso" in c_lower or "revenue" in c_lower:
+            formula = f"SUM({col_name})"
+        elif "saldo" in c_lower or "balance" in c_lower:
+            friendly = "Saldo Financiero"
+            desc = f"Saldo remanente o balance monetario en {table_name}."
+            formula = f"SUM({col_name})"
+        elif "ingreso" in c_lower or "revenue" in c_lower or "venta" in c_lower or "sales" in c_lower:
             friendly = "Ingreso Corporativo"
-            desc = "Total de ingresos brutos o devengados registrados en el periodo fiscal."
-            formula = "SUM(ingreso_bruto)"
-        elif "costo" in c_lower or "cost" in c_lower:
+            desc = f"Total de ingresos o ventas devengadas registradas en {table_name}."
+            formula = f"SUM({col_name})"
+        elif "costo" in c_lower or "cost" in c_lower or "gasto" in c_lower or "expense" in c_lower:
             friendly = "Costo Operativo"
-            desc = "Costos directos e indirectos incurridos durante la operación del negocio."
-            formula = "SUM(costo_total)"
-        elif "utilidad" in c_lower or "profit" in c_lower or "margen" in c_lower:
+            desc = f"Costos directos o gastos operativos incurridos en {table_name}."
+            formula = f"SUM({col_name})"
+        elif "utilidad" in c_lower or "profit" in c_lower or "margen" in c_lower or "margin" in c_lower:
             friendly = "Margen de Utilidad"
-            desc = "Utilidad neta calculada deduciendo costos operativos de los ingresos totales."
-            formula = "ingreso_bruto - costo_total"
-        elif "salario" in c_lower or "salary" in c_lower:
-            friendly = "Salario Mensual"
-            desc = "Remuneración bruta asignada al colaborador por periodo contractual."
-            formula = "AVG(salario_bruto)"
-        elif "fecha" in c_lower or "date" in c_lower or "timestamp" in c_lower:
+            desc = f"Margen o beneficio financiero calculado en {table_name}."
+            formula = "ingreso - costo"
+        elif "salario" in c_lower or "salary" in c_lower or "sueldo" in c_lower:
+            friendly = "Salario / Remuneración"
+            desc = f"Compensación monetaria asignada al colaborador en {table_name}."
+            formula = f"AVG({col_name})"
+        elif "cantidad" in c_lower or "cant" in c_lower or "qty" in c_lower or "quantity" in c_lower or "stock" in c_lower or "unidades" in c_lower:
+            friendly = "Cantidad / Volumen"
+            desc = f"Volumen físico o unidades cuantitativas registradas en {table_name}."
+            formula = f"SUM({col_name})"
+        elif "fecha" in c_lower or "date" in c_lower or "timestamp" in c_lower or "dia" in c_lower or "mes" in c_lower or "anio" in c_lower or "año" in c_lower:
             friendly = "Fecha de Registro"
-            desc = "Marca temporal o fecha calendario en la que ocurrió el evento o transacción."
-            formula = "DATE(fecha)"
-        elif "nombre" in c_lower or "name" in c_lower or "title" in c_lower:
-            friendly = f"Nombre de {table_name}"
-            desc = f"Denominación o nombre comercial descriptivo asociado al registro de {table_name}."
-            formula = "Texto literal"
-        elif "categoria" in c_lower or "category" in c_lower:
-            friendly = "Categoría de Clasificación"
-            desc = "Segmento o clasificación temática para agrupar los registros correspondientes."
+            desc = f"Marca temporal o fecha calendario del evento o transacción en {table_name}."
+            formula = f"DATE({col_name})"
+        elif "cliente" in c_lower or "customer" in c_lower or "rut" in c_lower:
+            friendly = "Cliente / Cuenta"
+            desc = f"Entidad o receptor comercial asociado al registro en {table_name}."
+            formula = "Dimensión de cliente"
+        elif "producto" in c_lower or "product" in c_lower or "articulo" in c_lower or "sku" in c_lower:
+            friendly = "Producto / Ítem"
+            desc = f"Bien, artículo o servicio referenciado en {table_name}."
+            formula = "Dimensión de producto"
+        elif "proveedor" in c_lower or "supplier" in c_lower or "vendor" in c_lower:
+            friendly = "Proveedor Comercial"
+            desc = f"Proveedor de insumos o servicios en {table_name}."
+            formula = "Dimensión de proveedor"
+        elif "categoria" in c_lower or "category" in c_lower or "segmento" in c_lower or "segment" in c_lower or "rubro" in c_lower:
+            friendly = "Categoría / Segmento"
+            desc = f"Segmento o clasificación temática para agrupar en {table_name}."
             formula = "Dimensión de agrupación"
+        elif "estado" in c_lower or "status" in c_lower or "activo" in c_lower:
+            friendly = "Estado del Registro"
+            desc = f"Condición o fase en el ciclo de vida del registro en {table_name}."
+            formula = "Dimensión de estado"
+        elif "tipo" in c_lower or "type" in c_lower:
+            friendly = "Tipo / Clasificación"
+            desc = f"Tipología o naturaleza operativa en {table_name}."
+            formula = "Dimensión de agrupación"
+        elif "sucursal" in c_lower or "tienda" in c_lower or "branch" in c_lower or "store" in c_lower:
+            friendly = "Sucursal / Tienda"
+            desc = f"Punto físico o sucursal comercial en {table_name}."
+            formula = "Dimensión geográfica"
+        elif "ciudad" in c_lower or "city" in c_lower or "pais" in c_lower or "country" in c_lower:
+            friendly = "Ubicación Geográfica"
+            desc = f"Localización territorial asociada al registro en {table_name}."
+            formula = "Dimensión geográfica"
+        elif "nombre" in c_lower or "name" in c_lower or "razon_social" in c_lower or "titulo" in c_lower:
+            friendly = f"Nombre de {table_name}"
+            desc = f"Denominación comercial o nombre descriptivo en {table_name}."
+            formula = "Texto literal"
+        elif "descuento" in c_lower or "discount" in c_lower:
+            friendly = "Descuento Comercial"
+            desc = f"Rebaja o descuento aplicado sobre el monto en {table_name}."
+            formula = f"SUM({col_name})"
+        elif "impuesto" in c_lower or "tax" in c_lower or "iva" in c_lower:
+            friendly = "Impuesto Fiscal"
+            desc = f"Monto impositivo o gravamen tributario en {table_name}."
+            formula = f"SUM({col_name})"
         elif samples:
-            desc = f"Registro de datos tipo {col_type}. Valores de ejemplo: {', '.join(samples[:2])}."
+            desc = f"Registro tipo {col_type} en {table_name}. Muestra: {', '.join(samples[:2])}."
 
         return {
             "friendly_name": friendly,
@@ -215,36 +259,9 @@ class CatalogEnricher:
                         SemanticCatalog.column_name == col_name
                     ).first()
 
-                    llm_enriched = None
-                    try:
-                        system_prompt = (
-                            "Eres un especialista en gobernanza de datos, catálogos semánticos y ERPs corporativos (SAP, Oracle, AS/400). "
-                            "Reconoce y traduce con precisión acrónimos técnicos y códigos alemanes de SAP (ej. BKPF, BSEG, BUKRS, WRBTR, MATNR, KUNNR, VBELN). "
-                            "Responde ÚNICAMENTE con un JSON con los campos 'friendly_name', 'description' y 'business_formula' en español."
-                        )
-                        prompt = (
-                            f"Tabla: '{tbl}', Columna: '{col_name}', Tipo SQL: '{col_type}', Valores muestra: {sample_vals}.\n"
-                            "Genera el nombre amigable de negocio, descripción funcional clara y fórmula o regla de cálculo sugerida."
-                        )
-                        llm_resp = await LLMService.generate_completion(
-                            prompt,
-                            system_prompt=system_prompt,
-                            max_tokens=150,
-                            temperature=0.2
-                        )
-                        if llm_resp:
-                            json_match = re.search(r'\{[\s\S]*\}', llm_resp)
-                            if json_match:
-                                llm_data = json.loads(json_match.group(0))
-                                llm_enriched = {
-                                    "friendly_name": str(llm_data.get("friendly_name", "")).strip(),
-                                    "description": str(llm_data.get("description", "")).strip(),
-                                    "business_formula": str(llm_data.get("business_formula", "")).strip(),
-                                }
-                    except Exception:
-                        pass
-
-                    meta = llm_enriched if (llm_enriched and llm_enriched.get("description")) else cls.heuristic_enrich(tbl, col_name, col_type, sample_vals)
+                    # ponytail: Instant heuristic enrichment (<0.001s) replaces the O(N) sequential LLM
+                    # call loop that hung the database registration wizard for 30+ minutes on local CPU inference.
+                    meta = cls.heuristic_enrich(tbl, col_name, col_type, sample_vals)
 
                     if existing:
                         if not existing.description or existing.is_ai_generated:
