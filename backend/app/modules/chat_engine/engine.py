@@ -420,6 +420,15 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 effective_question, user_role, allowed_tables, conversational, clarification_options=clarification_opts
             )
 
+        # BRANCH 0.1: OUT OF SCOPE / UNSUPPORTED CAPABILITIES
+        if response_type == "out_of_scope" and not remediation_action:
+            conversational = await IntentClassifier.generate_conversational_response(
+                effective_question, user_role, "out_of_scope", columns=list(allowed_tables), is_llm_active=True
+            )
+            return ResponseBuilder.build_out_of_scope_response(
+                effective_question, user_role, allowed_tables, conversational
+            )
+
         blocked_columns = cls.get_blocked_columns_for_role(user_role, is_admin, db=db, role_id=role_id, connection_id=connection_id)
         start_time = time.time()
         is_llm_active = False

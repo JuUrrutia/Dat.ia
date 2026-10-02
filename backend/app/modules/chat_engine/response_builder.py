@@ -130,6 +130,81 @@ class ResponseBuilder:
         )
 
     @classmethod
+    def build_out_of_scope_response(
+        cls,
+        question: str,
+        user_role: str,
+        allowed_tables: Set[str],
+        conversational: Optional[str] = None,
+        suggested_questions: Optional[List[str]] = None,
+        clarification_options: Optional[List[str]] = None
+    ) -> QueryResponse:
+        tables_str = ", ".join(sorted(allowed_tables)) if allowed_tables else "tus fuentes autorizadas"
+        default_fallback = (
+            f"Como asistente de inteligencia y analítica de datos, mi propósito es ayudarte "
+            f"a explorar, consultar y analizar la información corporativa de la organización.\n\n"
+            f"Actualmente **no dispongo de funciones para generar imágenes, contenido multimedia o realizar tareas externas** ajenas al análisis de datos. "
+            f"Sin embargo, puedo generar gráficos estadísticos interactivos (barras, líneas, áreas o tortas), resúmenes cuantitativos y KPIs estratégicos para tu perfil (**{user_role}**) "
+            f"a partir de las tablas disponibles ({tables_str}).\n\n"
+            f"💡 **¿Qué análisis podemos realizar juntos?**\n"
+            f"- Comparar volúmenes, totales o promedios sobre tus datos autorizados.\n"
+            f"- Diseñar gráficos interactivos de tendencias o distribuciones por categoría.\n"
+            f"- Analizar registros destacados para fundamentar decisiones comerciales o financieras."
+        )
+        final_conversational = conversational or default_fallback
+        default_suggs = [
+            f"¿Cuáles son las principales métricas en {t}?" for t in sorted(list(allowed_tables))[:3]
+        ] if allowed_tables else [
+            "¿Cuáles son las ventas acumuladas por categoría?",
+            "¿Cuál es el resumen de clientes principales?",
+            "¿Cuáles son los productos con mayor movimiento?"
+        ]
+
+        return QueryResponse(
+            question=question,
+            summary_text="Solicitud fuera de las funciones de analítica de datos corporativos de DATIA.",
+            executive_report=None,
+            kpis=[
+                KPICard(
+                    title="Alcance DATIA",
+                    value="Analítica de Datos",
+                    subtitle="Inteligencia Corporativa",
+                    change_direction="neutral"
+                ),
+                KPICard(
+                    title="Visualización",
+                    value="Gráficos BI",
+                    subtitle="Estadísticos e Interactivos",
+                    change_direction="positive"
+                )
+            ],
+            chart_type="none",
+            chart_option={"series": []},
+            data_columns=[],
+            data_rows=[],
+            response_type="out_of_scope",
+            conversational_response=final_conversational,
+            grounding_info=f"Asistente enfocado en analítica corporativa ({len(allowed_tables)} tablas disponibles)",
+            suggested_questions=suggested_questions or default_suggs,
+            clarification_options=clarification_options or [],
+            presentation_hints=PresentationHints(
+                show_executive_report=False,
+                show_kpis=True,
+                show_chart=False,
+                preferred_view="assistant",
+                summary_style="detailed"
+            ),
+            traceability=TraceabilityAudit(
+                sql_executed="-- SOLICITUD FUERA DE ALCANCE: NO APLICA CONSULTA SQL DE BASE DE DATOS",
+                execution_time_ms=0,
+                rows_returned=0,
+                validation_status="FUERA_DE_ALCANCE",
+                schema_tables_used=list(allowed_tables),
+                explanation=f"La solicitud '{question}' está fuera del alcance de analítica de datos y no requiere consulta a la base de datos corporativa."
+            )
+        )
+
+    @classmethod
     def build_conversational_response(
         cls,
         question: str,
