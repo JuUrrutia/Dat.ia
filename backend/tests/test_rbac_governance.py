@@ -279,5 +279,21 @@ class TestRBACGovernance(unittest.TestCase):
                 self.assertIn("Gobernanza RBAC: Acceso denegado", denial)
                 self.assertIn("salarios, remuneraciones, nóminas", denial)
 
+    def test_admin_never_blocked_by_domain_governance(self):
+        """Admin role can query across all domains (financial, IT, HR) without RBAC block."""
+        admin_questions = [
+            "¿Cuáles son los sueldos del personal?",
+            "¿Cuál es la facturación del período?",
+            "Estado de servidores y CPU",
+            "Compara los ingresos contra los costos por producto y dime cuáles tienen menor margen"
+        ]
+        for q in admin_questions:
+            denial = QueryEngine.check_domain_governance(
+                question=q,
+                user_role="Administrador",
+                allowed_tables={"fact_ventas", "dim_servidores", "dim_empleados"}
+            )
+            self.assertIsNone(denial, f"Admin should NEVER be blocked by RBAC on question '{q}'")
+
 if __name__ == "__main__":
     unittest.main()
