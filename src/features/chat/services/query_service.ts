@@ -67,8 +67,14 @@ export const queryService = {
       const res = await apiClient.post('/chat/query', payload);
       return res.data;
     } catch (err: any) {
-      if (err.response?.status === 403 || err.response?.status === 400 || err.response?.status === 401) {
-        throw new Error(err.response?.data?.detail || 'Acceso denegado por políticas de gobernanza o error en la consulta.');
+      if (err.response) {
+        const detail = err.response.data?.detail || err.response.data?.message;
+        if (err.response.status === 403 || err.response.status === 400 || err.response.status === 401) {
+          throw new Error(detail || 'Acceso denegado por políticas de gobernanza o error en la consulta.');
+        }
+        if (err.response.status >= 500) {
+          throw new Error(detail || 'Error interno del motor de análisis corporativo.');
+        }
       }
     }
 

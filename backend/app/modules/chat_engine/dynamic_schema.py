@@ -185,6 +185,120 @@ class DynamicSchemaPruningService:
         except Exception:
             return []
 
+    STOPWORDS = {
+        "los", "las", "del", "por", "para", "con", "sin", "dime", "cuales", "cuáles",
+        "que", "qué", "sobre", "entre", "una", "uno", "unos", "unas", "como", "cómo",
+        "este", "esta", "estos", "estas", "todos", "todas", "tienen", "tiene", "dame",
+        "mostrar", "muestra", "traer", "trae", "ver", "cada", "contra", "desde", "hasta",
+        "pero", "the", "and", "for", "with", "from", "show", "get", "give"
+    }
+
+    GENERIC_WORDS = {
+        "estado", "status", "fecha", "date", "nombre", "name", "id", "tipo",
+        "type", "valor", "registro", "tabla", "descripcion", "description"
+    }
+
+    NON_FORMULAS = {
+        "columna directa", "directa", "direct column", "direct", "none", "n/a",
+        "texto literal", "clave primaria (pk)", "clave primaria", "pk",
+        "dimensión de agrupación", "dimension de agrupacion",
+        "identificador de transacción", "identificador de transaccion",
+        "identificador de orden", "dimensión de centro", "dimension de centro",
+        "dimensión de controlling", "dimension de controlling",
+        "dimensión de almacén", "dimension de almacen",
+        "número de ítem", "numero de item", "unidad de medida",
+        "código iso de moneda", "codigo iso de moneda",
+        "clasificación tributaria", "clasificacion tributaria",
+        "clave de documento comercial", "filtro contable s/h",
+        "clave foránea (mara)", "clave foránea (kna1)", "clave foránea (lfa1)",
+        "clave foranea (mara)", "clave foranea (kna1)", "clave foranea (lfa1)",
+        "identificador único", "identificador unico", "campo", "registro"
+    }
+
+    @classmethod
+    def rank_relevant_tables(
+        cls,
+        allowed_tables: Set[str],
+        query: Optional[str],
+        catalog_entries: List[Any],
+        target_db_target: Any
+    ) -> Set[str]:
+        """
+        Heuristically ranks and selects a compact subset of tables (2 to 4) relevant
+        to the user's natural language query, pruning out unrelated tables to fit local LLM context limits.
+        """
+        if not query or len(allowed_tables) <= 3:
+            return allowed_tables
+
+        import re
+        raw_tokens = re.findall(r'[a-zA-ZáéíóúÁÉÍÓÚñÑ_]+', query.lower())
+        query_words = {w for w in raw_tokens if len(w) >= 3 and w not in cls.STOPWORDS}
+
+        if not query_words:
+            return allowed_tables
+
+        table_scores: Dict[str, int] = {t: 0 for t in allowed_tables}
+        table_cols_map: Dict[str, List[str]] = {}
+
+        for tbl in allowed_tables:
+            cols = cls.get_physical_table_columns(tbl, target_db_target, include_samples=False)
+            col_names = [c["name"].lower() for c in cols]
+            table_cols_map[tbl] = col_names
+
+            # Score table name parts
+            parts = tbl.lower().split('_')
+            for part in parts:
+                if len(part) >= 3 and part not in ("dim", "fact", "tbl", "cat"):
+                    if part in query_words or any(part in qw or qw in part for qw in query_words):
+                        table_scores[tbl] += 12
+
+            # Score columns
+            for c in col_names:
+                c_subwords = c.split('_')
+                for qw in query_words:
+                    if qw in cls.GENERIC_WORDS:
+                        continue
+                    if qw == c or qw in c_subwords:
+                        table_scores[tbl] += 6
+                    elif len(qw) >= 4 and (qw in c or c in qw):
+                        table_scores[tbl] += 4
+
+        # Score catalog descriptions / synonyms
+        for entry in catalog_entries:
+            tbl = (entry.table_name or "").lower()
+            if tbl in table_scores:
+                syns = (entry.synonyms or "").lower()
+                desc = (entry.description or "").lower()
+                for qw in query_words:
+                    if qw in syns:
+                        table_scores[tbl] += 5
+                    elif qw in desc:
+                        table_scores[tbl] += 2
+
+        scored_tables = [(t, s) for t, s in table_scores.items() if s > 0]
+        scored_tables.sort(key=lambda x: x[1], reverse=True)
+
+        if not scored_tables:
+            return allowed_tables
+
+        # Pick top candidate tables (up to 3)
+        selected: Set[str] = {scored_tables[0][0]}
+        for t, s in scored_tables[1:4]:
+            if s >= 4:
+                selected.add(t)
+
+        # Link directly connected foreign key dimensions/facts (up to max 4 tables)
+        for t_sel in list(selected):
+            sel_cols = {c for c in table_cols_map.get(t_sel, []) if c.startswith("id_") or c.endswith("_id") or c == "id" or "key" in c}
+            for other_tbl in sorted(list(allowed_tables)):
+                if other_tbl not in selected and len(selected) < 4:
+                    other_cols = set(table_cols_map.get(other_tbl, []))
+                    common_fks = sel_cols.intersection(other_cols)
+                    if common_fks:
+                        selected.add(other_tbl)
+
+        return selected
+
     @classmethod
     def get_authorized_schema_prompt(
         cls,
@@ -192,14 +306,17 @@ class DynamicSchemaPruningService:
         role_id: Optional[int] = None,
         connection_id: Optional[int] = None,
         is_admin: bool = False,
-        user_role: Optional[str] = None
+        user_role: Optional[str] = None,
+        query: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Returns compact prompt text containing schema definition for allowed tables/columns
         plus semantic descriptions, and sets of allowed_tables & blocked_columns for AST validation.
-        Prunes tables that do not exist physically in the currently active database.
+        Prunes tables that do not exist physically in the currently active database and prunes
+        tables irrelevant to the query to maintain high-speed inference within 4k local context limits.
         """
-        cache_key = f"{connection_id}:{role_id}:{user_role}:{is_admin}"
+        q_norm = query.strip().lower() if query else ""
+        cache_key = f"{connection_id}:{role_id}:{user_role}:{is_admin}:{q_norm}"
         now = time.time()
         is_mock_db = hasattr(db, "_mock_return_value") or hasattr(db, "_mock_methods") or (db is not None and "mock" in type(db).__name__.lower())
         if not is_mock_db and cache_key in cls._schema_cache:
@@ -289,15 +406,18 @@ class DynamicSchemaPruningService:
         catalog_synonyms_map: Dict[str, str] = {}
         for entry in catalog_entries:
             key = f"{entry.table_name.lower()}.{entry.column_name.lower() if entry.column_name else '*'}"
-            catalog_desc_map[key] = entry.description or entry.business_formula or ""
+            catalog_desc_map[key] = entry.description or ""
             if entry.synonyms and entry.synonyms.strip():
                 catalog_synonyms_map[key] = entry.synonyms.strip()
 
-        # Build comprehensive schema definition from physical database inspection
+        # Relevance pruning: determine active subset of tables for schema prompt rendering
+        active_tables = cls.rank_relevant_tables(allowed_tables, query, catalog_entries, target_db_target)
+
+        # Build schema definition lines from physical database inspection
         schema_text_lines = []
         table_columns_map: Dict[str, List[str]] = {}
 
-        for tbl in sorted(list(allowed_tables)):
+        for tbl in sorted(list(active_tables)):
             phys_cols = cls.get_physical_table_columns(tbl, target_db_target)
             table_columns_map[tbl] = []
 
@@ -310,17 +430,35 @@ class DynamicSchemaPruningService:
                         continue
 
                     table_columns_map[tbl].append(c_name)
-                    desc = catalog_desc_map.get(f"{tbl}.{c_lower}", "")
+                    desc = catalog_desc_map.get(f"{tbl}.{c_lower}", "").strip()
                     syns = catalog_synonyms_map.get(f"{tbl}.{c_lower}", "")
                     is_masked = column_perm_map.get(f"{tbl}.{c_lower}") == "MASKED"
-                    samples = pc.get("samples", [])
-                    sample_str = f", ej: {', '.join([repr(s) if not s.replace('.', '', 1).isdigit() else s for s in samples])}" if samples else ""
+
+                    # Compact samples (max 2 items, max 25 chars each)
+                    samples = pc.get("samples", [])[:2]
+                    clean_samples = []
+                    for s in samples:
+                        s_str = str(s).strip()
+                        if len(s_str) > 25:
+                            s_str = s_str[:22] + "..."
+                        if not s_str.replace('.', '', 1).isdigit():
+                            clean_samples.append(repr(s_str))
+                        else:
+                            clean_samples.append(s_str)
+                    sample_str = f", ej: {', '.join(clean_samples)}" if clean_samples else ""
                     
                     details = f"{c_name} ({pc['type']}{sample_str})"
+
+                    # Clean redundant descriptions
                     if desc:
-                        details += f" - {desc}"
+                        desc_lower = desc.lower()
+                        if not (desc_lower.startswith("registro de datos tipo") or desc_lower in cls.NON_FORMULAS):
+                            if len(desc) > 60:
+                                desc = desc[:57] + "..."
+                            details += f" - {desc}"
+
                     if syns:
-                        details += f" (Sinónimos/Alias: {syns})"
+                        details += f" (Sinónimos: {syns})"
                     if is_masked:
                         details += " [ENMASCARADO]"
                     col_lines.append(details)
@@ -330,7 +468,10 @@ class DynamicSchemaPruningService:
                         c_name = entry.column_name
                         c_lower = c_name.lower()
                         if c_lower not in blocked_columns and column_perm_map.get(f"{tbl}.{c_lower}") != "BLOCKED":
-                            line = f"{c_name} - {entry.description or ''}".strip()
+                            desc = (entry.description or "").strip()
+                            if desc.lower().startswith("registro de datos tipo") or desc.lower() in cls.NON_FORMULAS:
+                                desc = ""
+                            line = f"{c_name}" + (f" - {desc[:57]}..." if len(desc) > 60 else (f" - {desc}" if desc else ""))
                             if entry.synonyms:
                                 line += f" (Sinónimos: {entry.synonyms})"
                             col_lines.append(line)
@@ -343,7 +484,7 @@ class DynamicSchemaPruningService:
             else:
                 schema_text_lines.append(f"{tbl_header} (Columnas de solo lectura)")
 
-        # Auto-detect foreign key / join relationships
+        # Auto-detect foreign key / join relationships between active tables
         relationships = []
         tables_list = list(table_columns_map.keys())
         for i in range(len(tables_list)):
@@ -353,21 +494,43 @@ class DynamicSchemaPruningService:
                 cols2 = {c.lower(): c for c in table_columns_map[t2]}
                 common = set(cols1.keys()).intersection(set(cols2.keys()))
                 for c in common:
-                    if c.endswith("id") or c == "id" or "key" in c or c in {"belnr", "vbeln", "ebeln", "matnr", "kunnr", "lifnr", "bukrs", "posnr"}:
+                    if c.startswith("id_") or c.endswith("_id") or c == "id" or "key" in c or c in {"belnr", "vbeln", "ebeln", "matnr", "kunnr", "lifnr", "bukrs", "posnr"}:
                         relationships.append(f"{t1}.{cols1[c]} = {t2}.{cols2[c]}")
 
         if relationships:
-            schema_text_lines.append("\nRelaciones (JOIN) detectadas entre tablas:\n  - " + "\n  - ".join(relationships))
+            schema_text_lines.append("Relaciones (JOIN) detectadas:\n  - " + "\n  - ".join(relationships))
 
-        # Collect explicit business formulas
+        # Collect explicit business formulas (genuine mathematical/SQL calculation formulas only)
         formula_lines = []
+        seen_formulas = set()
         for entry in catalog_entries:
-            if entry.business_formula:
-                lbl = entry.friendly_name or entry.column_name or entry.table_name
-                formula_lines.append(f"Métrica '{lbl}': {entry.business_formula} (Usa obligatoriamente este cálculo en el SELECT)")
+            if not entry.business_formula:
+                continue
+            form_clean = entry.business_formula.strip()
+            form_lower = form_clean.lower()
+            if form_lower in cls.NON_FORMULAS:
+                continue
+            if entry.column_name and form_lower == entry.column_name.strip().lower():
+                continue
+            # Must contain mathematical operators or SQL functions
+            has_calc_char = any(c in form_clean for c in ["(", "+", "-", "*", "/", ">", "<", "="])
+            has_calc_word = any(w in form_lower for w in ["sum", "avg", "count", "min", "max", "round", "date", "coalesce", "case", "when"])
+            if not (has_calc_char or has_calc_word):
+                continue
+
+            # Only include formula if its table is in active_tables
+            if entry.table_name and entry.table_name.lower() not in active_tables:
+                continue
+
+            lbl = entry.friendly_name or entry.column_name or entry.table_name
+            f_key = f"{lbl.lower()}:{form_clean.lower()}"
+            if f_key in seen_formulas:
+                continue
+            seen_formulas.add(f_key)
+            formula_lines.append(f"Métrica '{lbl}': {form_clean}")
 
         if formula_lines:
-            schema_text_lines.append("\nFórmulas de Negocio Corporativas Oficiales:\n  - " + "\n  - ".join(formula_lines))
+            schema_text_lines.append("Fórmulas de Negocio Oficiales:\n  - " + "\n  - ".join(formula_lines))
 
         result = {
             "schema_prompt": "\n\n".join(schema_text_lines) if schema_text_lines else "Esquema de la base de datos activa.",
@@ -377,4 +540,5 @@ class DynamicSchemaPruningService:
         if not is_mock_db:
             cls._schema_cache[cache_key] = (now, result)
         return result
+
 

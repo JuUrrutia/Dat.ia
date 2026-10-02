@@ -96,6 +96,13 @@ class LLMService:
                             text = choices[0].get("message", {}).get("content", "").strip()
                             if text:
                                 return cls._clean_thinking_tags(text)
+                    else:
+                        err_body = (res.text or "").lower()
+                        if "context size has been exceeded" in err_body or "context size" in err_body or "kv cache" in err_body:
+                            logger.error(f"Context size exceeded on {url}: {res.text[:200]}")
+                            raise ValueError(f"Context size has been exceeded on LLM server ({url}). Prompt was too long for current slot.")
+            except ValueError:
+                raise
             except Exception as e:
                 logger.debug(f"LLM endpoint {url} no disponible: {str(e)}")
 
@@ -118,6 +125,13 @@ class LLMService:
                         text = res.json().get("content", "").strip()
                         if text:
                             return cls._clean_thinking_tags(text)
+                    else:
+                        err_body = (res.text or "").lower()
+                        if "context size has been exceeded" in err_body or "context size" in err_body or "kv cache" in err_body:
+                            logger.error(f"Context size exceeded on native {url_native}: {res.text[:200]}")
+                            raise ValueError(f"Context size has been exceeded on LLM native server ({url_native}).")
+            except ValueError:
+                raise
             except Exception as e:
                 logger.debug(f"LLM native endpoint {url_native} no disponible: {str(e)}")
 
@@ -138,6 +152,13 @@ class LLMService:
                     text = res.json().get("response", "").strip()
                     if text:
                         return cls._clean_thinking_tags(text)
+                else:
+                    err_body = (res.text or "").lower()
+                    if "context size has been exceeded" in err_body or "context size" in err_body or "kv cache" in err_body:
+                        logger.error(f"Context size exceeded on Ollama {url_ollama}: {res.text[:200]}")
+                        raise ValueError(f"Context size has been exceeded on Ollama ({url_ollama}).")
+        except ValueError:
+            raise
         except Exception as e:
             logger.debug(f"Ollama endpoint no disponible: {str(e)}")
 
