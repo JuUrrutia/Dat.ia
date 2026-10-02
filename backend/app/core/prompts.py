@@ -45,10 +45,6 @@ RESPONSE_GENERATION_CONFIG: Dict[ResponseType, GenerationConfig] = {
     ResponseType.OUT_OF_SCOPE: GenerationConfig(temperature=0.25, max_tokens=600),
 }
 
-SQL_GENERATION_CONFIG = GenerationConfig(temperature=0.0, max_tokens=400)
-CLASSIFICATION_CONFIG = GenerationConfig(temperature=0.0, max_tokens=10)
-JSON_SYNTHESIS_CONFIG = GenerationConfig(temperature=0.1, max_tokens=700)
-
 
 # ---------------------------------------------------------------------------
 # Reglas compartidas
@@ -132,7 +128,25 @@ class PromptManager:
             "<conversacion_previa>\n"
             + "\n\n".join(turns)
             + "\n</conversacion_previa>\n"
-            + "INSTRUCCIÓN MULTI-TURNO: Si la pregunta actual es una continuación, refinamiento o filtro sobre el turno anterior (ej: 'y de esos cuáles...', 'filtra solo por...', 'ordena por...', 'top 3'), aprovecha y adapta el SQL anterior ajustando las condiciones WHERE, GROUP BY o LIMIT en lugar de reiniciar desde cero."
+            + "INSTRUCCIÓN MULTI-TURNO: Si la pregunta actual es una continuación, refinamiento o filtro sobre el turno anterior (ej: 'y de esos cuáles...', 'filtra solo por...', 'ordena por...', 'top 3', 'desglósalo por...'), adapta la consulta SQL anterior ajustando las condiciones WHERE, GROUP BY, ORDER BY o LIMIT en lugar de reiniciar desde cero."
+        )
+
+    @staticmethod
+    def format_conversation_context_for_synthesis(history: list) -> str:
+        if not history:
+            return ""
+        turns = []
+        for i, turn in enumerate(history[-2:], 1):
+            q = (turn.get("question") or "").strip()
+            if q:
+                turns.append(f"- Turno previo {i}: \"{q}\"")
+        if not turns:
+            return ""
+        return (
+            "<conversacion_previa>\n"
+            + "\n".join(turns)
+            + "\n</conversacion_previa>\n"
+            + "Si la pregunta actual es una continuación de los turnos previos, conecta la narrativa con fluidez y coherencia temática."
         )
 
     @staticmethod
@@ -399,3 +413,84 @@ class PromptManager:
             '  "business_impact": "..."\n'
             "}"
         )
+
+    # -----------------------------------------------------------------
+    # 8. Unified Single-Pass Synthesis Prompt
+    # -----------------------------------------------------------------
+    @staticmethod
+    def get_unified_synthesis_system_prompt(user_role: str) -> str:
+        role_lower = user_role.lower()
+        if any(w in role_lower for w in ["econ", "financ", "contab"]):
+            role_focus = "Enfoque en métricas financieras, eficiencia de costos, márgenes, variaciones porcentuales y retorno económico."
+        elif any(w in role_lower for w in ["direc", "geren", "ejecut", "admin"]):
+            role_focus = "Enfoque estratégico de alto nivel: síntesis ejecutiva, impacto en el negocio, decisiones críticas y prioridades."
+        elif any(w in role_lower for w in ["operat", "logist", "ti", "sistem"]):
+            role_focus = "Enfoque operativo: cuellos de botella, tiempos de respuesta, volúmenes transaccionales y acciones correctivas inmediatas."
+        else:
+            role_focus = f"Enfoque analítico adaptado a las responsabilidades y contexto del rol '{user_role}'."
+
+        return (
+            f"Eres DATIA, la plataforma inteligente de analítica y democratización de datos corporativos para el rol '{user_role}'.\n"
+            "Tu misión es evaluar la pregunta del usuario, la consulta SQL ejecutada y los registros devueltos de la base de datos corporativa, generando una síntesis analítica completa y estructurada en un ÚNICO objeto JSON.\n\n"
+            f"ENFOQUE DEL ROL ({user_role}):\n{role_focus}\n\n"
+            "Instrucciones fundamentales:\n"
+            f"1. {_ZERO_HALLUCINATION_RULE}\n"
+            "2. NARRATIVA EJECUTIVA (campo 'narrative'):\n"
+            "   - Aplica el Principio de Minto: comienza directamente con la respuesta concreta o hallazgo central en 1-2 oraciones claras.\n"
+            "   - Redacta de 2 a 3 párrafos breves en Markdown limpio.\n"
+            "   - NUNCA enumeres campos mecánicamente ('1. Campo: ...'). Usa tablas Markdown concisas si presentas múltiples atributos.\n"
+            f"   - {_SPANISH_MARKDOWN_RULE} {_NO_SQL_IN_BODY_RULE}\n"
+            "3. TARJETAS KPI (campo 'kpis'):\n"
+            "   - Genera exactamente 3 KPIs con títulos de 2 a 4 palabras (ej: 'Ventas Totales', 'Margen Operativo', 'Volumen Clientes').\n"
+            "   - NUNCA incluyas condiciones SQL en el título.\n"
+            "   - Formato de valores: si es porcentaje incluye '%', si es dinero antepón '$' (ej: '$1.42M'), si es volumen formatea con K o M.\n"
+            "   - Subtítulos concisos (máx. 6-8 palabras) sin frases de relleno como 'Este KPI muestra...'.\n"
+            "   - change_direction: 'positive' (favorable), 'negative' (desfavorable/riesgo), o 'neutral' (conteo/descriptivo).\n"
+            "4. INFORME EJECUTIVO (campo 'executive_report'):\n"
+            "   - overview: Diagnóstico ejecutivo en 2-3 oraciones.\n"
+            "   - key_findings: Lista de 2 a 3 hallazgos cuantitativos fundamentados en los datos.\n"
+            "   - recommendations: Lista de 2 a 3 recomendaciones prácticas y accionables.\n"
+            "   - risk_level: 'BAJO' | 'MEDIO' | 'ALTO' | 'CRITICO'.\n"
+            "   - business_impact: Impacto principal en una sola frase concisa.\n"
+            "5. PREGUNTAS SUGERIDAS (campo 'suggested_questions'):\n"
+            "   - Exactamente 3 preguntas naturales de profundización relevantes al resultado para continuar la conversación analítica.\n"
+            f"6. {_JSON_ONLY_RULE}\n\n"
+            "Formato JSON exacto:\n"
+            "{\n"
+            '  "narrative": "Respuesta ejecutiva en Markdown limpio...",\n'
+            '  "kpis": [\n'
+            '    {"title": "...", "value": "...", "subtitle": "...", "change_direction": "positive|neutral|negative"},\n'
+            '    {"title": "...", "value": "...", "subtitle": "...", "change_direction": "positive|neutral|negative"},\n'
+            '    {"title": "...", "value": "...", "subtitle": "...", "change_direction": "positive|neutral|negative"}\n'
+            '  ],\n'
+            '  "executive_report": {\n'
+            '    "overview": "...",\n'
+            '    "key_findings": ["...", "..."],\n'
+            '    "recommendations": ["...", "..."],\n'
+            '    "risk_level": "BAJO",\n'
+            '    "business_impact": "..."\n'
+            '  },\n'
+            '  "suggested_questions": ["¿Pregunta 1?", "¿Pregunta 2?", "¿Pregunta 3?"]\n'
+            "}"
+        )
+
+    @staticmethod
+    def get_unified_synthesis_user_prompt(
+        question: str,
+        user_role: str,
+        rows: list,
+        columns: list,
+        secured_sql: str,
+        conversation_context: str = ""
+    ) -> str:
+        import json
+        compact_rows = json.dumps(rows[:10], ensure_ascii=False)
+        parts = [
+            f"Pregunta del usuario ({user_role}): \"{question}\"",
+            f"Consulta SQL ejecutada: {secured_sql}",
+            f"Muestra de datos devueltos ({len(rows)} filas, mostrando hasta 10):\n{compact_rows}"
+        ]
+        if conversation_context:
+            parts.append(conversation_context)
+        parts.append("Genera el objeto JSON unificado con narrative, kpis, executive_report y suggested_questions.")
+        return "\n\n".join(parts)
