@@ -25,7 +25,7 @@ class ASTValidator:
         allowed_tables: Optional[Set[str]] = None,
         blocked_columns: Optional[Set[str]] = None,
         table_columns: Optional[Dict[str, List[str]]] = None,
-        max_limit: int = settings.DEFAULT_ROW_LIMIT
+        max_limit: int = 500
     ) -> Tuple[bool, str, Dict[str, Any]]:
         """
         Validates raw_sql against strict security rules and returns:
@@ -223,3 +223,75 @@ class ASTValidator:
         }
 
         return True, sanitized_sql, metadata
+
+    @classmethod
+    def generate_sql_explanation(cls, sql: str, dialect: str = "sqlite") -> str:
+        """
+        Generates a human-friendly, plain-Spanish explanation of what the SQL query does
+        using AST inspection without calling an LLM (Idea #39).
+        """
+        if not sql or not sql.strip():
+            return "No se especificó ninguna consulta SQL."
+
+        try:
+            sqlglot_dialect = dialect.lower() if dialect.lower() in cls.ALLOWED_DIALECTS else "postgres"
+            expr = parse_one(sql.strip().rstrip(";"), read=sqlglot_dialect)
+            if not expr:
+                return "Consulta analítica sobre la base de datos corporativa."
+
+            parts = []
+
+            # 1. Tables
+            tables = sorted(list({t.name for t in expr.find_all(exp.Table) if t.name}))
+            if tables:
+                if len(tables) == 1:
+                    parts.append(f"Consulta registros de la tabla **{tables[0]}**.")
+                else:
+                    joined_tables = ", ".join(f"**{t}**" for t in tables)
+                    parts.append(f"Cruza información de las tablas {joined_tables}.")
+
+            # 2. Aggregates & Projections
+            aggregates = []
+            for agg_cls, name in [
+                (exp.Sum, "suma"),
+                (exp.Avg, "promedio"),
+                (exp.Count, "conteo"),
+                (exp.Min, "mínimo"),
+                (exp.Max, "máximo"),
+            ]:
+                for node in expr.find_all(agg_cls):
+                    arg_str = node.this.sql() if hasattr(node, "this") else ""
+                    aggregates.append(f"{name} de `{arg_str}`" if arg_str else name)
+
+            if aggregates:
+                parts.append(f"Calcula {', '.join(aggregates[:3])}.")
+
+            # 3. Filters (WHERE)
+            where_node = expr.args.get("where")
+            if where_node:
+                cond_sql = where_node.this.sql()
+                if len(cond_sql) > 80:
+                    cond_sql = cond_sql[:77] + "..."
+                parts.append(f"Filtra por: `{cond_sql}`.")
+
+            # 4. Grouping (GROUP BY)
+            group_node = expr.args.get("group")
+            if group_node and group_node.expressions:
+                group_cols = [g.sql() for g in group_node.expressions]
+                parts.append(f"Agrupa por `{', '.join(group_cols)}`.")
+
+            # 5. Ordering (ORDER BY)
+            order_node = expr.args.get("order")
+            if order_node and order_node.expressions:
+                order_cols = [o.sql() for o in order_node.expressions]
+                parts.append(f"Ordena por `{', '.join(order_cols)}`.")
+
+            # 6. Limit
+            limit_node = expr.args.get("limit")
+            if limit_node:
+                parts.append(f"Limitado a {limit_node.expression.sql()} resultados.")
+
+            return " ".join(parts) if parts else "Consulta de lectura directa sobre los registros corporativos."
+        except Exception:
+            return "Consulta estructurada de lectura ejecutada sobre la base de datos corporativa."
+
