@@ -200,5 +200,84 @@ class TestRBACGovernance(unittest.TestCase):
         self.assertIn("Gobernanza RBAC: Acceso denegado", resp.summary_text)
         self.assertIn("infraestructura TI", resp.summary_text)
 
+    def test_financial_analyst_asking_it_infrastructure_and_modules_blocked(self):
+        """Financial Analyst asking about IT modules, infrastructure, tickets or tech is strictly blocked."""
+        it_questions = [
+            "Hazme un analisis tecnologico",
+            "Hazme un análisis tecnológico",
+            "Hazme un analisis de tecnologia",
+            "¿Cuál es el estado de la infraestructura de TI?",
+            "¿Cuáles son los incidentes técnicos de soporte?",
+            "¿Cómo está el módulo de tecnología?",
+            "¿Qué servidores están activos?",
+            "¿Cuál es el consumo de CPU y memoria de los servidores?",
+            "Dame un reporte del área de TI",
+            "¿Cuáles son los tickets de soporte técnico?"
+        ]
+        for q in it_questions:
+            denial = QueryEngine.check_domain_governance(
+                question=q,
+                user_role="Analista Financiero & Comercial",
+                allowed_tables={"fact_ventas", "dim_clientes"}
+            )
+            self.assertIsNotNone(denial, f"Question '{q}' should be blocked for Analista Financiero")
+            self.assertIn("Gobernanza RBAC: Acceso denegado", denial)
+            self.assertIn("infraestructura TI", denial)
+
+    def test_greeting_with_cross_domain_it_question_is_blocked(self):
+        """Conversational greeting containing out-of-domain IT questions is rejected by RBAC before greeting branch."""
+        import asyncio
+        mock_db = MagicMock()
+        mock_perm = MagicMock(table_name="fact_ventas", is_allowed=True)
+        mock_db.query().filter().all.return_value = [mock_perm]
+
+        resp = asyncio.run(QueryEngine.execute_query(
+            question="Hola, ¿cuántos servidores hay en el módulo de TI?",
+            user_role="Analista Financiero & Comercial",
+            is_admin=False,
+            db=mock_db,
+            role_id=3,
+            connection_id=1
+        ))
+        self.assertEqual(resp.traceability.validation_status, "RECHAZADO_RBAC")
+        self.assertIn("Gobernanza RBAC: Acceso denegado", resp.summary_text)
+
+    def test_ti_asking_billing_money_and_financial_module_blocked(self):
+        """TI role asking for money, billing, or financial modules is strictly blocked."""
+        fin_questions = [
+            "¿Cuánto dinero se recaudó este mes?",
+            "¿Cuál es la facturación del período?",
+            "¿Cómo va el módulo financiero?",
+            "¿Cuáles son los márgenes de ganancia y EBITDA?"
+        ]
+        for q in fin_questions:
+            denial = QueryEngine.check_domain_governance(
+                question=q,
+                user_role="Ingeniero de Infraestructura & TI",
+                allowed_tables={"dim_servidores", "fact_incidentes_ti"}
+            )
+            self.assertIsNotNone(denial, f"Question '{q}' should be blocked for TI")
+            self.assertIn("Gobernanza RBAC: Acceso denegado", denial)
+            self.assertIn("información financiera", denial)
+
+    def test_non_hr_asking_salaries_and_payroll_blocked(self):
+        """Non-HR roles asking for salaries or employee compensation are strictly blocked."""
+        salary_questions = [
+            "¿Cuáles son los sueldos del personal?",
+            "¿Cuánto gana el CTO o directores?",
+            "Dame la nómina de remuneraciones",
+            "¿Cuáles son los salarios por departamento?"
+        ]
+        for role in ["Analista Financiero & Comercial", "Ingeniero de Infraestructura & TI", "Economista", "TI"]:
+            for q in salary_questions:
+                denial = QueryEngine.check_domain_governance(
+                    question=q,
+                    user_role=role,
+                    allowed_tables={"fact_ventas"}
+                )
+                self.assertIsNotNone(denial, f"Question '{q}' should be blocked for {role}")
+                self.assertIn("Gobernanza RBAC: Acceso denegado", denial)
+                self.assertIn("salarios, remuneraciones, nóminas", denial)
+
 if __name__ == "__main__":
     unittest.main()

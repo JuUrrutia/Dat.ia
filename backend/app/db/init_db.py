@@ -7,7 +7,8 @@ from app.core.database import Base, engine
 from app.core.security import get_password_hash
 from app.modules.auth.models import User, Role, Domain
 from app.modules.admin_catalog.models import (
-    CorporateConnection, DatabaseType, SemanticCatalog, RoleTablePermission
+    CorporateConnection, DatabaseType, SemanticCatalog, RoleTablePermission,
+    RoleColumnPermission, ColumnPermissionType
 )
 
 def init_db(db: Session):
@@ -249,6 +250,65 @@ def init_db(db: Session):
                 "vbap_pospedidoventa", "ekko_cabpedidocompra", "ekpo_pospedidocompra", "kna1_clientes"
             ])
         ).delete(synchronize_session=False)
+
+    # Seed column-level security permissions (CLS) for standard connections
+    for s_conn in standard_connections:
+        s_schema = "public" if (s_conn.db_type == DatabaseType.POSTGRESQL or str(s_conn.db_type).lower() == "postgresql") else "main"
+        non_admin_roles = db.query(Role).filter(~Role.name.in_(["Administrador de Plataforma", "Administrador", "Director Ejecutivo (C-Level)"])).all()
+        for r_obj in non_admin_roles:
+            # 1. Mask customer national ID / RUT
+            existing_rut = db.query(RoleColumnPermission).filter(
+                RoleColumnPermission.role_id == r_obj.id,
+                RoleColumnPermission.connection_id == s_conn.id,
+                RoleColumnPermission.table_name == "dim_clientes",
+                RoleColumnPermission.column_name == "rut_dni_cliente"
+            ).first()
+            if not existing_rut:
+                db.add(RoleColumnPermission(
+                    role_id=r_obj.id,
+                    connection_id=s_conn.id,
+                    schema_name=s_schema,
+                    table_name="dim_clientes",
+                    column_name="rut_dni_cliente",
+                    permission_type=ColumnPermissionType.MASKED
+                ))
+
+            # 2. Block credit card token
+            existing_cc = db.query(RoleColumnPermission).filter(
+                RoleColumnPermission.role_id == r_obj.id,
+                RoleColumnPermission.connection_id == s_conn.id,
+                RoleColumnPermission.table_name == "dim_clientes",
+                RoleColumnPermission.column_name == "tarjeta_credito_token"
+            ).first()
+            if not existing_cc:
+                db.add(RoleColumnPermission(
+                    role_id=r_obj.id,
+                    connection_id=s_conn.id,
+                    schema_name=s_schema,
+                    table_name="dim_clientes",
+                    column_name="tarjeta_credito_token",
+                    permission_type=ColumnPermissionType.BLOCKED
+                ))
+
+            # 3. Block salary and compensation for non-HR roles
+            is_hr_role = "talento" in r_obj.name.lower() or "rrhh" in r_obj.name.lower()
+            if not is_hr_role:
+                for col in ["sueldo_mensual", "salario"]:
+                    existing_sal = db.query(RoleColumnPermission).filter(
+                        RoleColumnPermission.role_id == r_obj.id,
+                        RoleColumnPermission.connection_id == s_conn.id,
+                        RoleColumnPermission.table_name == "dim_empleados",
+                        RoleColumnPermission.column_name == col
+                    ).first()
+                    if not existing_sal:
+                        db.add(RoleColumnPermission(
+                            role_id=r_obj.id,
+                            connection_id=s_conn.id,
+                            schema_name=s_schema,
+                            table_name="dim_empleados",
+                            column_name=col,
+                            permission_type=ColumnPermissionType.BLOCKED
+                        ))
 
     # Seed permissions for uploaded user datasets (is_uploaded == True)
     from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService

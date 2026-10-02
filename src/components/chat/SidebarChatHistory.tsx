@@ -106,7 +106,6 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
             )}
           </div>
 
-
           <div className="space-y-1">
             {filteredThreads.map((t) => {
               const isActive = t.id === activeId;
