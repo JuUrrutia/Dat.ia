@@ -3,7 +3,7 @@ import app.modules.admin_catalog.models
 import app.modules.telemetry_audit.models
 import app.modules.chat_engine.models
 from sqlalchemy.orm import Session
-from app.core.database import Base, engine
+from app.core.database import Base, engine, ensure_schema_migrations
 from app.core.security import get_password_hash
 from app.modules.auth.models import User, Role, Domain
 from app.modules.admin_catalog.models import (
@@ -16,11 +16,14 @@ def init_db(db: Session):
     Creates all database tables in PostgreSQL/SQLite and seeds initial default roles and admin.
     """
     Base.metadata.create_all(bind=engine)
+    ensure_schema_migrations(engine)
 
     try:
         from sqlalchemy import inspect, text
         inspector = inspect(engine)
-        if "users" in inspector.get_table_names():
+        table_names = set(inspector.get_table_names())
+
+        if "users" in table_names:
             user_cols = {c["name"] for c in inspector.get_columns("users")}
             with engine.begin() as conn:
                 if "failed_login_attempts" not in user_cols:
@@ -30,19 +33,21 @@ def init_db(db: Session):
                 if "must_change_password" not in user_cols:
                     conn.execute(text("ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT 0 NOT NULL"))
 
-        if "corporate_connections" in inspector.get_table_names():
+        if "corporate_connections" in table_names:
             conn_cols = {c["name"] for c in inspector.get_columns("corporate_connections")}
             with engine.begin() as conn:
                 if "is_uploaded" not in conn_cols:
                     conn.execute(text("ALTER TABLE corporate_connections ADD COLUMN is_uploaded BOOLEAN DEFAULT 0 NOT NULL"))
+                if "null_policy" not in conn_cols:
+                    conn.execute(text("ALTER TABLE corporate_connections ADD COLUMN null_policy VARCHAR(50) DEFAULT 'open'"))
 
-        if "audit_logs" in inspector.get_table_names():
+        if "audit_logs" in table_names:
             audit_cols = {c["name"] for c in inspector.get_columns("audit_logs")}
             with engine.begin() as conn:
                 if "result_snapshot" not in audit_cols:
                     conn.execute(text("ALTER TABLE audit_logs ADD COLUMN result_snapshot TEXT NULL"))
 
-        if "query_learning_memories" in inspector.get_table_names():
+        if "query_learning_memories" in table_names:
             mem_cols = {c["name"] for c in inspector.get_columns("query_learning_memories")}
             with engine.begin() as conn:
                 if "is_golden" not in mem_cols:
