@@ -43,7 +43,7 @@ export const THEME_COLORS: Record<
     gradient: ['#10B981', '#059669', '#047857', '#34D399', '#6EE7B7', '#064E3B'],
   },
   indigo: {
-    name: 'Púrpura Dat.ia IA',
+    name: 'Púrpura Datia IA',
     primary: '#8B5CF6',
     secondary: '#A78BFA',
     glow: 'rgba(139, 92, 246, 0.35)',
@@ -120,21 +120,36 @@ export function deriveProcessedRows(
   }
 
   const columns = result.data_columns || Object.keys(result.data_rows[0]);
+
+  const isColNumeric = (col: string): boolean => {
+    let numericCount = 0;
+    for (const r of result.data_rows.slice(0, 10)) {
+      const v = r[col];
+      if (typeof v === 'number' && !isNaN(v)) numericCount++;
+      else if (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) numericCount++;
+    }
+    return numericCount > 0;
+  };
+
   let nCol = columns.find(
     (c) =>
-      typeof result.data_rows[0][c] === 'number' &&
-      !c.startsWith('id_')
-  );
-  let cCol = columns.find(
-    (c) =>
-      typeof result.data_rows[0][c] === 'string' &&
-      !c.startsWith('id_') &&
-      !c.includes('token') &&
-      !c.includes('iban') &&
-      !c.includes('key')
+      !c.toLowerCase().startsWith('id_') &&
+      !c.toLowerCase().endsWith('_id') &&
+      c.toLowerCase() !== 'id' &&
+      isColNumeric(c)
   );
 
-  if (!nCol) nCol = columns.find((c) => typeof result.data_rows[0][c] === 'number') || columns[0];
+  let cCol = columns.find(
+    (c) =>
+      c !== nCol &&
+      !c.toLowerCase().startsWith('id_') &&
+      !c.toLowerCase().endsWith('_id') &&
+      !c.toLowerCase().includes('token') &&
+      !c.toLowerCase().includes('iban') &&
+      !c.toLowerCase().includes('key')
+  );
+
+  if (!nCol) nCol = columns.find((c) => isColNumeric(c)) || columns[0];
   if (!cCol) cCol = columns.find((c) => c !== nCol) || columns[0];
 
   let sorted = [...result.data_rows];

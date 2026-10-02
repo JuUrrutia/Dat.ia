@@ -55,7 +55,7 @@ export const useSystemHealth = (pollingIntervalMs: number = DEFAULT_POLLING_INTE
       // Backend offline
       const fallbackStatus = 'CRITICO';
       if (prevStatusRef.current !== fallbackStatus && prevStatusRef.current !== null) {
-        notify('error', 'No se pudo contactar al servidor Backend de Dat.ia.');
+        notify('error', 'No se pudo contactar al servidor Backend de Datia.');
       }
       prevStatusRef.current = fallbackStatus;
     } finally {
