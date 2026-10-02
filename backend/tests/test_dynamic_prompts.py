@@ -160,6 +160,51 @@ class TestDynamicPrompts(unittest.TestCase):
             self.assertIsNone(result["kpis"])
             self.assertIsNone(result["executive_report"])
 
+    def test_pareto_concentration_calculation(self):
+        """Verifica que compute_pareto_concentration detecte concentración alta (80/20) y distribución balanceada."""
+        from app.modules.chat_engine.kpi_calculator import KPICalculator
+
+        # Caso 1: Alta concentración (1 cliente concentra la gran mayoría)
+        concentrated_rows = [
+            {"cliente": "MegaCorp", "monto": 8000.0},
+            {"cliente": "Pyme 1", "monto": 500.0},
+            {"cliente": "Pyme 2", "monto": 500.0},
+            {"cliente": "Pyme 3", "monto": 500.0},
+            {"cliente": "Pyme 4", "monto": 500.0},
+        ]
+        res = KPICalculator.compute_pareto_concentration(concentrated_rows, ["cliente", "monto"])
+        self.assertIsNotNone(res)
+        self.assertTrue(res["is_concentrated"])
+        self.assertEqual(res["column"], "monto")
+        self.assertEqual(res["top_entity_share"], 80.0)
+
+        # Caso 2: Distribución balanceada
+        balanced_rows = [
+            {"cliente": "A", "monto": 200.0},
+            {"cliente": "B", "monto": 200.0},
+            {"cliente": "C", "monto": 200.0},
+            {"cliente": "D", "monto": 200.0},
+            {"cliente": "E", "monto": 200.0},
+        ]
+        res_bal = KPICalculator.compute_pareto_concentration(balanced_rows, ["cliente", "monto"])
+        self.assertIsNotNone(res_bal)
+        self.assertFalse(res_bal["is_concentrated"])
+        self.assertEqual(res_bal["top_entity_share"], 20.0)
+
+    def test_causal_and_tactical_plan_prompts(self):
+        """Verifica que los prompts incluyan directivas de descomposición causal y planes tácticos a futuro."""
+        sql_prompt = PromptManager.get_text_to_sql_system_prompt("Economista", {"fact_ventas"})
+        self.assertIn("DESCOMPOSICIÓN CAUSAL", sql_prompt)
+        self.assertIn("COUNT", sql_prompt)
+        self.assertIn("AVG", sql_prompt)
+
+        synth_prompt = PromptManager.get_unified_synthesis_system_prompt("Economista")
+        self.assertIn("PLAN TÁCTICO ESTRUCTURADO", synth_prompt)
+        self.assertIn("Paso 1", synth_prompt)
+        self.assertIn("Paso 2", synth_prompt)
+        self.assertIn("Paso 3", synth_prompt)
+        self.assertIn("What-If", synth_prompt)
+
 if __name__ == "__main__":
     unittest.main()
 

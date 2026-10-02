@@ -224,22 +224,65 @@ class KPICalculator:
         risk = "ALTO" if pct_top > 70 else "MEDIO" if pct_top > 40 else "BAJO"
 
         exec_rep = ExecutiveReport(
-            overview=f"Análisis cuantitativo de {len(rows)} registros procesados sobre la consulta '{question}'.",
+            overview=f"Diagnóstico cuantitativo sobre '{question}': se procesaron {len(rows)} registros con un acumulado de {formatted_total} en {kpi_title}.",
             key_findings=[
-                f"Volumen acumulado de {kpi_title}: {formatted_total} a través de {len(rows)} registros.",
-                f"La entidad con mayor concentración es '{top_entity}' con {formatted_top} ({pct_top}% del total).",
-                f"Promedio general registrado por ítem: {formatted_avg}."
+                f"Volumen y dispersión: {len(rows)} registros evaluados con un promedio de {formatted_avg} por ítem.",
+                f"Concentración principal: '{top_entity}' representa {formatted_top} ({pct_top}% del total acumulado).",
+                f"Métrica de referencia: {kpi_title} acumula {formatted_total} con riesgo de dependencia {risk}."
             ],
             recommendations=[
-                f"Monitorear la concentración de valor en '{top_entity}' para diversificar riesgos operacionales.",
-                "Establecer umbrales de alerta temprana sobre métricas fuera del promedio general.",
-                "Profundizar el análisis cruzando variables adicionales en próximas consultas."
+                f"Paso 1 (Corto plazo, 1-15 días): Auditar las transacciones y condiciones comerciales asociadas a '{top_entity}'.",
+                f"Paso 2 (Mediano plazo, 30-60 días): Establecer un plan de diversificación para equilibrar la concentración de {pct_top}% en {kpi_title}.",
+                f"Paso 3 (Métrica de control): Monitorear que ningún ítem individual supere el 30% del volumen agregado en el próximo ciclo."
             ],
             risk_level=risk,
-            business_impact=f"Impacto directo en la gestión y control de la métrica {kpi_title}."
+            business_impact=f"Proyección What-If: Diversificar la dependencia de '{top_entity}' reduce la exposición a caídas abruptas en {kpi_title}."
         )
 
         return kpis, chart_type, chart_option, summary, exec_rep
+
+    @classmethod
+    def compute_pareto_concentration(
+        cls,
+        rows: List[Dict[str, Any]],
+        columns: List[str]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Calculates Pareto concentration and top-entity share across the primary numeric column.
+        Zero external dependencies, 0ms execution.
+        """
+        if not rows or len(rows) < 3 or not columns:
+            return None
+
+        num_col = None
+        for col in columns:
+            if is_true_numeric_metric(col, rows[0].get(col)):
+                num_col = col
+                break
+        if not num_col:
+            return None
+
+        vals = sorted([float(r.get(num_col, 0) or 0) for r in rows if isinstance(r.get(num_col), (int, float))], reverse=True)
+        if len(vals) < 3:
+            return None
+        total = sum(vals)
+        if total <= 0:
+            return None
+
+        top_20_count = max(1, int(len(vals) * 0.2))
+        top_20_sum = sum(vals[:top_20_count])
+        top_20_share = round((top_20_sum / total) * 100, 1)
+        top_entity_share = round((vals[0] / total) * 100, 1)
+
+        return {
+            "column": num_col,
+            "total": total,
+            "count": len(vals),
+            "top_20_count": top_20_count,
+            "top_20_share": top_20_share,
+            "is_concentrated": top_20_share >= 60.0,
+            "top_entity_share": top_entity_share
+        }
 
     @classmethod
     def _sanitize_kpis(cls, kpis_raw: Any) -> List[KPICard]:
@@ -315,6 +358,23 @@ class KPICalculator:
             return None
 
         try:
+            pareto_info = cls.compute_pareto_concentration(rows, columns)
+            pareto_hint = ""
+            if pareto_info:
+                if pareto_info["is_concentrated"]:
+                    pareto_hint = (
+                        f"[ANÁLISIS PARETO / RIESGO CONCENTRACIÓN: El top 20% ({pareto_info['top_20_count']} de {pareto_info['count']} entidades) "
+                        f"concentra el {pareto_info['top_20_share']}% de '{pareto_info['column']}'. "
+                        f"La entidad principal representa el {pareto_info['top_entity_share']}%. "
+                        f"Destaca esta concentración en key_findings y orienta el plan táctico a mitigar este riesgo de dependencia.]"
+                    )
+                else:
+                    pareto_hint = (
+                        f"[DISTRIBUCIÓN EQUILIBRADA: El top 20% representa el {pareto_info['top_20_share']}% de '{pareto_info['column']}'. "
+                        f"Baja concentración o dependencia en entidades individuales.]"
+                    )
+
+            effective_context = f"{conversation_context}\n\n{pareto_hint}".strip() if pareto_hint else conversation_context
             system_prompt = PromptManager.get_unified_synthesis_system_prompt(user_role)
             user_prompt = PromptManager.get_unified_synthesis_user_prompt(
                 question=question,
@@ -322,7 +382,7 @@ class KPICalculator:
                 rows=rows,
                 columns=columns,
                 secured_sql=secured_sql,
-                conversation_context=conversation_context
+                conversation_context=effective_context
             )
 
             resp = await LLMService.generate_completion(
