@@ -37,7 +37,8 @@ class SQLGenerator:
                 role_id=role_id,
                 user_role=user_role,
                 connection_id=connection_id,
-                is_admin=is_admin
+                is_admin=is_admin,
+                query=question
             )
             schema_context = s_info.get("schema_prompt", "")
         except Exception:
@@ -61,7 +62,7 @@ class SQLGenerator:
                 prompt_llm,
                 system_prompt=system_prompt,
                 temperature=0.05,
-                max_tokens=600
+                max_tokens=350
             )
 
             if llm_response_text:
