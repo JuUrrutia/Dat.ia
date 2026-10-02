@@ -52,5 +52,26 @@ class TestASTValidator(unittest.TestCase):
             )
         self.assertIn("Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos.", str(excinfo.exception))
 
+    def test_cte_query_does_not_flag_cte_as_unauthorized_table(self):
+        sql = "WITH metricas AS (SELECT id, monto FROM fact_ventas) SELECT id, monto FROM metricas"
+        is_valid, secured, meta = ASTValidator.validate_and_secure_sql(
+            sql,
+            allowed_tables={"fact_ventas"}
+        )
+        self.assertTrue(is_valid)
+        self.assertIn("fact_ventas", meta["tables_used"])
+        self.assertNotIn("metricas", meta["tables_used"])
+
+    def test_admin_bypasses_table_and_column_restrictions(self):
+        sql = "SELECT id, salario_base FROM cualquier_tabla_corporativa"
+        is_valid, secured, meta = ASTValidator.validate_and_secure_sql(
+            sql,
+            allowed_tables={"fact_ventas"},  # Table is outside allowed_tables
+            blocked_columns={"salario_base"}, # Column is in blocked_columns
+            is_admin=True
+        )
+        self.assertTrue(is_valid)
+        self.assertIn("cualquier_tabla_corporativa", meta["tables_used"])
+
 if __name__ == "__main__":
     unittest.main()
