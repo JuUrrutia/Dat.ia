@@ -17,6 +17,7 @@ class QueryLearningMemory(Base):
     tables_used = Column(String(255), nullable=True)
     execution_count = Column(Integer, default=1)
     was_self_healed = Column(Boolean, default=False)
+    is_golden = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 

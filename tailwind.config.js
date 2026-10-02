@@ -33,12 +33,35 @@ module.exports = {
           950: '#042754',
         },
         dark: {
-          base: '#0B0F19',
-          surface: '#111827',
-          card: '#1F2937',
-          border: '#374151',
-          hover: '#4B5563',
+          base: 'rgb(var(--app-bg-rgb) / <alpha-value>)',
+          surface: 'rgb(var(--app-surface-rgb) / <alpha-value>)',
+          card: 'rgb(var(--app-card-rgb) / <alpha-value>)',
+          border: 'rgb(var(--app-border-rgb) / <alpha-value>)',
+          hover: 'rgb(var(--app-hover-rgb) / <alpha-value>)',
         },
+        app: {
+          bg: 'rgb(var(--app-bg-rgb) / <alpha-value>)',
+          surface: 'rgb(var(--app-surface-rgb) / <alpha-value>)',
+          card: 'rgb(var(--app-card-rgb) / <alpha-value>)',
+          border: 'rgb(var(--app-border-rgb) / <alpha-value>)',
+          hover: 'rgb(var(--app-hover-rgb) / <alpha-value>)',
+          text: 'rgb(var(--app-text-rgb) / <alpha-value>)',
+          muted: 'rgb(var(--app-text-muted-rgb) / <alpha-value>)',
+        },
+      },
+      keyframes: {
+        fadeIn: {
+          '0%': { opacity: '0', transform: 'scale(0.98)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+        slideUp: {
+          '0%': { opacity: '0', transform: 'translateY(8px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+      },
+      animation: {
+        fadeIn: 'fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        slideUp: 'slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards',
       },
       keyframes: {
         fadeIn: {

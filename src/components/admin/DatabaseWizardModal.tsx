@@ -18,6 +18,10 @@ import {
   UserCheck,
   Bot,
   Edit3,
+  Trash2,
+  BarChart3,
+  MapPin,
+  Sliders,
 } from 'lucide-react';
 import { UploadDropzone } from './upload/UploadDropzone';
 import { ConnectorFormFields } from './ConnectorFormFields';
@@ -27,6 +31,7 @@ import {
   DataDictionaryResponse,
   DataDictionaryTable,
   DataDictionaryColumn,
+  NullsAuditResponse,
 } from '../../features/admin/services/catalog_service';
 
 interface DatabaseWizardModalProps {
@@ -37,7 +42,7 @@ interface DatabaseWizardModalProps {
   onNavigateToCatalog?: () => void;
 }
 
-type WizardStep = 'input' | 'choice' | 'generating' | 'review' | 'complete';
+type WizardStep = 'input' | 'choice' | 'generating' | 'review' | 'nulls_check' | 'complete';
 type IngestionMode = 'file' | 'remote';
 type CreationMode = 'ai' | 'manual';
 
@@ -98,6 +103,11 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
   const [editedColumns, setEditedColumns] = useState<Record<string, { friendly_name: string; description: string; business_formula: string }>>({});
   const [isSavingReview, setIsSavingReview] = useState(false);
 
+  // Null Remediation State
+  const [nullsData, setNullsData] = useState<NullsAuditResponse | null>(null);
+  const [selectedNullPolicy, setSelectedNullPolicy] = useState<'delete_rows' | 'mode' | 'nearest' | 'open'>('open');
+  const [isApplyingNullPolicy, setIsApplyingNullPolicy] = useState(false);
+
   if (!isOpen) return null;
 
   const resetState = () => {
@@ -114,6 +124,9 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
     setSelectedTableIndex(0);
     setEditedColumns({});
     setIsSavingReview(false);
+    setNullsData(null);
+    setSelectedNullPolicy('open');
+    setIsApplyingNullPolicy(false);
   };
 
   const handleClose = () => {
@@ -302,11 +315,41 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
       }
 
       setIsSavingReview(false);
+
+      // Audit for NULL values across the connection
+      try {
+        const audit = await catalogService.getNullsAudit(registeredConnection.id);
+        if (audit && audit.has_nulls && audit.tables && audit.tables.length > 0) {
+          setNullsData(audit);
+          setCurrentStep('nulls_check');
+          return;
+        }
+      } catch {
+        // If audit encounters an issue, proceed to complete directly
+      }
+
       setCurrentStep('complete');
       onSuccess();
     } catch (err: any) {
       setErrorMessage('Error al persistir algunas modificaciones del diccionario.');
       setIsSavingReview(false);
+    }
+  };
+
+  // --- Step 4.5: Apply chosen NULL remediation policy ---
+  const handleApplyNullPolicy = async () => {
+    if (!registeredConnection) return;
+    setIsApplyingNullPolicy(true);
+    setErrorMessage(null);
+
+    try {
+      await catalogService.applyNullPolicy(registeredConnection.id, selectedNullPolicy);
+      setIsApplyingNullPolicy(false);
+      setCurrentStep('complete');
+      onSuccess();
+    } catch (err: any) {
+      setIsApplyingNullPolicy(false);
+      setErrorMessage(err.response?.data?.detail || err.message || 'Error al aplicar el tratamiento de valores nulos.');
     }
   };
 
@@ -360,11 +403,16 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
             <span className="text-gray-600">→</span>
             <div className={`flex items-center space-x-1.5 ${currentStep === 'generating' || currentStep === 'review' ? 'text-purple-400 font-bold' : 'text-gray-500'}`}>
               <span className="w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-mono">3</span>
-              <span>{creationMode === 'ai' ? 'Generación & Revisión' : 'Revisión Manual'}</span>
+              <span>{creationMode === 'ai' ? 'Diccionario & IA' : 'Diccionario Manual'}</span>
+            </div>
+            <span className="text-gray-600">→</span>
+            <div className={`flex items-center space-x-1.5 ${currentStep === 'nulls_check' ? 'text-amber-400 font-bold' : 'text-gray-500'}`}>
+              <span className="w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-mono">4</span>
+              <span>Tratamiento Nulos</span>
             </div>
             <span className="text-gray-600">→</span>
             <div className={`flex items-center space-x-1.5 ${currentStep === 'complete' ? 'text-emerald-400 font-bold' : 'text-gray-500'}`}>
-              <span className="w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-mono">4</span>
+              <span className="w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-mono">5</span>
               <span>Finalizado</span>
             </div>
           </div>
@@ -794,6 +842,160 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
             </div>
           )}
 
+          {/* ================= STEP 4.5: NULL REMEDIATION ================= */}
+          {currentStep === 'nulls_check' && nullsData && (
+            <div className="space-y-5 animate-fadeIn">
+              {/* Alert Header */}
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2.5 text-amber-300">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+                    <h4 className="text-sm font-bold text-white">Auditoría de Calidad: Valores Nulos Detectados</h4>
+                  </div>
+                  <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    {nullsData.total_tables_with_nulls} {nullsData.total_tables_with_nulls === 1 ? 'tabla afectada' : 'tablas afectadas'}
+                  </span>
+                </div>
+                <p className="text-xs text-amber-200/80 leading-relaxed">
+                  Se detectaron campos con valores <code className="font-mono text-amber-300">NULL</code> en los datos recién ingresados.
+                  Como administrador, define la política corporativa que aplicará a estos registros:
+                </p>
+              </div>
+
+              {/* Table / Column Breakdown List */}
+              <div className="p-3.5 rounded-2xl bg-dark-base border border-dark-border space-y-2.5 max-h-36 overflow-y-auto custom-scrollbar">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                  Columnas afectadas por tabla:
+                </span>
+                <div className="space-y-2">
+                  {nullsData.tables.map((tbl) => (
+                    <div key={tbl.table_name} className="flex flex-wrap items-center gap-1.5 text-xs">
+                      <span className="font-mono font-bold text-white bg-dark-card px-2 py-0.5 rounded border border-dark-border">
+                        {tbl.table_name}
+                      </span>
+                      <span className="text-gray-500">→</span>
+                      {tbl.columns_with_nulls.map((col) => (
+                        <span
+                          key={col.column_name}
+                          className="font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20 px-2 py-0.5 rounded text-[11px]"
+                        >
+                          {col.column_name}: <strong>{col.null_count}</strong> nulos ({col.null_percentage}%)
+                        </span>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 4 Interactive Choice Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* Option 1: Delete Rows */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedNullPolicy('delete_rows')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedNullPolicy('delete_rows'); }}
+                  className={`p-3.5 rounded-2xl border transition-all cursor-pointer text-left space-y-2 relative ${
+                    selectedNullPolicy === 'delete_rows'
+                      ? 'border-rose-500 bg-rose-500/10 shadow-lg shadow-rose-500/10 ring-1 ring-rose-500'
+                      : 'border-dark-border bg-dark-card/40 hover:border-dark-border/80'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                      <Trash2 className="w-4 h-4" />
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                      Depuración
+                    </span>
+                  </div>
+                  <h5 className="text-xs font-bold text-white">1. Eliminar registros con nulos</h5>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    Elimina físicamente de la base de datos las filas que contienen campos vacíos, garantizando que solo existan filas 100% completas.
+                  </p>
+                </div>
+
+                {/* Option 2: Mode */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedNullPolicy('mode')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedNullPolicy('mode'); }}
+                  className={`p-3.5 rounded-2xl border transition-all cursor-pointer text-left space-y-2 relative ${
+                    selectedNullPolicy === 'mode'
+                      ? 'border-purple-500 bg-purple-500/10 shadow-lg shadow-purple-500/10 ring-1 ring-purple-500'
+                      : 'border-dark-border bg-dark-card/40 hover:border-dark-border/80'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                      <BarChart3 className="w-4 h-4" />
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      Estadística
+                    </span>
+                  </div>
+                  <h5 className="text-xs font-bold text-white">2. Adaptar a la moda estadística</h5>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    Imputa cada valor nulo con el valor más frecuente de su columna, preservando la tendencia y distribución mayoritaria.
+                  </p>
+                </div>
+
+                {/* Option 3: Nearest */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedNullPolicy('nearest')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedNullPolicy('nearest'); }}
+                  className={`p-3.5 rounded-2xl border transition-all cursor-pointer text-left space-y-2 relative ${
+                    selectedNullPolicy === 'nearest'
+                      ? 'border-cyan-500 bg-cyan-500/10 shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-500'
+                      : 'border-dark-border bg-dark-card/40 hover:border-dark-border/80'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                      <MapPin className="w-4 h-4" />
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                      Proximidad
+                    </span>
+                  </div>
+                  <h5 className="text-xs font-bold text-white">3. Adaptar al más cercano</h5>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    Rellena cada valor nulo con el dato contiguo no-nulo más próximo (interpolación de arrastre / forward-fill).
+                  </p>
+                </div>
+
+                {/* Option 4: Open to User */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedNullPolicy('open')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedNullPolicy('open'); }}
+                  className={`p-3.5 rounded-2xl border transition-all cursor-pointer text-left space-y-2 relative ${
+                    selectedNullPolicy === 'open'
+                      ? 'border-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-500'
+                      : 'border-dark-border bg-dark-card/40 hover:border-dark-border/80'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Recomendado
+                    </span>
+                  </div>
+                  <h5 className="text-xs font-bold text-white">4. Dejar la opción abierta al usuario</h5>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    Conserva los datos intactos. Cuando una consulta maneje nulos, la IA le advertirá previamente y le dará a elegir qué hacer.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ================= STEP 5: COMPLETE ================= */}
           {currentStep === 'complete' && registeredConnection && (
             <div className="py-8 px-4 text-center space-y-5 animate-fadeIn max-w-md mx-auto">
@@ -932,6 +1134,37 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                     <>
                       <Check className="w-4 h-4" />
                       <span>Confirmar y Finalizar Instalación</span>
+                    </>
+                  )}
+                </button>
+              </>
+            )}
+
+            {currentStep === 'nulls_check' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep('review')}
+                  disabled={isApplyingNullPolicy}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-gray-300 hover:text-white hover:bg-dark-card transition-colors"
+                >
+                  Volver a Diccionario
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyNullPolicy}
+                  disabled={isApplyingNullPolicy}
+                  className="flex items-center space-x-2 px-5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 transition-all disabled:opacity-50"
+                >
+                  {isApplyingNullPolicy ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Aplicando Tratamiento...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Confirmar Tratamiento y Finalizar</span>
                     </>
                   )}
                 </button>

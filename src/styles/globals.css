@@ -3,10 +3,16 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --bg-dark-base: 11 15 25;
-    --bg-dark-surface: 17 24 39;
-    --bg-dark-card: 31 41 55;
+  :root,
+  html.dark {
+    --app-bg-rgb: 11 15 25;
+    --app-surface-rgb: 17 24 39;
+    --app-card-rgb: 31 41 55;
+    --app-border-rgb: 55 65 81;
+    --app-hover-rgb: 75 85 99;
+    --app-text-rgb: 243 244 246;
+    --app-text-muted-rgb: 156 163 175;
+
     --app-bg: #0b0f19;
     --app-surface: #111827;
     --app-card: #1f2937;
@@ -16,11 +22,19 @@
   }
 
   html.light {
-    --app-bg: #F5F7FB;
-    --app-surface: #FFFFFF;
-    --app-card: #F8FAFC;
-    --app-border: #E5E7EB;
-    --app-text: #111827;
+    --app-bg-rgb: 245 247 251;
+    --app-surface-rgb: 255 255 255;
+    --app-card-rgb: 248 250 252;
+    --app-border-rgb: 226 232 240;
+    --app-hover-rgb: 241 245 249;
+    --app-text-rgb: 15 23 42;
+    --app-text-muted-rgb: 71 84 103;
+
+    --app-bg: #f5f7fb;
+    --app-surface: #ffffff;
+    --app-card: #f8fafc;
+    --app-border: #e2e8f0;
+    --app-text: #0f172a;
     --app-text-muted: #475467;
   }
 
@@ -29,9 +43,28 @@
   }
 
   body {
-    @apply antialiased font-sans overflow-hidden select-none;
+    @apply antialiased font-sans overflow-hidden;
     background: var(--app-bg);
     color: var(--app-text);
+  }
+
+  /* Accessibility Focus Visible Rings (WCAG 2.2 AA) */
+  :focus-visible {
+    outline: 2px solid #006ee6 !important;
+    outline-offset: 2px !important;
+    box-shadow: 0 0 0 4px rgba(0, 110, 230, 0.25) !important;
+  }
+
+  /* Reduced Motion Accessibility Guardrail */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 
   /* Accessibility Focus Visible Rings (WCAG 2.2 AA) */
@@ -279,61 +312,176 @@ html.light .chat-shell-input-wrap {
   background: linear-gradient(180deg, rgba(245, 247, 251, 0) 0%, rgba(245, 247, 251, 0.9) 35%, rgba(245, 247, 251, 1) 100%) !important;
 }
 
-/* Custom Scrollbar for Dark Theme */
+/* Light mode semantic text adjustments for neutral utilities */
+html.light body {
+  background-color: var(--app-bg);
+  color: var(--app-text);
+}
+
+html.light .text-gray-500 {
+  color: #475467;
+}
+
+html.light .text-gray-400 {
+  color: #334155;
+}
+
+/* Light mode high-contrast mapping for pastel badges and highlights (WCAG AA) */
+html.light .text-brand-300,
+html.light .text-brand-400 {
+  color: #0058be;
+}
+
+html.light .text-indigo-300,
+html.light .text-indigo-400 {
+  color: #3730a3;
+}
+
+html.light .text-blue-300,
+html.light .text-blue-400 {
+  color: #1d4ed8;
+}
+
+html.light .text-purple-300,
+html.light .text-purple-400 {
+  color: #6b21a8;
+}
+
+html.light .text-cyan-300,
+html.light .text-cyan-400 {
+  color: #0e7490;
+}
+
+html.light .text-emerald-300,
+html.light .text-emerald-400 {
+  color: #047857;
+}
+
+html.light .text-amber-300,
+html.light .text-amber-400 {
+  color: #b45309;
+}
+
+html.light .text-rose-300,
+html.light .text-rose-400 {
+  color: #be123c;
+}
+
+/* Light mode Form Controls: Inputs, Textareas, Selects & Labels */
+html.light input:not([type="checkbox"]):not([type="radio"]),
+html.light textarea,
+html.light select {
+  color: #0f172a !important;
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #64748b !important;
+}
+
+html.light input:focus,
+html.light textarea:focus,
+html.light select:focus {
+  border-color: #006ee6 !important;
+  box-shadow: 0 0 0 2px rgba(0, 110, 230, 0.2) !important;
+}
+
+html.light label {
+  color: #334155;
+}
+
+html.light option {
+  color: #0f172a;
+  background-color: #ffffff;
+}
+
+/* Heading contrast in light mode on cards and panels */
+html.light .glass-panel h1,
+html.light .glass-panel h2,
+html.light .glass-panel h3,
+html.light .glass-panel h4,
+html.light .glass-card h1,
+html.light .glass-card h2,
+html.light .glass-card h3,
+html.light .glass-card h4 {
+  color: #0f172a;
+}
+
+/* Chat Shell Layout Masks */
+html.light .chat-shell-panel {
+  background: linear-gradient(180deg, #ffffff 0%, #f5f7fb 100%);
+}
+
+html.light .chat-shell-header {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: #e2e8f0;
+}
+
+html.light .chat-shell-input-wrap {
+  background: linear-gradient(180deg, rgba(245, 247, 251, 0) 0%, rgba(245, 247, 251, 0.9) 35%, rgba(245, 247, 251, 1) 100%);
+}
+
+/* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(17, 24, 39, 0.5);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(75, 85, 99, 0.6);
-  border-radius: 3px;
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(107, 114, 128, 0.8);
+  background: rgba(148, 163, 184, 0.6);
 }
 
 /* Glassmorphism & Cyber-Utilitarian Utility Classes */
 .glass-panel {
-  background: rgba(17, 24, 39, 0.85);
+  background: rgba(var(--app-surface-rgb) / 0.85);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--app-border-rgb) / 0.75);
 }
 
 .glass-card {
-  background: rgba(31, 41, 55, 0.55);
+  background: rgba(var(--app-card-rgb) / 0.7);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(var(--app-border-rgb) / 0.65);
 }
 
 .glass-card-interactive {
-  background: rgba(31, 41, 55, 0.5);
+  background: rgba(var(--app-card-rgb) / 0.6);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--app-border-rgb) / 0.65);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .glass-card-interactive:hover {
-  background: rgba(31, 41, 55, 0.75);
-  border-color: rgba(12, 138, 255, 0.4);
+  background: rgba(var(--app-card-rgb) / 0.85);
+  border-color: rgba(0, 110, 230, 0.4);
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px -6px rgba(12, 138, 255, 0.15);
+  box-shadow: 0 4px 16px -2px rgba(0, 110, 230, 0.12);
 }
 
-/* Shimmer & Glow Effects */
+.glass-card-interactive:active {
+  transform: scale(0.99);
+}
+
+/* Refined Subtle Elevation Shadows (Replacing AI Neon Glows) */
 .glow-brand {
-  box-shadow: 0 0 20px -5px rgba(12, 138, 255, 0.35);
+  box-shadow: 0 2px 8px -1px rgba(0, 110, 230, 0.25);
 }
 
 .glow-brand-lg {
-  box-shadow: 0 0 30px -5px rgba(12, 138, 255, 0.45);
+  box-shadow: 0 4px 16px -2px rgba(0, 110, 230, 0.3);
 }
 
 .glow-success {
-  box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 2px 8px -1px rgba(16, 185, 129, 0.25);
 }

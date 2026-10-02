@@ -143,3 +143,46 @@ def test_conversation_context_prompt():
     assert "Ventas por categoria" in user_prompt
     assert "Y de esas cual fue la mas vendida?" in user_prompt
 
+def test_shared_chat_thread_and_golden_query(auth_headers):
+    client = TestClient(app)
+    
+    # 1. Create a thread
+    thread_payload = {
+        "id": "thread-shared-xyz",
+        "title": "Reporte Compartido de Pruebas",
+        "connection_id": 1,
+        "results": [{"id": "r1", "question": "test share", "summary_text": "ok"}]
+    }
+    res = client.post("/api/v1/chat/threads", json=thread_payload, headers=auth_headers)
+    assert res.status_code == 200
+
+    # 2. Access via shared endpoint
+    res_shared = client.get("/api/v1/chat/threads/shared/thread-shared-xyz", headers=auth_headers)
+    assert res_shared.status_code == 200
+    assert res_shared.json()["id"] == "thread-shared-xyz"
+    assert res_shared.json()["title"] == "Reporte Compartido de Pruebas"
+
+    # 3. Test Golden Query toggle
+    golden_payload = {
+        "question": "ingresos anuales consolidados",
+        "sql": "SELECT SUM(total) FROM fact_ingresos;",
+        "connection_id": 1,
+        "is_golden": True
+    }
+    res_golden = client.post("/api/v1/chat/golden-query", json=golden_payload, headers=auth_headers)
+    assert res_golden.status_code == 200
+    assert res_golden.json()["is_golden"] is True
+
+    # 4. Clean up thread
+    client.delete("/api/v1/chat/threads/thread-shared-xyz", headers=auth_headers)
+
+def test_sqlite_readonly_safety():
+    from app.modules.chat_engine.sql_executor import SQLExecutor
+    from app.core.config import settings
+    import pytest
+    import sqlite3
+
+    # Attempting to execute an INSERT or UPDATE on raw sql should fail because query_only is ON
+    with pytest.raises(sqlite3.OperationalError):
+        SQLExecutor.execute_raw_sql(settings.SQLITE_DB_PATH, "CREATE TABLE forbidden_test (id INT);")
+

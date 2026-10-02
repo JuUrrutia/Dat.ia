@@ -22,6 +22,7 @@ class CorporateConnection(Base):
     
     is_active = Column(Boolean, default=True)
     is_uploaded = Column(Boolean, default=False)
+    null_policy = Column(String(50), default="open")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
