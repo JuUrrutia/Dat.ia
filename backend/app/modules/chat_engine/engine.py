@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional, Set
 from sqlalchemy.orm import Session
 
 from app.core.constants import DEFAULT_DEMO_ROLE, ROLE_USUARIO, ADMIN_ROLES
+from app.core.prompts import PromptManager
 from app.modules.chat_engine.schemas import QueryResponse, PresentationHints
 from app.modules.chat_engine.ast_validator import ASTValidator, ASTValidationError
 from app.modules.chat_engine.intent_classifier import IntentClassifier
@@ -48,6 +49,8 @@ class QueryEngine:
     _heuristic_presentation_hints = IntentClassifier.heuristic_presentation_hints
     _generate_conversational_response = IntentClassifier.generate_conversational_response
     _generate_deep_executive_report_with_llm = KPICalculator.generate_deep_executive_report_with_llm
+    _generate_semantic_analysis_with_llm = KPICalculator.generate_semantic_analysis_with_llm
+    _generate_unified_synthesis_with_llm = KPICalculator.generate_unified_synthesis_with_llm
     _build_dynamic_visualization = KPICalculator.build_dynamic_visualization
     _get_grounding_query_for_question = SQLExecutor.get_grounding_query
     _retrieve_few_shot_memories = SQLExecutor.retrieve_few_shot_memories
@@ -379,8 +382,8 @@ class QueryEngine:
                 nulls_detected=nulls_detected
             )
 
-        # 8. Visual Presentation & Semantic Synthesis
-        pres_hints = await IntentClassifier.classify_presentation_format(
+        # 8. Visual Presentation & Single-Pass Unified Synthesis
+        pres_hints = IntentClassifier.heuristic_presentation_hints(
             effective_question, response_type, rows, columns
         )
 
@@ -388,26 +391,50 @@ class QueryEngine:
             effective_question, columns, rows, user_role
         )
         final_exec_report = fallback_exec_report
+        conversational: Optional[str] = None
+        extracted_suggs: Optional[List[str]] = None
 
         if is_llm_active:
-            semantic_res = await KPICalculator.generate_semantic_analysis_with_llm(
+            conv_context = PromptManager.format_conversation_context_for_synthesis(conversation_history) if conversation_history else ""
+            unified_res = await KPICalculator.generate_unified_synthesis_with_llm(
                 question=effective_question,
                 user_role=user_role,
                 rows=rows,
                 columns=columns,
                 secured_sql=secured_sql,
-                schema_context=schema_context,
+                conversation_context=conv_context,
                 is_llm_active=is_llm_active
             )
-            if semantic_res:
-                kpis, semantic_overview, final_exec_report = semantic_res
-                fallback_summary = semantic_overview
-            elif pres_hints.show_executive_report:
-                llm_exec_report = await KPICalculator.generate_deep_executive_report_with_llm(
-                    effective_question, user_role, rows, columns, secured_sql, is_llm_active
+            if unified_res:
+                if unified_res.get("narrative"):
+                    conversational = unified_res["narrative"]
+                if unified_res.get("kpis"):
+                    kpis = unified_res["kpis"]
+                if unified_res.get("executive_report"):
+                    final_exec_report = unified_res["executive_report"]
+                if unified_res.get("suggested_questions"):
+                    extracted_suggs = unified_res["suggested_questions"]
+
+            # Fallback to standalone conversational call if unified synthesis yielded no narrative
+            if not conversational:
+                conversational = await IntentClassifier.generate_conversational_response(
+                    effective_question, user_role, response_type, rows, columns, is_llm_active
                 )
-                if llm_exec_report:
-                    final_exec_report = llm_exec_report
+
+        if is_remediation:
+            banner = NullHandler.format_remediation_banner(remediation_action, effective_question)
+            conversational = (banner + conversational) if conversational else banner
+            if fallback_summary:
+                fallback_summary = banner + fallback_summary
+
+        if extracted_suggs:
+            suggested_questions = extracted_suggs
+            if conversational:
+                conversational = re.sub(r'<preguntas_sugeridas>[\s\S]*?</preguntas_sugeridas>', '', conversational).strip()
+        else:
+            suggested_questions, conversational = cls._extract_suggested_questions(
+                conversational, rows, columns, meta.get("tables_used", list(allowed_tables))
+            )
 
         if not pres_hints.show_executive_report:
             final_exec_report = None
@@ -416,20 +443,6 @@ class QueryEngine:
         if not pres_hints.show_chart:
             chart_type = "none"
             chart_option = {"series": []}
-
-        conversational = await IntentClassifier.generate_conversational_response(
-            effective_question, user_role, response_type, rows, columns, is_llm_active
-        )
-
-        if is_remediation:
-            banner = NullHandler.format_remediation_banner(remediation_action, effective_question)
-            conversational = (banner + conversational) if conversational else banner
-            if fallback_summary:
-                fallback_summary = banner + fallback_summary
-
-        suggested_questions, conversational = cls._extract_suggested_questions(
-            conversational, rows, columns, meta.get("tables_used", list(allowed_tables))
-        )
 
         clarification_opts = IntentClassifier.detect_ambiguity_and_options(effective_question, allowed_tables)
         anomalies_detected = KPICalculator.detect_statistical_anomalies(rows, columns)
