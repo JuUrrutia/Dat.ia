@@ -21,6 +21,7 @@ class ResponseType(str, Enum):
     DATA_ANALYSIS = "data_analysis"
     GREETING = "greeting"
     REPORT = "report"
+    OUT_OF_SCOPE = "out_of_scope"
 
 
 # IntentCategory is an alias of ResponseType to prevent enum duplication
@@ -41,6 +42,7 @@ RESPONSE_GENERATION_CONFIG: Dict[ResponseType, GenerationConfig] = {
     ResponseType.DATA_ANALYSIS: GenerationConfig(temperature=0.15, max_tokens=700),
     ResponseType.GREETING: GenerationConfig(temperature=0.3, max_tokens=300),
     ResponseType.REPORT: GenerationConfig(temperature=0.15, max_tokens=900),
+    ResponseType.OUT_OF_SCOPE: GenerationConfig(temperature=0.25, max_tokens=600),
 }
 
 SQL_GENERATION_CONFIG = GenerationConfig(temperature=0.0, max_tokens=400)
@@ -167,6 +169,8 @@ class PromptManager:
         return (
             f"Clasifica la intención del usuario en EXACTAMENTE una palabra de: {categories}.\n"
             "Responde solo esa palabra, en minúscula, sin puntuación ni explicación.\n\n"
+            "- out_of_scope: peticiones fuera de las funciones de analítica de datos "
+            '(ej: generar imágenes/fotos/videos/audio, chistes, búsquedas web externas, programar código no relacionado, borrar la base de datos).\n'
             "- data_analysis: pide datos, resúmenes, conteos, tablas, gráficos, rankings "
             '(ej: "resumen de datos", "top 10", "cuántos registros hay").\n'
             "- greeting: saludo o despedida simple, SIN pedir datos "
@@ -209,6 +213,24 @@ class PromptManager:
     # -----------------------------------------------------------------
     # 4. Conversational Assistant Prompts (Fluido, Dinámico y Natural)
     # -----------------------------------------------------------------
+    @staticmethod
+    def get_out_of_scope_system_prompt(user_role: str, allowed_tables: Set[str]) -> str:
+        tables_str = ", ".join(sorted(allowed_tables)) if allowed_tables else "tus fuentes autorizadas"
+        return (
+            f"Eres DATIA, la plataforma inteligente de democratización y analítica de datos corporativos.\n"
+            f"Rol del usuario: {user_role}. Tablas autorizadas: {tables_str}.\n\n"
+            "El usuario ha solicitado una tarea que está FUERA DE TUS FUNCIONES O ALCANCE (por ejemplo: generar imágenes, fotos, ilustraciones, video, audio, navegación web externa, o tareas no relacionadas con datos corporativos).\n\n"
+            "Tu tarea es responder con un tono fluido, empático, natural y sumamente profesional (estilo Claude / ChatGPT):\n"
+            "1. Transparencia empática: Aclara amablemente que, como plataforma de inteligencia y analítica de datos, no generas contenido multimedia (como imágenes, audio o video) ni ejecutas tareas externas ajenas a los datos de la empresa.\n"
+            "2. Claridad de valor: Explica con claridad y calidez lo que SÍ puedes hacer: consultar registros en tiempo real, generar métricas clave (KPIs), comparativas de rendimiento y gráficos estadísticos interactivos (barras, líneas, áreas, tortas).\n"
+            f"3. Enfoque al rol ({user_role}): Menciona cómo puedes apoyar específicamente su labor a partir de los datos corporativos ({tables_str}).\n"
+            "4. Alternativas accionables: Ofrece 2 o 3 ejemplos concretos de análisis, métricas o visualizaciones estadísticas que sí pueden realizar juntos en este momento.\n\n"
+            "Reglas de estilo:\n"
+            "- Habla de forma directa, cálida y natural. Cero texto mecánico o acartonado.\n"
+            "- PROHIBIDO volcar el diccionario de esquemas completo o listas técnicas innecesarias.\n"
+            "- Responde en Markdown limpio y estructurado."
+        )
+
     @staticmethod
     def get_general_greeting_system_prompt(user_role: str, allowed_tables: Set[str]) -> str:
         tables_str = ", ".join(sorted(allowed_tables)) if allowed_tables else "ninguna tabla asignada"

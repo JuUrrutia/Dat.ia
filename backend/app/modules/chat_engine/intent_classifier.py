@@ -3,7 +3,8 @@ import re
 from typing import List, Dict, Any, Optional
 from app.core.constants import (
     DATA_REQUEST_KEYWORDS, GREETING_KEYWORDS, ADVISORY_KEYWORDS, EXPLANATION_KEYWORDS,
-    HYBRID_KEYWORDS, REPORT_KEYWORDS, LIST_KEYWORDS, COUNT_KEYWORDS
+    HYBRID_KEYWORDS, REPORT_KEYWORDS, LIST_KEYWORDS, COUNT_KEYWORDS,
+    UNSUPPORTED_CAPABILITY_PATTERNS
 )
 from app.core.prompts import PromptManager
 from app.modules.chat_engine.llm_service import LLMService
@@ -17,6 +18,10 @@ class IntentClassifier:
     @classmethod
     async def classify_intent(cls, question: str) -> str:
         q_lower = question.lower().strip()
+
+        # 0. Detect unsupported out-of-scope capabilities (images, audio, video, web search, destructive DDL/DML, etc.)
+        if any(re.search(pat, q_lower) for pat in UNSUPPORTED_CAPABILITY_PATTERNS):
+            return "out_of_scope"
 
         if any(k in q_lower for k in DATA_REQUEST_KEYWORDS):
             if any(k in q_lower for k in REPORT_KEYWORDS) or "informe" in q_lower:
@@ -46,7 +51,7 @@ class IntentClassifier:
             )
             if resp:
                 resp = resp.strip().lower()
-                for t in ["greeting", "advisory", "explanation", "report", "hybrid", "data_analysis"]:
+                for t in ["out_of_scope", "greeting", "advisory", "explanation", "report", "hybrid", "data_analysis"]:
                     if t in resp:
                         return t
         except Exception:
@@ -132,10 +137,10 @@ class IntentClassifier:
         rows: List[Dict[str, Any]],
         columns: List[str]
     ) -> PresentationHints:
-        if response_type in ("advisory", "explanation"):
+        if response_type in ("advisory", "explanation", "out_of_scope"):
             return PresentationHints(
                 show_executive_report=False,
-                show_kpis=False,
+                show_kpis=True if response_type == "out_of_scope" else False,
                 show_chart=False,
                 preferred_view="assistant",
                 summary_style="detailed"
@@ -264,6 +269,14 @@ class IntentClassifier:
             system_prompt = PromptManager.get_general_greeting_system_prompt(user_role, set(columns or []))
             temp = 0.4
             prompt = f"Saludo/Mensaje del usuario ({user_role}): \"{question}\"\nSaluda cordialmente, explica tus funciones y sugiere ejemplos de preguntas para sus tablas autorizadas."
+        elif response_type == "out_of_scope":
+            system_prompt = PromptManager.get_out_of_scope_system_prompt(user_role, set(columns or []))
+            temp = 0.25
+            prompt = (
+                f"Solicitud del usuario ({user_role}): \"{question}\"\n\n"
+                "Responde de manera empática, conversacional y profesional explicando tus capacidades y limitaciones frente a esta solicitud específica, "
+                "destacando lo que sí puedes hacer para su rol y proponiendo 2 o 3 alternativas analíticas o de visualización estadística basadas en sus datos corporativos."
+            )
         elif response_type in ("advisory", "explanation", "hybrid"):
             system_prompt = PromptManager.get_conversational_system_prompt(response_type)
             temp = 0.2
