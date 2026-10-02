@@ -273,6 +273,7 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 r'\b(margen|m[aá]rgenes|ebitda|rentabilidad)\b',
                 r'\b(costo|costos|gasto|gastos|egreso|egresos|presupuesto|presupuestos)\b',
                 r'\b(dinero|monto|montos|financier[oa]s?|finanzas)\b',
+                r'\b(econ[oó]mic[oa]s?|econom[íi]a|comercial(es)?)\b',
                 r'\b(cartera\s+de\s+clientes|comprador|compradores)\b',
                 r'\b(m[oó]dulo|[aá]rea|departamento)\s+(de\s+)?(finanzas|financier[oa]|comercial|ventas|facturaci[oó]n|econom[íi]a)\b',
                 r'\b(fact_ventas|fact_ingresos_costos|vbak_cabpedidoventa|vbap_pospedidoventa|kna1_clientes)\b'
@@ -286,10 +287,16 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         # Domain 2: Business / Financial / Commercial roles attempting to access technical IT infrastructure
         is_fin_role = any(k in role_lower for k in ["economista", "financiero", "finanzas", "comercial", "negocio", "contab"])
         if is_fin_role and not any(k in role_lower for k in ["ti", "infraestructura", "tecnolog"]):
-            # Exempt queries that ask for product or catalog categories involving technology (e.g. "productos de tecnología")
-            is_product_query = bool(re.search(r'\b(producto|productos|categor[íi]a|categor[íi]as|art[íi]culo|art[íi]culos)\b.*\b(tecnolog[íi]a|hardware|software)\b', q_lower))
+            # Check if it is a legitimate product or catalog inquiry about technology goods
+            commercial_context = r'\b(vendid[oa]s?|vendieron|vendimos|vender|venta|ventas|comprad[oa]s?|compraron|compramos|compras?|precio|precios|facturaci[oó]n|facturas?|cliente|clientes)\b'
+            product_context = r'\b(producto|productos|categor[íi]a|categor[íi]as|art[íi]culo|art[íi]culos|cat[aá]logo)\b'
+            is_product_query = bool(re.search(product_context, q_lower) and re.search(commercial_context, q_lower))
+
             if not is_product_query:
                 tech_keywords = [
+                    r'\b(tecnol[oó]gic[oa]s?|tecnolog[ií]a)\b',
+                    r'\b(ti|it|t\.i\.)\b',
+                    r'\b(inform[aá]tic[oa]s?|telecomunicaci[oó]n|telecomunicaciones)\b',
                     r'\b(servidor|servidores|server|servers|host|hosts|cluster|clusters|nodo|nodos)\b',
                     r'\b(cpu|memoria\s+ram|\bram\b|disco|discos|almacenamiento)\b',
                     r'\b(incidente|incidentes|incidentes\s+ti|incidentes_ti)\b',
@@ -298,8 +305,8 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                     r'\b(consumo\s+de\s+recursos|latencia|ancho\s+de\s+banda|ping|router|switch|firewall)\b',
                     r'\b(infraestructura(\s+de\s+ti|\s+tecnol[oó]gica|\s+t[ée]cnica)?)\b',
                     r'\b(m[oó]dulo|[aá]rea|departamento)\s+(de\s+)?(ti|it|tecnolog[íi]a|infraestructura|sistemas)\b',
-                    r'\b(m[oó]dulo\s+(ti|it))\b',
-                    r'\b(tecnolog[íi]a\s+y\s+ti|sistemas\s+inform[aá]ticos|telemetr[íi]a)\b',
+                    r'\b(m[oó]dulo\s+(ti|it|tecnol[oó]gic[oa]))\b',
+                    r'\b(sistemas\s+inform[aá]ticos|telemetr[íi]a)\b',
                     r'\b(parche|parches|vulnerabilidad|vulnerabilidades|ciberseguridad|seguridad\s+ti)\b',
                     r'\b(backup|backups|respaldo|respaldos)\b',
                     r'\b(dim_servidores|fact_incidentes_ti|fact_consumo_recursos)\b'
