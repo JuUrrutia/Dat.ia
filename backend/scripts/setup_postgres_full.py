@@ -360,9 +360,10 @@ def setup_metadata_database():
     # 1. Create all tables defined in SQLAlchemy Base
     Base.metadata.create_all(bind=m_engine)
 
-    # Safe migration for newly added columns
+    # Safe migration for newly added columns (with lock_timeout to avoid deadlocks)
     try:
         with m_engine.connect() as migration_conn:
+            migration_conn.execute(text("SET lock_timeout = '3s'"))
             migration_conn.execute(text("ALTER TABLE corporate_connections ADD COLUMN IF NOT EXISTS null_policy VARCHAR(50) DEFAULT 'open';"))
             migration_conn.commit()
     except Exception as e:

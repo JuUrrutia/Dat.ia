@@ -2,6 +2,7 @@ import re
 from typing import Set, Dict, Any, Optional, Tuple, List
 from sqlalchemy.orm import Session
 
+from app.core.constants import ADMIN_ROLES, ROLE_ADMINISTRADOR
 from app.core.prompts import PromptManager
 from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
 from app.modules.chat_engine.llm_service import LLMService
@@ -68,15 +69,16 @@ class SQLGenerator:
             if llm_response_text:
                 is_llm_active = True
 
-                # Check explicit access denied XML tag
+                # Check explicit access denied XML tag (only for non-admin roles)
+                is_admin_user = is_admin or user_role in ADMIN_ROLES or user_role in ("Administrador", ROLE_ADMINISTRADOR)
                 denied_match = re.search(r'<acceso_denegado>\s*(.*?)\s*</acceso_denegado>', llm_response_text, re.DOTALL | re.IGNORECASE)
-                if denied_match:
+                if denied_match and not is_admin_user:
                     rbac_denial = denied_match.group(1).strip()
                     return None, None, rbac_denial, schema_context, is_llm_active
 
-                # Check textual RBAC denial without SQL
+                # Check textual RBAC denial without SQL (only for non-admin roles)
                 lower_llm = llm_response_text.lower()
-                if any(phrase in lower_llm for phrase in [
+                if not is_admin_user and any(phrase in lower_llm for phrase in [
                     "acceso denegado", "no tiene autorización", "no está autorizado",
                     "no tiene permisos", "fuera de sus tablas permitidas",
                     "no tiene autorizacion", "no esta autorizado"
@@ -84,10 +86,7 @@ class SQLGenerator:
                     rbac_denial = f"Gobernanza RBAC: Acceso denegado. El perfil '{user_role}' no tiene autorización para acceder a estos datos."
                     return None, None, rbac_denial, schema_context, is_llm_active
 
-                # Extract Chain-of-Thought thinking process
-                thinking_match = re.search(r'<pensamiento>\s*(.*?)\s*</pensamiento>', llm_response_text, re.DOTALL | re.IGNORECASE)
-                if thinking_match:
-                    thinking_process = thinking_match.group(1).strip()
+                thinking_process = None
 
                 # Extract SQL block
                 sql_match = re.search(r'```sql\s*(.*?)\s*```', llm_response_text, re.DOTALL | re.IGNORECASE)

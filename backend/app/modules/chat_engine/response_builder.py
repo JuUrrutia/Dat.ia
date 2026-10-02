@@ -81,6 +81,47 @@ class ResponseBuilder:
         )
 
     @classmethod
+    def build_execution_error_response(
+        cls,
+        question: str,
+        error_message: str,
+        exec_time_ms: int = 0
+    ) -> QueryResponse:
+        conversational_err = (
+            f"⚠️ **Error en la ejecución de la consulta**\n\n"
+            f"El motor de base de datos no pudo completar la consulta debido a un error técnico:\n"
+            f"> `{error_message}`\n\n"
+            "Puedes reformular tu pregunta o verificar que los campos consultados existan en el modelo."
+        )
+        return QueryResponse(
+            question=question,
+            summary_text=f"Error al ejecutar consulta: {error_message}",
+            kpis=[],
+            chart_type="none",
+            chart_option={"series": []},
+            data_columns=["error"],
+            data_rows=[{"error": error_message}],
+            response_type="error",
+            conversational_response=conversational_err,
+            grounding_info="Error técnico durante la ejecución relacional",
+            presentation_hints=PresentationHints(
+                show_executive_report=False,
+                show_kpis=False,
+                show_chart=False,
+                preferred_view="assistant",
+                summary_style="conversational"
+            ),
+            traceability=TraceabilityAudit(
+                sql_executed="-- ERROR EN EJECUCIÓN",
+                execution_time_ms=exec_time_ms,
+                rows_returned=0,
+                validation_status="ERROR_EJECUCION",
+                schema_tables_used=[],
+                explanation=error_message
+            )
+        )
+
+    @classmethod
     def build_greeting_response(
         cls,
         question: str,

@@ -360,13 +360,10 @@ class DynamicSchemaPruningService:
             ).all()
 
             raw_catalog_tables = {e.table_name.lower() for e in catalog_entries if e.table_name}
-            if physical_tables and raw_catalog_tables:
-                overlap = {t for t in raw_catalog_tables if t in physical_tables}
-                allowed_tables = overlap if overlap else raw_catalog_tables
+            if physical_tables:
+                allowed_tables = set(physical_tables).union(raw_catalog_tables)
             elif raw_catalog_tables:
                 allowed_tables = raw_catalog_tables
-            elif physical_tables:
-                allowed_tables = set(physical_tables)
             else:
                 table_perms = db.query(RoleTablePermission).filter(
                     RoleTablePermission.connection_id == effective_conn_id,

@@ -35,9 +35,10 @@ class SQLExecutor:
         if hasattr(target_db, "db_type"):
             from sqlalchemy import text
             from app.core.database import build_engine_for_connector
+            from app.modules.admin_catalog.models import DatabaseType
             eng = build_engine_for_connector(target_db)
             with eng.connect() as conn:
-                if str(getattr(target_db, "db_type", "")).lower() == "postgres":
+                if getattr(target_db, "db_type", None) == DatabaseType.POSTGRESQL or "postgres" in str(getattr(target_db, "db_type", "")).lower():
                     try:
                         conn.execute(text("SET TRANSACTION READ ONLY;"))
                         conn.execute(text("SET statement_timeout = 15000;"))
@@ -109,7 +110,8 @@ class SQLExecutor:
         table_columns_map: Dict[str, List[str]],
         schema_context: str = "",
         is_llm_active: bool = True,
-        dialect: str = "sqlite"
+        dialect: str = "sqlite",
+        is_admin: bool = False
     ) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any], bool, str]:
         """
         Executes query on SQLite or PostgreSQL and automatically invokes LLM self-healing if an exception occurs.
@@ -124,16 +126,42 @@ class SQLExecutor:
             dialect=dialect,
             allowed_tables=allowed_tables,
             blocked_columns=blocked_columns,
-            table_columns=table_columns_map
+            table_columns=table_columns_map,
+            is_admin=is_admin
         )
 
         was_self_healed = False
         validation_label = "APROBADO"
 
+        # Pre-flight Physical Table Existence Check (< 1ms)
+        from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
+        phys_tables = DynamicSchemaPruningService.get_physical_db_tables(target_db_path)
+        if phys_tables:
+            missing_tables = [t for t in meta.get("tables_used", []) if t.lower() not in phys_tables]
+            if missing_tables:
+                db_name = getattr(target_db_path, "name", None) or getattr(target_db_path, "database_name", "la fuente seleccionada")
+                missing_str = ", ".join(f"'{t}'" for t in missing_tables)
+                avail_str = ", ".join(f"'{t}'" for t in sorted(phys_tables))
+                raise RuntimeError(
+                    f"La tabla {missing_str} no existe en {db_name}. "
+                    f"Tablas disponibles: [{avail_str}]. Faltan datos para realizar esta consulta en la fuente activa."
+                )
+
         try:
             rows = cls.execute_raw_sql(target_db_path, secured_sql, dialect=dialect)
             return rows, secured_sql, meta, was_self_healed, validation_label
         except Exception as err:
+            err_str = str(err).lower()
+            is_fatal_missing_table = (
+                "no such table" in err_str
+                or "does not exist" in err_str
+                or "relation" in err_str
+                or "undefinedtable" in type(err).__name__.lower()
+            )
+            if is_fatal_missing_table:
+                # Fatal schema mismatch: Do NOT waste 3-5 minutes in LLM healing or fallbacks
+                raise RuntimeError(f"Error al ejecutar consulta en la BD: {str(err)}")
+
             healed_sql = None
             if is_llm_active:
                 try:
@@ -177,7 +205,8 @@ Genera la consulta SQL corregida y funcional para {engine_label}:"""
                         dialect=dialect,
                         allowed_tables=allowed_tables,
                         blocked_columns=blocked_columns,
-                        table_columns=table_columns_map
+                        table_columns=table_columns_map,
+                        is_admin=is_admin
                     )
                     rows = cls.execute_raw_sql(target_db_path, healed_secured_sql, dialect=dialect)
                     return rows, healed_secured_sql, healed_meta, True, "APROBADO (Auto-Corregido)"
@@ -194,7 +223,8 @@ Genera la consulta SQL corregida y funcional para {engine_label}:"""
                     allowed_tables=allowed_tables,
                     blocked_columns=blocked_columns,
                     table_columns=table_columns_map,
-                    max_limit=20
+                    max_limit=20,
+                    is_admin=is_admin
                 )
                 rows = cls.execute_raw_sql(target_db_path, secured_fb_sql, dialect=dialect)
                 return rows, secured_fb_sql, fb_meta, False, "APROBADO (Fallback de Emergencia)"

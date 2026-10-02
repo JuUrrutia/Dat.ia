@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.constants import DEFAULT_DEMO_ROLE, ROLE_USUARIO, ADMIN_ROLES
 from app.core.prompts import PromptManager
+from app.modules.admin_catalog.models import DatabaseType
 from app.modules.chat_engine.schemas import QueryResponse, PresentationHints
 from app.modules.chat_engine.ast_validator import ASTValidator, ASTValidationError
 from app.modules.chat_engine.intent_classifier import IntentClassifier
@@ -207,7 +208,10 @@ class QueryEngine:
             except Exception as ex:
                 logger.warning(f"Error applying null remediation to DB: {ex}")
 
-        is_pg = conn_record is not None and str(getattr(conn_record, "db_type", "")).lower() == "postgresql"
+        is_pg = conn_record is not None and (
+            getattr(conn_record, "db_type", None) == DatabaseType.POSTGRESQL
+            or "postgres" in str(getattr(conn_record, "db_type", "")).lower()
+        )
         engine_dialect = "postgres" if is_pg else "sqlite"
         target_db_path = DynamicSchemaPruningService.resolve_db_path(db, connection_id)
         exec_target = conn_record if is_pg else target_db_path
@@ -228,7 +232,8 @@ class QueryEngine:
                     dialect=engine_dialect,
                     allowed_tables=allowed_tables,
                     blocked_columns=blocked_columns,
-                    table_columns=table_columns_map
+                    table_columns=table_columns_map,
+                    is_admin=is_admin
                 )
                 rows = SQLExecutor.execute_raw_sql(exec_target, secured_sql, dialect=engine_dialect)
             except ASTValidationError:
@@ -279,7 +284,8 @@ class QueryEngine:
                         dialect=engine_dialect,
                         allowed_tables=allowed_tables,
                         blocked_columns=blocked_columns,
-                        table_columns=table_columns_map
+                        table_columns=table_columns_map,
+                        is_admin=is_admin
                     )
                     candidate_sql = secured_sql
                     is_llm_active = True
@@ -297,12 +303,29 @@ class QueryEngine:
                 is_admin=is_admin,
                 conversation_history=conversation_history
             )
-            if rbac_denial:
+            if rbac_denial and not is_admin:
                 return ResponseBuilder.build_rbac_denied_response(effective_question, rbac_denial)
 
         if not candidate_sql or not is_llm_active:
             exec_time_ms = int((time.time() - start_time) * 1000)
             return ResponseBuilder.build_llm_offline_response(effective_question, exec_time_ms)
+
+        # 5.5 Pre-flight Physical Schema Verification (Fail-Fast < 1ms)
+        physical_tables = DynamicSchemaPruningService.get_physical_db_tables(exec_target)
+        if physical_tables:
+            candidate_tables = ASTValidator.extract_tables_from_query(candidate_sql, dialect=engine_dialect)
+            missing_physical_tables = [t for t in candidate_tables if t.lower() not in physical_tables]
+            if missing_physical_tables:
+                exec_time_ms = int((time.time() - start_time) * 1000)
+                conn_name = getattr(conn_record, "name", "Base de datos activa") if conn_record else "Base de datos activa"
+                missing_str = ", ".join(f"`{t}`" for t in missing_physical_tables)
+                avail_str = ", ".join(f"`{t}`" for t in sorted(physical_tables))
+                err_msg = (
+                    f"La consulta requiere la tabla {missing_str}, que no existe en '{conn_name}'. "
+                    f"Tablas disponibles en esta conexión: [{avail_str}]. "
+                    f"Faltan datos para realizar esta consulta en la fuente seleccionada."
+                )
+                return ResponseBuilder.build_execution_error_response(effective_question, err_msg, exec_time_ms)
 
         # 6. SQL Execution & Self-Healing
         try:
@@ -315,10 +338,14 @@ class QueryEngine:
                 table_columns_map=table_columns_map,
                 schema_context=schema_context,
                 is_llm_active=is_llm_active,
-                dialect=engine_dialect
+                dialect=engine_dialect,
+                is_admin=is_admin
             )
-        except Exception as e:
+        except ASTValidationError as e:
             return ResponseBuilder.build_rbac_denied_response(effective_question, str(e))
+        except Exception as e:
+            exec_time_ms = int((time.time() - start_time) * 1000)
+            return ResponseBuilder.build_execution_error_response(effective_question, str(e), exec_time_ms)
 
         SQLExecutor.persist_learning_memory(
             db=db,

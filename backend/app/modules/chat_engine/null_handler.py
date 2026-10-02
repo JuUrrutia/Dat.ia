@@ -30,7 +30,12 @@ class NullHandler:
                     null_cols_in_rows.add(c_name)
                     row_has_null = True
             if row_has_null:
-                null_rows_count += 1
+                count_weight = 1
+                for k, v in r.items():
+                    if k.lower() in ("cantidad_registros", "count", "num_registros", "total_registros", "total_count") and isinstance(v, (int, float)) and v > 1:
+                        count_weight = int(v)
+                        break
+                null_rows_count += count_weight
         return null_cols_in_rows, null_rows_count
 
     @classmethod
@@ -44,12 +49,24 @@ class NullHandler:
     ) -> Tuple[Dict[str, Any], str]:
         cols_sorted = sorted(list(null_cols))
         cols_text = ", ".join(f"`{c}`" for c in cols_sorted)
+        total_rows_count = len(rows)
+        total_agg = 0
+        has_agg = False
+        for r in rows:
+            for k, v in r.items():
+                if k.lower() in ("cantidad_registros", "count", "num_registros", "total_registros", "total_count") and isinstance(v, (int, float)):
+                    total_agg += int(v)
+                    has_agg = True
+                    break
+        if has_agg and total_agg > len(rows):
+            total_rows_count = total_agg
+
         nulls_detected = {
             "has_nulls": True,
             "table_name": primary_table,
             "columns_with_nulls": cols_sorted,
             "null_rows_count": null_rows_count,
-            "total_rows": len(rows),
+            "total_rows": total_rows_count,
             "options": [
                 {
                     "action": "delete_rows",

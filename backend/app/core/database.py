@@ -24,7 +24,8 @@ try:
         pool_pre_ping=True,
         pool_size=10,
         max_overflow=20,
-        echo=False
+        echo=False,
+        connect_args={"connect_timeout": 5},
     )
     with engine.connect() as conn:
         pass
@@ -37,51 +38,67 @@ def ensure_schema_migrations(eng):
     """
     Auto-migrates incremental schema columns (e.g. null_policy, is_uploaded)
     for existing SQLite and PostgreSQL metadata databases without requiring manual Alembic steps.
+    Uses lock_timeout on PostgreSQL to avoid deadlocks with abandoned sessions.
     """
     try:
         from sqlalchemy import inspect, text
+        is_pg = "postgresql" in str(eng.url)
+
         inspector = inspect(eng)
         table_names = set(inspector.get_table_names())
+
+        def _safe_alter(conn, stmts):
+            """Execute ALTER stmts with a short lock timeout on PG."""
+            if is_pg:
+                conn.execute(text("SET lock_timeout = '3s'"))
+            for s in stmts:
+                conn.execute(text(s))
 
         if "corporate_connections" in table_names:
             try:
                 conn_cols = {c["name"] for c in inspector.get_columns("corporate_connections")}
-                with eng.begin() as conn:
-                    if "is_uploaded" not in conn_cols:
-                        conn.execute(text("ALTER TABLE corporate_connections ADD COLUMN is_uploaded BOOLEAN DEFAULT 0 NOT NULL"))
-                    if "null_policy" not in conn_cols:
-                        conn.execute(text("ALTER TABLE corporate_connections ADD COLUMN null_policy VARCHAR(50) DEFAULT 'open'"))
+                pending = []
+                if "is_uploaded" not in conn_cols:
+                    pending.append("ALTER TABLE corporate_connections ADD COLUMN is_uploaded BOOLEAN DEFAULT 0 NOT NULL")
+                if "null_policy" not in conn_cols:
+                    pending.append("ALTER TABLE corporate_connections ADD COLUMN null_policy VARCHAR(50) DEFAULT 'open'")
+                if pending:
+                    with eng.begin() as conn:
+                        _safe_alter(conn, pending)
             except Exception:
                 pass
 
         if "users" in table_names:
             try:
                 user_cols = {c["name"] for c in inspector.get_columns("users")}
-                with eng.begin() as conn:
-                    if "failed_login_attempts" not in user_cols:
-                        conn.execute(text("ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER DEFAULT 0 NOT NULL"))
-                    if "locked_until" not in user_cols:
-                        conn.execute(text("ALTER TABLE users ADD COLUMN locked_until TIMESTAMP NULL"))
-                    if "must_change_password" not in user_cols:
-                        conn.execute(text("ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT 0 NOT NULL"))
+                pending = []
+                if "failed_login_attempts" not in user_cols:
+                    pending.append("ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER DEFAULT 0 NOT NULL")
+                if "locked_until" not in user_cols:
+                    pending.append("ALTER TABLE users ADD COLUMN locked_until TIMESTAMP NULL")
+                if "must_change_password" not in user_cols:
+                    pending.append("ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT 0 NOT NULL")
+                if pending:
+                    with eng.begin() as conn:
+                        _safe_alter(conn, pending)
             except Exception:
                 pass
 
         if "audit_logs" in table_names:
             try:
                 audit_cols = {c["name"] for c in inspector.get_columns("audit_logs")}
-                with eng.begin() as conn:
-                    if "result_snapshot" not in audit_cols:
-                        conn.execute(text("ALTER TABLE audit_logs ADD COLUMN result_snapshot TEXT NULL"))
+                if "result_snapshot" not in audit_cols:
+                    with eng.begin() as conn:
+                        _safe_alter(conn, ["ALTER TABLE audit_logs ADD COLUMN result_snapshot TEXT NULL"])
             except Exception:
                 pass
 
         if "query_learning_memories" in table_names:
             try:
                 mem_cols = {c["name"] for c in inspector.get_columns("query_learning_memories")}
-                with eng.begin() as conn:
-                    if "is_golden" not in mem_cols:
-                        conn.execute(text("ALTER TABLE query_learning_memories ADD COLUMN is_golden BOOLEAN DEFAULT FALSE NOT NULL"))
+                if "is_golden" not in mem_cols:
+                    with eng.begin() as conn:
+                        _safe_alter(conn, ["ALTER TABLE query_learning_memories ADD COLUMN is_golden BOOLEAN DEFAULT FALSE NOT NULL"])
             except Exception:
                 pass
     except Exception:

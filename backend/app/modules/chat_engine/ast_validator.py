@@ -25,7 +25,8 @@ class ASTValidator:
         allowed_tables: Optional[Set[str]] = None,
         blocked_columns: Optional[Set[str]] = None,
         table_columns: Optional[Dict[str, List[str]]] = None,
-        max_limit: int = 500
+        max_limit: int = 500,
+        is_admin: bool = False
     ) -> Tuple[bool, str, Dict[str, Any]]:
         """
         Validates raw_sql against strict security rules and returns:
@@ -80,12 +81,17 @@ class ASTValidator:
             if table_name:
                 extracted_tables.add(table_name)
 
-        if allowed_tables is not None:
+        # Exclude CTE (Common Table Expression) alias names so subqueries/CTEs are not flagged as missing tables
+        cte_names = {cte.alias_or_name.lower() for cte in expression.find_all(exp.CTE) if cte.alias_or_name}
+        physical_extracted = extracted_tables - cte_names
+
+        # Administrators have total visibility over all data tables in the database
+        if not is_admin and allowed_tables is not None:
             allowed_set = {t.lower() for t in allowed_tables}
-            unauthorized_tables = extracted_tables - allowed_set
+            unauthorized_tables = physical_extracted - allowed_set
             if unauthorized_tables:
                 raise ASTValidationError(
-                    "Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos."
+                    f"Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos. Tablas no autorizadas: {', '.join(sorted(unauthorized_tables))}."
                 )
 
         # Rule 4.5: Expand SELECT * / table.* to explicit allowed columns
@@ -193,12 +199,12 @@ class ASTValidator:
                 if col_name:
                     extracted_columns.add(col_name)
 
-        if blocked_columns is not None:
+        if not is_admin and blocked_columns is not None:
             blocked_set = {c.lower() for c in blocked_columns}
             attempted_blocked = extracted_columns & blocked_set
             if attempted_blocked:
                 raise ASTValidationError(
-                    "Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos."
+                    f"Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos. Columnas bloqueadas: {', '.join(sorted(attempted_blocked))}."
                 )
 
         # Rule 6: Inject LIMIT / TOP if not present or exceeds max_limit
@@ -216,13 +222,32 @@ class ASTValidator:
         sanitized_sql = expression.sql(dialect=sqlglot_dialect)
 
         metadata = {
-            "tables_used": list(extracted_tables),
-            "columns_used": list(extracted_columns),
+            "tables_used": sorted(list(physical_extracted)),
+            "columns_used": sorted(list(extracted_columns)),
             "limit_applied": max_limit,
             "dialect": sqlglot_dialect
         }
 
         return True, sanitized_sql, metadata
+
+    @classmethod
+    def extract_tables_from_query(cls, sql: str, dialect: str = "postgres") -> Set[str]:
+        """
+        Extracts physical table names from a SQL query using sqlglot AST,
+        excluding CTE aliases. Fails safe and returns an empty set on parse error.
+        """
+        if not sql or not sql.strip():
+            return set()
+        sqlglot_dialect = dialect.lower() if dialect.lower() in cls.ALLOWED_DIALECTS else "postgres"
+        try:
+            expr = parse_one(sql.strip().rstrip(";"), read=sqlglot_dialect)
+            if not expr:
+                return set()
+            tables = {t.name.lower() for t in expr.find_all(exp.Table) if t.name}
+            ctes = {cte.alias_or_name.lower() for cte in expr.find_all(exp.CTE) if cte.alias_or_name}
+            return tables - ctes
+        except Exception:
+            return set()
 
     @classmethod
     def generate_sql_explanation(cls, sql: str, dialect: str = "sqlite") -> str:

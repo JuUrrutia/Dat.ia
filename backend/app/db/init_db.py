@@ -145,11 +145,11 @@ def init_db(db: Session):
             except Exception:
                 pass
 
-    existing_conn = db.query(CorporateConnection).first()
-    if not existing_conn:
+    std_conn = db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == False).first()
+    if not std_conn:
         if engine.dialect.name == "postgresql":
-            default_conn = CorporateConnection(
-                name="Base de Datos Corporativa PostgreSQL",
+            std_conn = CorporateConnection(
+                name="Base de Datos Corporativa (Demo)",
                 db_type=DatabaseType.POSTGRESQL,
                 host=settings.POSTGRES_SERVER,
                 port=settings.POSTGRES_PORT,
@@ -162,7 +162,7 @@ def init_db(db: Session):
         else:
             db_path = settings.SQLITE_DB_PATH
             db_name = os.path.basename(db_path)
-            default_conn = CorporateConnection(
+            std_conn = CorporateConnection(
                 name="BD Corporativa Local",
                 db_type=DatabaseType.SQLITE,
                 host=db_path,
@@ -173,26 +173,8 @@ def init_db(db: Session):
                 is_active=True,
                 is_uploaded=False
             )
-        db.add(default_conn)
+        db.add(std_conn)
         db.commit()
-    elif engine.dialect.name == "postgresql":
-        pg_conn = db.query(CorporateConnection).filter(
-            CorporateConnection.db_type == DatabaseType.POSTGRESQL
-        ).first()
-        if not pg_conn:
-            default_conn = CorporateConnection(
-                name="Base de Datos Corporativa PostgreSQL",
-                db_type=DatabaseType.POSTGRESQL,
-                host=settings.POSTGRES_SERVER,
-                port=settings.POSTGRES_PORT,
-                database_name="democratizacion_empresa",
-                username=settings.POSTGRES_USER,
-                encrypted_password=encrypt_credential(settings.POSTGRES_PASSWORD),
-                is_active=True,
-                is_uploaded=False
-            )
-            db.add(default_conn)
-            db.commit()
 
     all_business_tables = [
         "dim_categorias", "dim_productos", "dim_clientes",
@@ -321,10 +303,17 @@ def init_db(db: Session):
     operational_roles = db.query(Role).filter(~Role.name.in_(["Usuario", "Usuario Consultor"])).all()
 
     for o_conn in uploaded_connections:
-        db_path = o_conn.host if (o_conn.host and os.path.exists(o_conn.host)) else (
-            o_conn.database_name if (o_conn.database_name and os.path.exists(o_conn.database_name)) else None
-        )
-        phys_tables = DynamicSchemaPruningService.get_physical_db_tables(db_path) if db_path else set()
+        is_o_pg = (o_conn.db_type == DatabaseType.POSTGRESQL or "postgres" in str(o_conn.db_type).lower())
+        if is_o_pg:
+            phys_tables = DynamicSchemaPruningService.get_physical_db_tables(o_conn)
+            target_schema = "public"
+        else:
+            db_path = o_conn.host if (o_conn.host and os.path.exists(o_conn.host)) else (
+                o_conn.database_name if (o_conn.database_name and os.path.exists(o_conn.database_name)) else None
+            )
+            phys_tables = DynamicSchemaPruningService.get_physical_db_tables(db_path) if db_path else set()
+            target_schema = "main"
+
         if not phys_tables:
             cat_entries = db.query(SemanticCatalog).filter(SemanticCatalog.connection_id == o_conn.id).all()
             phys_tables = {e.table_name for e in cat_entries if e.table_name}
@@ -350,7 +339,7 @@ def init_db(db: Session):
                     db.add(RoleTablePermission(
                         role_id=r_obj.id,
                         connection_id=o_conn.id,
-                        schema_name="main",
+                        schema_name=target_schema,
                         table_name=tbl,
                         is_allowed=True
                     ))
