@@ -203,6 +203,9 @@ class TestRBACGovernance(unittest.TestCase):
     def test_financial_analyst_asking_it_infrastructure_and_modules_blocked(self):
         """Financial Analyst asking about IT modules, infrastructure, tickets or tech is strictly blocked."""
         it_questions = [
+            "Hazme un analisis tecnologico",
+            "Hazme un análisis tecnológico",
+            "Hazme un analisis de tecnologia",
             "¿Cuál es el estado de la infraestructura de TI?",
             "¿Cuáles son los incidentes técnicos de soporte?",
             "¿Cómo está el módulo de tecnología?",
