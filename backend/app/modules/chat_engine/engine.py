@@ -248,43 +248,82 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
     @classmethod
     def check_domain_governance(cls, question: str, user_role: str, allowed_tables: Set[str]) -> Optional[str]:
         """
-        Enforces cross-domain governance guardrails.
+        Enforces cross-domain governance guardrails (Fail-Closed).
         Detects if a user role attempts to query topics strictly outside their business domain.
         Returns a denial reason string if violated, or None if permitted.
         """
-        role_lower = (user_role or "").lower()
-        q_lower = (question or "").lower()
-        allowed_lower = {t.lower() for t in allowed_tables}
+        role_lower = (user_role or "").lower().strip()
+        q_lower = (question or "").lower().strip()
+        allowed_lower = {t.lower() for t in (allowed_tables or set())}
 
-        # Domain 1: Tech / TI roles attempting to access financial / commercial / sales data
-        is_tech_role = any(k in role_lower for k in ["ti", "infraestructura", "tecnolog", "sistemas"])
-        if is_tech_role:
-            business_tables = {
-                "fact_ventas", "fact_ingresos_costos", "dim_clientes", "dim_productos",
-                "dim_categorias", "vbak_cabpedidoventa", "vbap_pospedidoventa",
-                "ekko_cabpedidocompra", "ekpo_pospedidocompra", "kna1_clientes"
-            }
-            if not (allowed_lower & business_tables):
-                financial_pattern = r'\b(saldo|saldos|venta|ventas|ingreso|ingresos|ganancia|ganancias|precio|precios|facturaci[oó]n|margen|ebitda|rentabilidad|costo|costos)\b'
-                if re.search(financial_pattern, q_lower):
-                    return (
-                        f"Gobernanza RBAC: Acceso denegado. El perfil '{user_role}' no tiene autorización "
-                        "para consultar información financiera, saldos, ventas ni ingresos de la organización."
-                    )
+        # 0. Global Admin and C-Level have cross-domain visibility
+        if any(k in role_lower for k in ["admin", "director ejecutivo", "c-level", "super", "plataforma"]):
+            return None
 
-        # Domain 2: Business / Financial / Economic roles attempting to access technical IT infrastructure
-        is_fin_role = any(k in role_lower for k in ["economista", "financiero", "finanzas", "comercial", "negocio"])
-        if is_fin_role:
-            tech_tables = {
-                "dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos"
-            }
-            if not (allowed_lower & tech_tables):
-                tech_pattern = r'\b(servidor|servidores|cpu|memoria ram|incidente|incidentes ti|incidentes_ti|consumo de recursos|uptime|downtime)\b'
-                if re.search(tech_pattern, q_lower):
+        # Domain 1: Tech / TI / Infrastructure roles attempting to access financial, commercial or sales data
+        is_tech_role = any(k in role_lower for k in ["ti", "infraestructura", "tecnolog", "sistemas", "devops", "soporte"])
+        if is_tech_role and not any(k in role_lower for k in ["financ", "comercial", "econom"]):
+            financial_keywords = [
+                r'\b(saldo|saldos|balance|balances)\b',
+                r'\b(venta|ventas|preventa|postventa)\b',
+                r'\b(ingreso|ingresos|recaudaci[oó]n|cobro|cobros)\b',
+                r'\b(ganancia|ganancias|lucro|utilidad|utilidades)\b',
+                r'\b(precio|precios|tarifa|tarifas|cotizaci[oó]n|cotizaciones)\b',
+                r'\b(facturaci[oó]n|factura|facturas|facturado)\b',
+                r'\b(margen|m[aá]rgenes|ebitda|rentabilidad)\b',
+                r'\b(costo|costos|gasto|gastos|egreso|egresos|presupuesto|presupuestos)\b',
+                r'\b(dinero|monto|montos|financier[oa]s?|finanzas)\b',
+                r'\b(cartera\s+de\s+clientes|comprador|compradores)\b',
+                r'\b(m[oó]dulo|[aá]rea|departamento)\s+(de\s+)?(finanzas|financier[oa]|comercial|ventas|facturaci[oó]n|econom[íi]a)\b',
+                r'\b(fact_ventas|fact_ingresos_costos|vbak_cabpedidoventa|vbap_pospedidoventa|kna1_clientes)\b'
+            ]
+            if re.search('|'.join(financial_keywords), q_lower):
+                return (
+                    f"Gobernanza RBAC: Acceso denegado. El perfil '{user_role}' no tiene autorización "
+                    "para consultar información financiera, facturación, ventas, ingresos ni balances comerciales de la organización."
+                )
+
+        # Domain 2: Business / Financial / Commercial roles attempting to access technical IT infrastructure
+        is_fin_role = any(k in role_lower for k in ["economista", "financiero", "finanzas", "comercial", "negocio", "contab"])
+        if is_fin_role and not any(k in role_lower for k in ["ti", "infraestructura", "tecnolog"]):
+            # Exempt queries that ask for product or catalog categories involving technology (e.g. "productos de tecnología")
+            is_product_query = bool(re.search(r'\b(producto|productos|categor[íi]a|categor[íi]as|art[íi]culo|art[íi]culos)\b.*\b(tecnolog[íi]a|hardware|software)\b', q_lower))
+            if not is_product_query:
+                tech_keywords = [
+                    r'\b(servidor|servidores|server|servers|host|hosts|cluster|clusters|nodo|nodos)\b',
+                    r'\b(cpu|memoria\s+ram|\bram\b|disco|discos|almacenamiento)\b',
+                    r'\b(incidente|incidentes|incidentes\s+ti|incidentes_ti)\b',
+                    r'\b(ticket|tickets|soporte\s+t[ée]cnico|helpdesk|mesa\s+de\s+ayuda)\b',
+                    r'\b(uptime|downtime|ca[íi]da|ca[íi]das|disponibilidad\s+del?\s+sistema)\b',
+                    r'\b(consumo\s+de\s+recursos|latencia|ancho\s+de\s+banda|ping|router|switch|firewall)\b',
+                    r'\b(infraestructura(\s+de\s+ti|\s+tecnol[oó]gica|\s+t[ée]cnica)?)\b',
+                    r'\b(m[oó]dulo|[aá]rea|departamento)\s+(de\s+)?(ti|it|tecnolog[íi]a|infraestructura|sistemas)\b',
+                    r'\b(m[oó]dulo\s+(ti|it))\b',
+                    r'\b(tecnolog[íi]a\s+y\s+ti|sistemas\s+inform[aá]ticos|telemetr[íi]a)\b',
+                    r'\b(parche|parches|vulnerabilidad|vulnerabilidades|ciberseguridad|seguridad\s+ti)\b',
+                    r'\b(backup|backups|respaldo|respaldos)\b',
+                    r'\b(dim_servidores|fact_incidentes_ti|fact_consumo_recursos)\b'
+                ]
+                if re.search('|'.join(tech_keywords), q_lower):
                     return (
                         f"Gobernanza RBAC: Acceso denegado. El perfil '{user_role}' no tiene autorización "
                         "para consultar servidores, incidentes técnicos ni métricas de infraestructura TI."
                     )
+
+        # Domain 3: HR / Payroll Isolation (only HR / Gerente de Talento, C-Level, Admin can access salaries/payroll)
+        is_hr_role = any(k in role_lower for k in ["talento", "rrhh", "recursos humanos", "personas"])
+        if not is_hr_role:
+            hr_keywords = [
+                r'\b(sueldo|sueldos|salario|salarios|remuneraci[oó]n|remuneraciones)\b',
+                r'\b(n[oó]mina|n[oó]minas|honorario|honorarios)\b',
+                r'\b(cu[aá]nto\s+gana[n]?|compensaci[oó]n|compensaciones)\b',
+                r'\b(m[oó]dulo|[aá]rea|departamento)\s+(de\s+)?(rrhh|recursos humanos|talento|personal)\b',
+            ]
+            if re.search('|'.join(hr_keywords), q_lower):
+                return (
+                    f"Gobernanza RBAC: Acceso denegado. El perfil '{user_role}' no tiene autorización "
+                    "para consultar salarios, remuneraciones, nóminas ni información confidencial de Recursos Humanos."
+                )
 
         return None
 
@@ -347,10 +386,22 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 "Tu cuenta se encuentra registrada con el perfil inicial 'Usuario'. Un Administrador debe asignarte un rol (Economista o TI) para acceder a los datos corporativos."
             )
 
-        # 2. INTENT CLASSIFICATION
-        response_type = await IntentClassifier.classify_intent(effective_question)
-
         allowed_tables = cls.get_allowed_tables_for_role(user_role, is_admin, db=db, role_id=role_id, connection_id=connection_id)
+
+        # 2. Strict Cross-Domain RBAC Governance Check (Defense Layer 1 - Fail Closed)
+        if not is_admin and user_role not in ADMIN_ROLES:
+            domain_denial = cls.check_domain_governance(effective_question, user_role, allowed_tables)
+            if domain_denial:
+                return ResponseBuilder.build_rbac_denied_response(effective_question, domain_denial)
+
+        if not allowed_tables and not is_admin:
+            return ResponseBuilder.build_rbac_denied_response(
+                effective_question,
+                f"El rol '{user_role}' no tiene tablas asignadas en la matriz RBAC."
+            )
+
+        # 3. INTENT CLASSIFICATION
+        response_type = await IntentClassifier.classify_intent(effective_question)
 
         # BRANCH 0: GREETING / GENERAL CONVERSATION
         if response_type == "greeting" and not remediation_action:
@@ -361,18 +412,6 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             return ResponseBuilder.build_greeting_response(
                 effective_question, user_role, allowed_tables, conversational, clarification_options=clarification_opts
             )
-
-        if not allowed_tables:
-            return ResponseBuilder.build_rbac_denied_response(
-                effective_question,
-                f"El rol '{user_role}' no tiene tablas asignadas en la matriz RBAC."
-            )
-
-        # Cross-domain RBAC governance check
-        if not is_admin and user_role not in ADMIN_ROLES:
-            domain_denial = cls.check_domain_governance(effective_question, user_role, allowed_tables)
-            if domain_denial:
-                return ResponseBuilder.build_rbac_denied_response(effective_question, domain_denial)
 
         blocked_columns = cls.get_blocked_columns_for_role(user_role, is_admin, db=db, role_id=role_id, connection_id=connection_id)
         start_time = time.time()
@@ -516,6 +555,17 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                     if denied_match:
                         denied_reason = denied_match.group(1).strip()
                         return ResponseBuilder.build_rbac_denied_response(effective_question, denied_reason)
+
+                    lower_llm = llm_response_text.lower()
+                    if any(phrase in lower_llm for phrase in [
+                        "acceso denegado", "no tiene autorización", "no está autorizado",
+                        "no tiene permisos", "fuera de sus tablas permitidas",
+                        "no tiene autorizacion", "no esta autorizado"
+                    ]) and "```sql" not in llm_response_text:
+                        return ResponseBuilder.build_rbac_denied_response(
+                            effective_question,
+                            f"Gobernanza RBAC: Acceso denegado. El perfil '{user_role}' no tiene autorización para acceder a estos datos."
+                        )
 
                     thinking_match = re.search(r'<pensamiento>\s*(.*?)\s*</pensamiento>', llm_response_text, re.DOTALL | re.IGNORECASE)
                     if thinking_match:
