@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Database, Plus, Edit3, Trash2, RefreshCw, CheckCircle2, RotateCcw, Filter, UploadCloud, HardDrive, Sparkles } from 'lucide-react';
+import { Database, Plus, Edit3, Trash2, RefreshCw, CheckCircle2, RotateCcw, Filter, UploadCloud, HardDrive, Sparkles, AlertCircle } from 'lucide-react';
 import { CorporateConnection } from '../../features/admin/services/connector_service';
 import { DatabaseWizardModal } from './DatabaseWizardModal';
 import { useAdminConnectors } from '../../features/admin/hooks/useAdminConnectors';
@@ -265,8 +265,15 @@ export const AdminConnectorsTab: React.FC<AdminConnectorsTabProps> = ({
                         : 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-500/10 dark:border-rose-500/30 dark:text-rose-300'
                     }`}
                   >
-                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                    <span className="truncate font-medium">{testRes.message} ({testRes.latency_ms} ms)</span>
+                    {testRes.success ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    ) : (
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
+                    )}
+                    <span className="truncate font-medium">
+                      {testRes.message}
+                      {testRes.success ? ` (${testRes.latency_ms} ms)` : ''}
+                    </span>
                   </div>
                 )}
               </div>

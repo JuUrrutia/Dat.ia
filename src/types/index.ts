@@ -84,6 +84,7 @@ export interface TraceabilityAudit {
   schema_tables_used: string[];
   explanation: string;
   audit_log_id?: number;
+  target_database?: string | null;
 }
 
 export interface PresentationHints {

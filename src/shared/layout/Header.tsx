@@ -85,7 +85,7 @@ export const Header: React.FC = () => {
                 IA Local
               </span>
             </h1>
-            <p className="text-[10px] sm:text-xs text-slate-500 dark:text-gray-400 font-medium hidden xs:block truncate">
+            <p className="text-[10px] sm:text-xs text-slate-500 dark:text-gray-400 font-medium hidden sm:block truncate">
               Democratización de Datos Corporativos
             </p>
           </div>

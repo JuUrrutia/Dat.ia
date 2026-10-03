@@ -1,6 +1,6 @@
 import datetime
 from typing import Generator, Optional
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 import app.modules.auth.models
@@ -22,11 +22,26 @@ def get_db() -> Generator:
     finally:
         db.close()
 
+def _password_change_pending_allowed(request: Request) -> bool:
+    """
+    Rutas que siguen accesibles con `must_change_password=True`.
+
+    Sin las dos primeras el usuario queda atrapado: no puede ni ver su propio flag
+    (`/auth/me`) ni limpiarlo (`/auth/change-password`), porque ambas pasan por acá.
+    """
+    path = request.url.path.rstrip("/")
+    return path.endswith("/auth/change-password") or path.endswith("/auth/me")
+
+
 def get_current_user(
+    request: Request,
     db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme)
 ) -> User:
-    """Decodes JWT access token, retrieves user, and validates active session."""
+    """
+    Decodes JWT access token, retrieves user, validates active session, and blocks
+    the API while a temporary password is pending.
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="No se pudieron validar las credenciales de sesión.",
@@ -78,6 +93,21 @@ def get_current_user(
                 except Exception:
                     db.rollback()
 
+    # Una credencial temporal que el usuario puede ignorar para siempre no es una
+    # credencial: `admin_reset_user_password` ponía el flag en True y
+    # `change_user_password` lo limpiaba, pero nada impedía usar el token con la
+    # contraseña temporal indefinidamente. Va acá, y no en cada router, porque esta
+    # es la ÚNICA dependencia por la que pasan todos los endpoints autenticados:
+    # `get_current_admin` cuelga de acá y cubre los endpoints de administración.
+    if user.must_change_password and not _password_change_pending_allowed(request):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Debes cambiar tu contraseña temporal antes de continuar. "
+                "Usa POST /api/v1/auth/change-password."
+            )
+        )
+
     return user
 
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
@@ -115,7 +145,12 @@ def get_current_user_optional(
         if session:
             if session.is_revoked:
                 return None
-            now = datetime.datetime.utcnow()
+            # `utcnow()` esta deprecado desde 3.12. Mismo patron que el de arriba:
+            # UTC naive. `last_seen_at` se compara y se escribe, no se usa para
+            # validar el token (eso es `decode_token_payload`, en core/security.py,
+            # que ya usa `datetime.now(timezone.utc)`), asi que el valor es
+            # bit-identico al de antes: ningun token emitido antes queda invalido.
+            now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
             if (now - session.last_seen_at).total_seconds() > (SESSION_LAST_SEEN_UPDATE_INTERVAL_MINUTES * 60):
                 session.last_seen_at = now
                 try:

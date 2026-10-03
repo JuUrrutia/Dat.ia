@@ -3,6 +3,7 @@ from typing import Set, Optional
 from sqlalchemy.orm import Session
 
 from app.core.constants import ADMIN_ROLES
+from app.core.database import discard_failed_transaction
 from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
 
 class GovernanceGuard:
@@ -44,6 +45,12 @@ class GovernanceGuard:
                 )
                 return schema_info.get("allowed_tables", set())
             except Exception:
+                # La sesion es del CALLER, no nuestra. Tragarnos el error sin
+                # deshacer la transaccion abortada la deja muerta, y el siguiente
+                # query de esa request falla con `InFailedSqlTransaction` — un error
+                # sin relacion con lo que fallo. Fail-closed se mantiene: el
+                # permiso denied sigue siendo `set()`, solo se la devuelve usable.
+                discard_failed_transaction(active_db)
                 return set()
             finally:
                 if local_db is not None:
@@ -85,6 +92,65 @@ class GovernanceGuard:
                 )
                 return schema_info.get("blocked_columns", set())
             except Exception:
+                # La sesion es del CALLER, no nuestra. Tragarnos el error sin
+                # deshacer la transaccion abortada la deja muerta, y el siguiente
+                # query de esa request falla con `InFailedSqlTransaction` — un error
+                # sin relacion con lo que fallo. Fail-closed se mantiene: el
+                # permiso denied sigue siendo `set()`, solo se la devuelve usable.
+                discard_failed_transaction(active_db)
+                return set()
+            finally:
+                if local_db is not None:
+                    local_db.close()
+
+        return set()
+
+    @classmethod
+    def get_masked_columns_for_role(
+        cls,
+        user_role: str,
+        is_admin: bool,
+        db: Optional[Session] = None,
+        role_id: Optional[int] = None,
+        connection_id: int = 1
+    ) -> Set[str]:
+        """Columnas MASKED cuyo VALOR debe ocultarse a este perfil.
+
+        A diferencia de BLOCKED, estas columnas se pueden seguir consultando: se
+        consulta el valor y se enmascara antes de que salga de la capa de ejecucion.
+        Un admin las ve en claro.
+        """
+        if is_admin or user_role in ADMIN_ROLES:
+            return set()
+
+        local_db = None
+        if db is None:
+            try:
+                from app.core.database import SessionLocal
+                local_db = SessionLocal()
+                active_db = local_db
+            except Exception:
+                active_db = None
+        else:
+            active_db = db
+
+        if active_db is not None:
+            try:
+                schema_info = DynamicSchemaPruningService.get_authorized_schema_prompt(
+                    db=active_db,
+                    role_id=role_id,
+                    user_role=user_role,
+                    connection_id=connection_id,
+                    is_admin=is_admin
+                )
+                return schema_info.get("masked_columns", set())
+            except Exception:
+                # La sesion es del CALLER, no nuestra. Tragarnos el error sin
+                # deshacer la transaccion abortada la deja muerta, y el siguiente
+                # query de esa request falla con `InFailedSqlTransaction` — un error
+                # sin relacion con lo que fallo. Fail-closed se mantiene: el
+                # permiso denied sigue siendo `set()`, solo se la devuelve usable.
+                discard_failed_transaction(active_db)
                 return set()
             finally:
                 if local_db is not None:

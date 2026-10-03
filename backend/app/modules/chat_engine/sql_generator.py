@@ -25,7 +25,8 @@ class SQLGenerator:
         role_id: Optional[int] = None,
         connection_id: int = 1,
         is_admin: bool = False,
-        conversation_history: Optional[List[Dict[str, Any]]] = None
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
+        dialect: str = "sqlite",
     ) -> Tuple[Optional[str], Optional[str], Optional[str], str, bool]:
         """
         Generates candidate SQL from natural language query.
@@ -45,7 +46,9 @@ class SQLGenerator:
         except Exception:
             pass
 
-        few_shots = SQLExecutor.retrieve_few_shot_memories(db, question, connection_id)
+        few_shots = SQLExecutor.retrieve_few_shot_memories(
+            db, question, connection_id, user_role=user_role
+        )
         conv_context = PromptManager.format_conversation_context(conversation_history) if conversation_history else ""
 
         candidate_sql = None
@@ -54,9 +57,10 @@ class SQLGenerator:
         is_llm_active = False
 
         try:
-            system_prompt = PromptManager.get_text_to_sql_system_prompt(user_role, allowed_tables)
+            system_prompt = PromptManager.get_text_to_sql_system_prompt(user_role, allowed_tables, dialect=dialect)
             prompt_llm = PromptManager.get_text_to_sql_user_prompt(
-                question, user_role, schema_context, allowed_tables, few_shots, conversation_context=conv_context
+                question, user_role, schema_context, allowed_tables, few_shots,
+                conversation_context=conv_context, dialect=dialect,
             )
 
             llm_response_text = await LLMService.generate_completion(

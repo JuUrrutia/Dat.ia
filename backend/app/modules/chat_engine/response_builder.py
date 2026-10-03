@@ -290,6 +290,7 @@ class ResponseBuilder:
                 rows_returned=len(rows),
                 validation_status="APROBADO (Contexto Asistente)",
                 schema_tables_used=list(meta.get("tables_used", list(allowed_tables))),
+                target_database=meta.get("target_database"),
                 explanation=f"Respuesta de Asistente generada con IA Local. Datos de respaldo consultados de: {', '.join(meta.get('tables_used', []))}."
             )
         )
@@ -347,6 +348,7 @@ class ResponseBuilder:
                 rows_returned=len(rows),
                 validation_status=validation_label,
                 schema_tables_used=list(meta.get("tables_used", list(allowed_tables))),
+                target_database=meta.get("target_database"),
                 explanation=f"Consulta generada y validada con IA Local ({'Qwen2.5-Coder' if is_llm_active else 'Modo Determinístico'}). Tablas autorizadas: {', '.join(allowed_tables)}."
             )
         )

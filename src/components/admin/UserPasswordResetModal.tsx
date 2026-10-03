@@ -3,6 +3,8 @@ import { X, KeyRound, Copy, Check, AlertTriangle, RefreshCw } from 'lucide-react
 import { UserItem } from './AdminUsersTab';
 import { authService } from '../../features/auth/services/auth_service';
 import { PasswordResetResult } from '../../types';
+import { useModalA11y } from '../../hooks/useModalA11y';
+import { copyToClipboard } from '../../shared/clipboard';
 
 interface UserPasswordResetModalProps {
   isOpen: boolean;
@@ -19,6 +21,9 @@ export const UserPasswordResetModal: React.FC<UserPasswordResetModalProps> = ({
   const [result, setResult] = useState<PasswordResetResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Dialog semantics, Escape, focus containment and focus restore.
+  const modalRef = useModalA11y<HTMLDivElement>(isOpen, onClose);
 
   if (!isOpen || !user) return null;
 
@@ -37,9 +42,11 @@ export const UserPasswordResetModal: React.FC<UserPasswordResetModalProps> = ({
 
   const handleCopy = () => {
     if (result?.temporary_password) {
-      navigator.clipboard.writeText(result.temporary_password);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+      void copyToClipboard(result.temporary_password).then((ok: boolean) => {
+        if (!ok) return;
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      });
     }
   };
 
@@ -51,13 +58,13 @@ export const UserPasswordResetModal: React.FC<UserPasswordResetModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Restablecer contraseña" tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
       <div className="glass-panel w-full max-w-md rounded-2xl border border-white/10 p-6 space-y-4 shadow-2xl">
         <div className="flex items-center justify-between border-b border-dark-border pb-3">
           <div className="flex items-center space-x-2">
             <KeyRound className="w-5 h-5 text-amber-400" />
             <div>
-              <h4 className="text-sm font-bold text-white">
+              <h4 className="text-sm font-bold text-app-text">
                 Restablecer Contraseña
               </h4>
               <p className="text-xs text-gray-400">{user.name} (@{user.username})</p>
@@ -67,7 +74,7 @@ export const UserPasswordResetModal: React.FC<UserPasswordResetModalProps> = ({
             type="button"
             onClick={handleModalClose}
             aria-label="Cerrar modal de reset de contraseña"
-            className="text-gray-400 hover:text-white p-1 rounded-lg transition-colors"
+            className="text-gray-400 hover:text-app-text p-1 rounded-lg transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -83,8 +90,8 @@ export const UserPasswordResetModal: React.FC<UserPasswordResetModalProps> = ({
         {!result ? (
           <div className="space-y-4 text-xs">
             <p className="text-gray-300 leading-relaxed">
-              Esta acción generará una <strong className="text-white">contraseña temporal aleatoria</strong>,
-              cerrará todas las sesiones activas de <strong className="text-white">{user.name}</strong> y le exigirá
+              Esta acción generará una <strong className="text-app-text">contraseña temporal aleatoria</strong>,
+              cerrará todas las sesiones activas de <strong className="text-app-text">{user.name}</strong> y le exigirá
               cambiar su contraseña de forma obligatoria en el próximo inicio de sesión.
             </p>
 
@@ -143,7 +150,7 @@ export const UserPasswordResetModal: React.FC<UserPasswordResetModalProps> = ({
                 type="button"
                 onClick={handleCopy}
                 aria-label="Copiar contraseña temporal al portapapeles"
-                className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-dark-card hover:bg-dark-border text-white text-xs font-medium transition-colors border border-dark-border"
+                className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-dark-card hover:bg-dark-border text-app-text text-xs font-medium transition-colors border border-dark-border"
               >
                 {copied ? (
                   <>

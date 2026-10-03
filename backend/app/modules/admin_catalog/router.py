@@ -74,7 +74,40 @@ def get_data_dictionary(
     current_user: User = Depends(get_current_user)
 ) -> Any:
     """Introspects target database schema dynamically."""
-    return CatalogDomainService.get_data_dictionary(db, connection_id=connection_id)
+    # Los valores de muestra son datos reales de la BD del cliente. Antes de pasar
+    # el rol, este endpoint devolvia valores de columnas BLOCKED (token de tarjeta,
+    # salario) y MASKED (RUT/DNI) a cualquier usuario autenticado, esquivando el
+    # validador AST porque no es SQL de usuario sino introspeccion.
+    from app.core.constants import ADMIN_ROLES, ROLE_ADMINISTRADOR, ROLE_USUARIO
+    from app.modules.chat_engine.governance_guard import GovernanceGuard
+
+    role_name = current_user.role.name if current_user.role else ROLE_USUARIO
+    is_admin = current_user.is_admin or role_name in ADMIN_ROLES
+    if is_admin and not current_user.role:
+        role_name = ROLE_ADMINISTRADOR
+
+    target_conn_id = connection_id
+    if target_conn_id is None:
+        active = db.query(CorporateConnection).filter(
+            CorporateConnection.is_active == True
+        ).order_by(CorporateConnection.id.desc()).first()
+        target_conn_id = active.id if active else 1
+
+    blocked_columns = GovernanceGuard.get_blocked_columns_for_role(
+        role_name, is_admin, db=db, role_id=current_user.role_id,
+        connection_id=target_conn_id,
+    )
+    masked_columns = GovernanceGuard.get_masked_columns_for_role(
+        role_name, is_admin, db=db, role_id=current_user.role_id,
+        connection_id=target_conn_id,
+    )
+
+    return CatalogDomainService.get_data_dictionary(
+        db,
+        connection_id=connection_id,
+        blocked_columns=blocked_columns,
+        masked_columns=masked_columns,
+    )
 
 @router.post("/catalog/auto-enrich", response_model=AutoEnrichResponse)
 async def auto_enrich_catalog(
@@ -171,6 +204,57 @@ def delete_connector(
 ) -> Any:
     """Deletes a corporate database connection (Admin only)."""
     return ConnectorDomainService.delete_connector(db, conn_id)
+
+# =========================================================================
+# PERMISOS DE TABLA POR ROL (default-deny)
+# =========================================================================
+# Ruta `/permissions` y no `/catalog/permissions`: esta se parsea contra
+# `/catalog/{item_id}` (declarado mas arriba) y FastSQL devuelve 422 por un
+# item_id no numerico. Los permisos son la matriz RBAC de toda la plataforma, no
+# una entrada del catalogo semantico.
+
+@router.get("/permissions")
+def list_role_table_permissions(
+    connection_id: Optional[int] = Query(None, description="Filtrar por ID de conexión"),
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin)
+) -> Any:
+    """Devuelve la matriz de permisos de tabla (Admin only).
+
+    Un dataset recien subido aparece con `detected_tables` y sin ninguna fila acá:
+    eso es default-deny, no un fallo. El admin concede con el PUT de abajo.
+    """
+    return ConnectorDomainService.list_role_table_permissions(db, connection_id=connection_id)
+
+@router.put("/permissions")
+def set_role_table_permissions(
+    connection_id: int = Query(..., description="ID de la conexión"),
+    role_id: int = Query(..., description="ID del rol"),
+    table_names: List[str] = Query(..., description="Tablas a conceder o revocar"),
+    is_allowed: bool = Query(True, description="True concede acceso, False lo revoca"),
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin)
+) -> Any:
+    """Concede o revoca acceso de un rol a un conjunto de tablas (Admin only).
+
+    Es la unica via de granting: al subir un dataset no se concede nada. Un rol
+    sin fila para una tabla NO tiene acceso a ella, y eso lo distingue de "la tabla
+    existe pero no hay datos".
+    """
+    perms = ConnectorDomainService.set_role_table_permissions(
+        db, connection_id=connection_id, role_id=role_id,
+        table_names=table_names, is_allowed=is_allowed,
+    )
+    return {
+        "connection_id": connection_id,
+        "role_id": role_id,
+        "is_allowed": is_allowed,
+        "permissions": [
+            {"id": p.id, "table_name": p.table_name, "schema_name": p.schema_name,
+             "is_allowed": bool(p.is_allowed)}
+            for p in perms
+        ],
+    }
 
 @router.post("/connectors/test", response_model=ConnectionTestResult)
 def test_connection_connectivity(

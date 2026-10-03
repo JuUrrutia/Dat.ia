@@ -67,7 +67,8 @@ def setup_mental_health_catalog():
                         connection_id=1,
                         schema_name="main",
                         table_name=tbl,
-                        is_allowed=True
+                        is_allowed=True,
+                        granted_by_admin=True
                     ))
                     print(f"Permiso de lectura otorgado: Rol '{role.name}' -> Tabla '{tbl}'")
 

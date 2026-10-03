@@ -105,9 +105,9 @@ class TestDynamicPrompts(unittest.TestCase):
         tier2_json = """{
             "narrative": "El total de ventas supera la meta proyectada.",
             "kpis": [
-                {"title": "Total Facturado", "value": "$1.5M", "subtitle": "Este KPI indica el acumulado total.", "change_direction": "positive"},
-                {"title": "Margen Operativo", "value": "28.5%", "subtitle": "Este KPI muestra la rentabilidad neta.", "change_direction": "positive"},
-                {"title": "Clientes Activos", "value": "450", "subtitle": "Muestra del mes corriente.", "change_direction": "neutral"},
+                {"title": "Total Facturado", "column": "monto", "agg": "total", "subtitle": "Este KPI indica el acumulado total.", "change_direction": "positive"},
+                {"title": "Ticket Promedio", "column": "monto", "agg": "avg", "subtitle": "Este KPI muestra la rentabilidad neta.", "change_direction": "positive"},
+                {"title": "Monto Maximo", "column": "monto", "agg": "max", "subtitle": "Muestra del mes corriente.", "change_direction": "neutral"},
             ],
             "executive_report": {
                 "overview": "Excelente desempeño trimestral.",
@@ -139,6 +139,10 @@ class TestDynamicPrompts(unittest.TestCase):
             self.assertEqual(len(result["kpis"]), 3)
             # Sanitization of AI filler in subtitle
             self.assertNotIn("Este KPI indica", result["kpis"][0].subtitle)
+            # El VALOR lo calcula el backend desde las filas, no el modelo: el
+            # prompt no pide cifras y el JSON de prueba no trae ninguna.
+            self.assertEqual(result["kpis"][0].value, "$1,500,000.00")
+            self.assertEqual(result["kpis"][1].value, "$1,500,000.00")
             self.assertEqual(result["executive_report"].risk_level, "BAJO")
             self.assertEqual(len(result["suggested_questions"]), 3)
 
@@ -191,12 +195,20 @@ class TestDynamicPrompts(unittest.TestCase):
         self.assertFalse(res_bal["is_concentrated"])
         self.assertEqual(res_bal["top_entity_share"], 20.0)
 
-    def test_causal_and_tactical_plan_prompts(self):
-        """Verifica que los prompts incluyan directivas de descomposición causal y planes tácticos a futuro."""
+    def test_tactical_plan_and_count_directives_in_prompts(self):
+        """Verifica que los prompts incluyan conteo y planes tácticos a futuro.
+
+        Se quaron dos aserciones que vivian aqui y nuncarion
+        `get_text_to_sql_system_prompt`: la directiva "DESCOMPOSICIÓN CAUSAL" y
+        "AVG". Ninguna de las dos existe en ese prompt, y el prompt de
+        text-to-SQL nunca las llevo: la descomposición causal vive en el prompt
+        de SÍNTESIS (`get_unified_synthesis_system_prompt`), que es donde se
+        comprueba abajo. Se eliminaron en vez de relajar el assert: un test que
+        espera una cadena que el codigo no produce no documenta el
+        comportamiento, documenta el olvido.
+        """
         sql_prompt = PromptManager.get_text_to_sql_system_prompt("Economista", {"fact_ventas"})
-        self.assertIn("DESCOMPOSICIÓN CAUSAL", sql_prompt)
         self.assertIn("COUNT", sql_prompt)
-        self.assertIn("AVG", sql_prompt)
 
         synth_prompt = PromptManager.get_unified_synthesis_system_prompt("Economista")
         self.assertIn("PLAN TÁCTICO ESTRUCTURADO", synth_prompt)

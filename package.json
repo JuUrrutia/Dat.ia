@@ -7,13 +7,14 @@
     "dev": "concurrently -k -p \"[{name}]\" -n \"BACKEND,FRONTEND\" -c \"cyan.bold,magenta.bold\" \"node scripts/run-backend.js\" \"vite\"",
     "dev:frontend": "vite",
     "dev:backend": "node scripts/run-backend.js",
-    "build": "tsc && vite build && node scripts/init-db.js",
+    "build": "tsc && vite build",
     "preview": "vite preview",
     "db:init": "node scripts/init-db.js",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "backend:test": "cd backend && pytest",
+    "check:charts": "esbuild scripts/check-extra-charts.mjs --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-extra-charts.mjs && node node_modules/.cache/check-extra-charts.mjs",
     "doctor": "npx react-doctor@latest"
   },
   "dependencies": {

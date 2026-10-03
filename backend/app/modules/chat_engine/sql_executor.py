@@ -3,6 +3,8 @@ import json
 import re
 from typing import List, Dict, Any, Optional, Set, Tuple
 from sqlalchemy.orm import Session
+from app.core.constants import ADMIN_ROLES
+from app.core.database import discard_failed_transaction
 from app.modules.chat_engine.ast_validator import ASTValidator, ASTValidationError
 from app.modules.chat_engine.llm_service import LLMService
 
@@ -34,10 +36,9 @@ class SQLExecutor:
         # If target_db is a CorporateConnection model object
         if hasattr(target_db, "db_type"):
             from sqlalchemy import text
-            from app.core.database import build_engine_for_connector
+            from app.core.database import connector_engine
             from app.modules.admin_catalog.models import DatabaseType
-            eng = build_engine_for_connector(target_db)
-            with eng.connect() as conn:
+            with connector_engine(target_db) as eng, eng.connect() as conn:
                 if getattr(target_db, "db_type", None) == DatabaseType.POSTGRESQL or "postgres" in str(getattr(target_db, "db_type", "")).lower():
                     try:
                         conn.execute(text("SET TRANSACTION READ ONLY;"))
@@ -51,14 +52,17 @@ class SQLExecutor:
         if isinstance(target_db, str) and (target_db.startswith("postgresql://") or target_db.startswith("postgresql+psycopg://")):
             from sqlalchemy import create_engine, text
             eng = create_engine(target_db)
-            with eng.connect() as conn:
-                try:
-                    conn.execute(text("SET TRANSACTION READ ONLY;"))
-                    conn.execute(text("SET statement_timeout = 15000;"))
-                except Exception:
-                    pass
-                res = conn.execute(text(sql))
-                return [cls._clean_row(dict(r._mapping)) for r in res.fetchall()]
+            try:
+                with eng.connect() as conn:
+                    try:
+                        conn.execute(text("SET TRANSACTION READ ONLY;"))
+                        conn.execute(text("SET statement_timeout = 15000;"))
+                    except Exception:
+                        pass
+                    res = conn.execute(text(sql))
+                    return [cls._clean_row(dict(r._mapping)) for r in res.fetchall()]
+            finally:
+                eng.dispose()
 
         # SQLite connection (using native read-only URI mode when file exists)
         import os
@@ -128,6 +132,18 @@ class SQLExecutor:
             blocked_columns=blocked_columns,
             table_columns=table_columns_map,
             is_admin=is_admin
+        )
+
+        # Contra que base se ejecuto esto. Va en `meta` (y no como argumento
+        # suelto) porque `meta` ya viaja hasta la trazabilidad y de ahi al
+        # portapapeles: sin esto, "copiar SQL" entrega un texto que no se puede
+        # reproducir, porque las mismas tablas existen en varias bases.
+        # `validate_and_secure_sql` devuelve un `meta` nuevo, asi que esto va
+        # DESPUES de esa llamada, no en el dict literal de arriba.
+        meta["target_database"] = (
+            getattr(target_db_path, "database_name", None)
+            or getattr(target_db_path, "name", None)
+            or getattr(target_db_path, "host", None)
         )
 
         was_self_healed = False
@@ -278,14 +294,39 @@ Genera la consulta SQL corregida y funcional para {engine_label}:"""
                 pass
 
     @classmethod
-    def retrieve_few_shot_memories(cls, db: Optional[Session], question: str, connection_id: int) -> str:
+    def retrieve_few_shot_memories(
+        cls,
+        db: Optional[Session],
+        question: str,
+        connection_id: int,
+        user_role: Optional[str] = None,
+    ) -> str:
+        """Ejemplos few-shot del prompt.
+
+        Se filtran por `user_role` ademas de por conexion. Antes trailing solo por
+        `connection_id`: cualquier usuario podia marcar un SQL arbitrario como
+        "consulta maestra verificada" y ese SQL entraba al prompt de TODOS los roles
+        de esa conexion, sesgando al modelo hacia tablas y columnas prohibidas para
+        quien lo leia.
+        """
         if not db:
             return ""
         try:
             from app.modules.chat_engine.models import QueryLearningMemory
-            memories = db.query(QueryLearningMemory).filter(
+            query = db.query(QueryLearningMemory).filter(
                 QueryLearningMemory.connection_id == connection_id
-            ).order_by(
+            )
+            if user_role:
+                # Un admin ve todas (incluidas las sin rol); para el resto solo las
+                # de su propio rol.
+                if str(user_role).lower() in ADMIN_ROLES:
+                    pass
+                else:
+                    query = query.filter(
+                        (QueryLearningMemory.user_role == user_role)
+                        | (QueryLearningMemory.user_role.is_(None))
+                    )
+            memories = query.order_by(
                 QueryLearningMemory.is_golden.desc(),
                 QueryLearningMemory.execution_count.desc(),
                 QueryLearningMemory.id.desc()
@@ -300,4 +341,10 @@ Genera la consulta SQL corregida y funcional para {engine_label}:"""
                 examples.append(f"- {tag}: \"{m.question_pattern}\" -> SQL: {m.successful_sql}")
             return "Ejemplos de consultas previamente aprendidas y verificadas:\n" + "\n".join(examples)
         except Exception:
+            # Memoria de aprendizaje ausente = prompt sin ejemplos. Ese es el
+            # best-effort de siempre. Lo que NO era best-effort era devolver la
+            # sesion del caller con la transaccion abortada: el siguiente query de
+            # la request (la ejecucion del SQL, el audit log) moria con
+            # `InFailedSqlTransaction`, blaming a la memoria de aprendizaje.
+            discard_failed_transaction(db)
             return ""

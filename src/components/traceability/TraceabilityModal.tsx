@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { TraceabilityAudit } from '../../types';
 import { CheckCircle2, ShieldCheck, Clock, Database, Copy, Check, Info, Code2, Layers } from 'lucide-react';
+import { useModalA11y } from '../../hooks/useModalA11y';
+import { copyToClipboard } from '../../shared/clipboard';
 
 interface TraceabilityModalProps {
   traceability: TraceabilityAudit | null;
@@ -11,16 +13,25 @@ interface TraceabilityModalProps {
 export const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ traceability, isOpen, onClose }) => {
   const [copied, setCopied] = useState(false);
 
+  // Dialog semantics, Escape, focus containment and focus restore.
+  const modalRef = useModalA11y<HTMLDivElement>(isOpen, onClose);
+
   if (!isOpen || !traceability) return null;
 
   const handleCopySQL = () => {
-    navigator.clipboard.writeText(traceability.sql_executed);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const db = traceability.target_database;
+    const payload = db
+      ? `-- Base de datos: ${db}\n-- Conectar con: psql -d ${db}\n\n${traceability.sql_executed}`
+      : traceability.sql_executed;
+    void copyToClipboard(payload).then((ok: boolean) => {
+      if (!ok) return;
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Panel de trazabilidad y auditoría" tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
       <div className="glass-panel w-full max-w-3xl rounded-2xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-dark-border flex items-center justify-between bg-dark-surface/80">
@@ -29,14 +40,14 @@ export const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ traceabili
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-semibold text-white">Panel de Trazabilidad & Auditoría</h3>
+              <h3 className="text-sm sm:text-base font-semibold text-app-text">Panel de Trazabilidad & Auditoría</h3>
               <p className="text-[11px] text-gray-400">Inspección de consulta, AST Guardrail y diccionario semántico</p>
             </div>
           </div>
           <button
             onClick={onClose}
             aria-label="Cerrar modal de trazabilidad"
-            className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-dark-card transition-colors"
+            className="text-gray-400 hover:text-app-text p-1.5 rounded-lg hover:bg-dark-card transition-colors"
           >
             ✕
           </button>
@@ -58,7 +69,7 @@ export const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ traceabili
               <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-brand-400 shrink-0" />
               <div className="truncate">
                 <div className="text-[9px] sm:text-[10px] text-gray-400 uppercase">Latencia BD</div>
-                <div className="text-xs font-semibold text-white truncate">{traceability.execution_time_ms} ms</div>
+                <div className="text-xs font-semibold text-app-text truncate">{traceability.execution_time_ms} ms</div>
               </div>
             </div>
 
@@ -66,7 +77,7 @@ export const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ traceabili
               <Database className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400 shrink-0" />
               <div className="truncate">
                 <div className="text-[9px] sm:text-[10px] text-gray-400 uppercase">Filas Devueltas</div>
-                <div className="text-xs font-semibold text-white truncate">{traceability.rows_returned} filas</div>
+                <div className="text-xs font-semibold text-app-text truncate">{traceability.rows_returned} filas</div>
               </div>
             </div>
 
@@ -74,7 +85,7 @@ export const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ traceabili
               <Layers className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400 shrink-0" />
               <div className="truncate">
                 <div className="text-[9px] sm:text-[10px] text-gray-400 uppercase">Tablas Usadas</div>
-                <div className="text-xs font-semibold text-white truncate">{traceability.schema_tables_used.length} tablas</div>
+                <div className="text-xs font-semibold text-app-text truncate">{traceability.schema_tables_used.length} tablas</div>
               </div>
             </div>
           </div>
@@ -114,7 +125,7 @@ export const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ traceabili
           <span>Gobernanza RBAC: Inyección de esquema dinámico y filtro AST activo</span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-dark-card hover:bg-dark-border text-white text-xs font-medium transition-colors"
+            className="px-4 py-1.5 rounded-lg bg-dark-card hover:bg-dark-border text-app-text text-xs font-medium transition-colors"
           >
             Cerrar
           </button>

@@ -3,6 +3,7 @@ import { X, ShieldAlert, Monitor, Clock, AlertTriangle, RefreshCw } from 'lucide
 import { UserItem } from './AdminUsersTab';
 import { authService } from '../../features/auth/services/auth_service';
 import { UserSession } from '../../types';
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 interface UserSessionsModalProps {
   isOpen: boolean;
@@ -33,29 +34,18 @@ export const UserSessionsModal: React.FC<UserSessionsModalProps> = ({
     }
   }, []);
 
+  // Refetch on open. Delegates to loadSessions so the loading flag is set
+  // before the request — the previous inline duplicate never called
+  // setLoading(true), so the modal painted "no active sessions" (or the
+  // previous user's sessions) before the response arrived.
   useEffect(() => {
-    let ignore = false;
-
     if (isOpen && user) {
-      authService.getUserSessions(user.id)
-        .then((data) => {
-          if (!ignore) {
-            setSessions(data);
-            setLoading(false);
-          }
-        })
-        .catch(() => {
-          if (!ignore) {
-            setMsg({ type: 'error', text: 'No se pudieron cargar las sesiones activas.' });
-            setLoading(false);
-          }
-        });
+      void loadSessions(user.id);
     }
+  }, [isOpen, user, loadSessions]);
 
-    return () => {
-      ignore = true;
-    };
-  }, [isOpen, user]);
+  // Dialog semantics, Escape, focus containment and focus restore.
+  const modalRef = useModalA11y<HTMLDivElement>(isOpen, onClose);
 
   if (!isOpen || !user) return null;
 
@@ -89,13 +79,13 @@ export const UserSessionsModal: React.FC<UserSessionsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Sesiones activas del usuario" tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
       <div className="glass-panel w-full max-w-xl rounded-2xl border border-white/10 p-6 space-y-4 shadow-2xl">
         <div className="flex items-center justify-between border-b border-dark-border pb-3">
           <div className="flex items-center space-x-2">
             <Monitor className="w-5 h-5 text-indigo-400" />
             <div>
-              <h4 className="text-sm font-bold text-white">
+              <h4 className="text-sm font-bold text-app-text">
                 Sesiones Activas - {user.name}
               </h4>
               <p className="text-xs text-gray-400">@{user.username} ({user.role})</p>
@@ -105,7 +95,7 @@ export const UserSessionsModal: React.FC<UserSessionsModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Cerrar modal de sesiones"
-            className="text-gray-400 hover:text-white p-1 rounded-lg transition-colors"
+            className="text-gray-400 hover:text-app-text p-1 rounded-lg transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -139,7 +129,7 @@ export const UserSessionsModal: React.FC<UserSessionsModalProps> = ({
                 onClick={() => loadSessions(user.id)}
                 disabled={loading || actionLoading}
                 aria-label="Refrescar lista de sesiones"
-                className="p-1.5 rounded-lg bg-dark-card hover:bg-dark-border text-gray-400 hover:text-white transition-colors"
+                className="p-1.5 rounded-lg bg-dark-card hover:bg-dark-border text-gray-400 hover:text-app-text transition-colors"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               </button>
@@ -175,7 +165,7 @@ export const UserSessionsModal: React.FC<UserSessionsModalProps> = ({
                 >
                   <div className="space-y-1 min-w-0">
                     <div className="flex items-center space-x-2">
-                      <span className="font-mono font-medium text-white">{s.ip_address || '127.0.0.1'}</span>
+                      <span className="font-mono font-medium text-app-text">{s.ip_address || '127.0.0.1'}</span>
                       <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-semibold">
                         Activa
                       </span>

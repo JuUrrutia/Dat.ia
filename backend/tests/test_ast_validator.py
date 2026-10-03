@@ -62,6 +62,104 @@ class TestASTValidator(unittest.TestCase):
         self.assertIn("fact_ventas", meta["tables_used"])
         self.assertNotIn("metricas", meta["tables_used"])
 
+    def test_limit_above_max_is_clamped_not_crashed(self):
+        """sqlglot>=30: Literal.this es read-only. Limitar sobre el maximo no debe lanzar AttributeError."""
+        for sql in (
+            "SELECT id_venta FROM fact_ventas LIMIT 501",
+            "SELECT id_venta FROM fact_ventas LIMIT 1000000",
+        ):
+            is_valid, secured_sql, meta = ASTValidator.validate_and_secure_sql(
+                sql, dialect="postgres", allowed_tables={"fact_ventas"}
+            )
+            self.assertTrue(is_valid)
+            self.assertIn("LIMIT 500", secured_sql)
+            self.assertNotIn("501", secured_sql)
+            self.assertNotIn("1000000", secured_sql)
+
+    def test_limit_at_max_boundary_is_left_untouched(self):
+        """El limite igual al maximo no se modifica."""
+        is_valid, secured_sql, _ = ASTValidator.validate_and_secure_sql(
+            "SELECT id_venta FROM fact_ventas LIMIT 500",
+            dialect="postgres", allowed_tables={"fact_ventas"}
+        )
+        self.assertTrue(is_valid)
+        self.assertIn("LIMIT 500", secured_sql)
+
+    def test_small_limit_is_preserved_not_raised_to_max(self):
+        """El clamp es un techo, no un piso: LIMIT 5 debe seguir siendo 5."""
+        for literal in ("5", "1"):
+            is_valid, secured_sql, _ = ASTValidator.validate_and_secure_sql(
+                f"SELECT id_venta FROM fact_ventas LIMIT {literal}",
+                dialect="postgres", allowed_tables={"fact_ventas"}
+            )
+            self.assertTrue(is_valid)
+            self.assertIn(f"LIMIT {literal}", secured_sql)
+            self.assertNotIn("LIMIT 500", secured_sql)
+
+    def test_tsql_top_above_max_is_clamped(self):
+        """TOP es un Limit en el AST de tsql: tambien debe clampearse y no crashear."""
+        is_valid, secured_sql, _ = ASTValidator.validate_and_secure_sql(
+            "SELECT TOP 1000000 id FROM fact_ventas",
+            dialect="tsql", allowed_tables={"fact_ventas"}
+        )
+        self.assertTrue(is_valid)
+        self.assertIn("TOP 500", secured_sql)
+
+    def test_limit_inside_subquery_is_clamped(self):
+        """El clamp aplica a todos los Limit del arbol, no solo al del nodo raiz."""
+        sql = (
+            "SELECT COUNT(*) FROM (SELECT id_venta, monto FROM fact_ventas "
+            "LIMIT 1000000000) x"
+        )
+        is_valid, secured_sql, _ = ASTValidator.validate_and_secure_sql(
+            sql, dialect="postgres", allowed_tables={"fact_ventas"}
+        )
+        self.assertTrue(is_valid)
+        self.assertNotIn("1000000000", secured_sql)
+        self.assertIn("LIMIT 500", secured_sql)
+
+    def test_small_limit_inside_subquery_is_preserved(self):
+        """Un LIMIT chico legitimo dentro de una subconsulta no debe convertirse en 500."""
+        is_valid, secured_sql, _ = ASTValidator.validate_and_secure_sql(
+            "SELECT id_venta FROM (SELECT id_venta FROM fact_ventas LIMIT 5) y",
+            dialect="postgres", allowed_tables={"fact_ventas"}
+        )
+        self.assertTrue(is_valid)
+        self.assertIn("LIMIT 5", secured_sql)
+        self.assertIn("LIMIT 500", secured_sql)
+
+    def test_select_star_without_table_columns_fails_closed(self):
+        """Sin columnas conocidas no se puede filtrar el star: falla cerrado, no pasa sin filtrar."""
+        for table_columns in (None, {}):
+            with self.assertRaises(ASTValidationError) as excinfo:
+                ASTValidator.validate_and_secure_sql(
+                    "SELECT * FROM dim_clientes",
+                    dialect="postgres",
+                    allowed_tables={"dim_clientes"},
+                    table_columns=table_columns
+                )
+            self.assertIn("SELECT *", str(excinfo.exception))
+
+    def test_select_star_with_partial_table_columns_still_fails_closed(self):
+        """Consistencia: dict parcial y dict vacio deben comportarse igual."""
+        with self.assertRaises(ASTValidationError):
+            ASTValidator.validate_and_secure_sql(
+                "SELECT * FROM dim_clientes",
+                dialect="postgres",
+                allowed_tables={"dim_clientes"},
+                table_columns={"otra_tabla": ["id"]}
+            )
+
+    def test_count_star_without_table_columns_is_allowed(self):
+        """COUNT(*) no es una proyeccion star: no revela columnas y debe seguir funcionando."""
+        is_valid, secured_sql, _ = ASTValidator.validate_and_secure_sql(
+            "SELECT COUNT(*) FROM dim_clientes",
+            dialect="postgres",
+            allowed_tables={"dim_clientes"}
+        )
+        self.assertTrue(is_valid)
+        self.assertIn("COUNT(*)", secured_sql)
+
     def test_admin_bypasses_table_and_column_restrictions(self):
         sql = "SELECT id, salario_base FROM cualquier_tabla_corporativa"
         is_valid, secured, meta = ASTValidator.validate_and_secure_sql(

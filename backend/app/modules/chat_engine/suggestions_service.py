@@ -71,12 +71,25 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         sorted_tables = sorted(list(allowed_tables), key=lambda t: (0 if t.lower().startswith("fact_") else 1, t.lower()))
 
         # Extract physical metrics & dimensions from schema_prompt
+        #
+        # Acepta las DOS formas en que `DynamicSchemaPruningService` renderiza el
+        # esquema. La de lista con vinetas (`  - col (TIPO, ej: 'x')`) ya no se
+        # emite desde que el prompt va como DDL, pero el fallback tiene que seguir
+        # funcionando si alguien guarda un prompt viejo en el cache o cambia el
+        # renderizado: el regex viejo solo no matchea NADA y el servicio degrada
+        # entero a las plantillas de tabla sin decir por que.
         extracted_metrics = []
         extracted_categories = []
         extracted_dates = []
 
         if schema_prompt:
-            col_matches = re.findall(r'^\s*-\s*([a-zA-Z0-9_]+)\s*\(([^)]+)\)', schema_prompt, re.MULTILINE)
+            # El DDL no lleva el tipo entre parentesis como la version con
+            # vinetas, asi que se captura `nombre TIPO` aHIjo de linea.
+            ddl_matches = re.findall(r'^\s*([a-zA-Z0-9_]+)\s+([A-Za-z][A-Za-z0-9_]*)', schema_prompt, re.MULTILINE)
+            bullet_matches = re.findall(r'^\s*-\s*([a-zA-Z0-9_]+)\s*\(([^)]+)\)', schema_prompt, re.MULTILINE)
+
+            col_matches = ddl_matches or bullet_matches
+
             for c_name, c_type in col_matches:
                 c_low = c_name.lower()
                 t_low = c_type.lower()

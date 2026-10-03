@@ -2,6 +2,22 @@ import datetime
 from typing import Optional
 from pydantic import BaseModel, EmailStr, ConfigDict
 
+MIN_PASSWORD_LENGTH = 6
+
+def validate_password_strength(raw: str) -> str:
+    """
+    Única regla de contraseña de la aplicación.
+
+    Vive acá y no en cada router porque /auth/register (público) aceptaba
+    `password="a"` con 201 mientras /auth/change-password exigía 6 caracteres a
+    cuatro líneas de distancia: quedaba una credencial de 1 carácter que
+    después ni podía normalizarse.
+    """
+    cleaned = (raw or "").strip()
+    if len(cleaned) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"La contraseña debe tener al menos {MIN_PASSWORD_LENGTH} caracteres.")
+    return cleaned
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -36,6 +52,19 @@ class UserUpdate(BaseModel):
     is_admin: Optional[bool] = None
     role_id: Optional[int] = None
     is_active: Optional[bool] = None
+
+class UserRoleUpdate(BaseModel):
+    """
+    Body de `PATCH /auth/users/{user_id}` (admin only).
+
+    Los dos campos son opcionales para poder cambiar solo uno, y `None` significa
+    "no lo toques". Por eso `{}` NO es un cambio: el router lo rechaza con 400 en vez
+    de devolver 200 sin haber modificado nada. `role` es el NOMBRE del rol del
+    catalogo (`/auth/roles`), no un id suelto: un string que no matchea ningun rol
+    no debe poder guardarse.
+    """
+    role: Optional[str] = None
+    is_admin: Optional[bool] = None
 
 class UserOut(BaseModel):
     id: int

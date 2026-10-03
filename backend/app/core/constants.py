@@ -70,7 +70,8 @@ GREETING_KEYWORDS = [
     "hola", "buenos dias", "buenos días", "buenas tardes", "buenas noches", 
     "hey", "saludos", "quien eres", "quién eres", "que eres", "qué eres", 
     "que haces", "qué haces", "como estas", "cómo estás", "gracias", 
-    "ayuda general", "qué puedes hacer", "que puedes hacer", "cómo funciona", "como funciona"
+    "ayuda general", "qué puedes hacer", "que puedes hacer", "cómo funciona", "como funciona",
+    "perfecto", "excelente", "genial", "listo"
 ]
 
 ADVISORY_KEYWORDS = [

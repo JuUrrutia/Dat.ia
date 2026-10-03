@@ -54,7 +54,10 @@ export const llmClientService = {
             return {
               success: true,
               message: `Conectado exitosamente con Ollama en ${url}.`,
-              available_models: models.length > 0 ? models : [modelName],
+              // Solo lo que el servidor reporto. Antes, si la lista venia
+              // vacia, se anunciaba el modelo configurado como detectado; el
+              // usuario lo guardaba y la consulta fallaba.
+              available_models: models,
               latency_ms: Date.now() - candStart,
             };
           }
@@ -75,7 +78,8 @@ export const llmClientService = {
               if (mName) models = [mName];
             }
 
-            if (models.length === 0) models = [modelName || 'local-model'];
+            // Sin modelo => lista vacia. Un endpoint que responde `/health` no
+            // dice que modelos tiene, y decirlo seria inventarlo.
             const provLabel = url.includes('8080') || endpoint.includes('props') ? 'llama.cpp' : 'servidor LLM local';
 
             return {
@@ -92,7 +96,7 @@ export const llmClientService = {
     return {
       success: false,
       message: `No se pudo contactar al servidor LLM en ${primaryUrl} ni en puertos 8080/11434/1234. Verifica que llama.exe serve u Ollama esté activo.`,
-      available_models: [modelName],
+      available_models: [],
       latency_ms: 0,
     };
   },

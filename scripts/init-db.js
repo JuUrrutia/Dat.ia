@@ -61,7 +61,16 @@ const result = spawnSync(pythonCmd, [scriptPath], {
 });
 
 if (result.error) {
-  console.warn(`[DB-BOOTSTRAP] Nota: No se pudo ejecutar el script de verificación (${result.error.message}).`);
+  console.error(`[DB-BOOTSTRAP] No se pudo ejecutar el script: ${result.error.message}`);
+  process.exit(1);
 }
 
-process.exit(0);
+// Propagate the script's exit code. Exit 0 unconditionally reported a
+// successful bootstrap even when setup_postgres_full.py failed, so a Docker
+// build went green with the metadata schema never created.
+if (result.status !== 0) {
+  console.error(`[DB-BOOTSTRAP] setup_postgres_full.py falló con código ${result.status}.`);
+  process.exit(result.status || 1);
+}
+
+console.log('[DB-BOOTSTRAP] PostgreSQL inicializado y verificado.');

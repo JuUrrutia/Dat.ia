@@ -4,9 +4,9 @@ import { UserItem } from '../../../components/admin/AdminUsersTab';
 interface UsersState {
   userList: UserItem[];
   searchQuery: string;
-  editingUser: UserItem | null;
   sessionsUser: UserItem | null;
   resetPasswordUser: UserItem | null;
+  editUser: UserItem | null;
   isNewUserModalOpen: boolean;
   isSuccessBanner: string | null;
 }
@@ -14,12 +14,12 @@ interface UsersState {
 type UsersAction =
   | { type: 'SET_USER_LIST'; users: UserItem[] }
   | { type: 'SET_SEARCH'; query: string }
-  | { type: 'OPEN_EDIT'; user: UserItem }
-  | { type: 'CLOSE_EDIT' }
   | { type: 'OPEN_SESSIONS'; user: UserItem }
   | { type: 'CLOSE_SESSIONS' }
   | { type: 'OPEN_RESET_PASSWORD'; user: UserItem }
   | { type: 'CLOSE_RESET_PASSWORD' }
+  | { type: 'OPEN_EDIT'; user: UserItem }
+  | { type: 'CLOSE_EDIT' }
   | { type: 'OPEN_NEW_USER' }
   | { type: 'CLOSE_NEW_USER' }
   | { type: 'SET_SUCCESS_BANNER'; message: string | null };
@@ -27,16 +27,23 @@ type UsersAction =
 const STORAGE_KEY = 'datia_governance_users:v1';
 const LEGACY_STORAGE_KEY = 'datia_governance_users';
 
+// Cache de arranque para pintar algo mientras carga. NO es fuente de verdad:
+// la respuesta de la API siempre la sobreescribe.
+function loadCachedUsers(): UserItem[] | null {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
 function usersReducer(state: UsersState, action: UsersAction): UsersState {
   switch (action.type) {
     case 'SET_USER_LIST':
       return { ...state, userList: action.users };
     case 'SET_SEARCH':
       return { ...state, searchQuery: action.query };
-    case 'OPEN_EDIT':
-      return { ...state, editingUser: action.user };
-    case 'CLOSE_EDIT':
-      return { ...state, editingUser: null };
     case 'OPEN_SESSIONS':
       return { ...state, sessionsUser: action.user };
     case 'CLOSE_SESSIONS':
@@ -45,6 +52,10 @@ function usersReducer(state: UsersState, action: UsersAction): UsersState {
       return { ...state, resetPasswordUser: action.user };
     case 'CLOSE_RESET_PASSWORD':
       return { ...state, resetPasswordUser: null };
+    case 'OPEN_EDIT':
+      return { ...state, editUser: action.user };
+    case 'CLOSE_EDIT':
+      return { ...state, editUser: null };
     case 'OPEN_NEW_USER':
       return { ...state, isNewUserModalOpen: true };
     case 'CLOSE_NEW_USER':
@@ -56,29 +67,28 @@ function usersReducer(state: UsersState, action: UsersAction): UsersState {
   }
 }
 
-export function useAdminUsers(users: UserItem[], onRefreshUsers?: () => void) {
-  const [state, dispatch] = useReducer(usersReducer, {
-    userList: users,
-    searchQuery: '',
-    editingUser: null,
-    sessionsUser: null,
-    resetPasswordUser: null,
-    isNewUserModalOpen: false,
-    isSuccessBanner: null,
-  });
+export function useAdminUsers(users: UserItem[], usersLoaded: boolean, onRefreshUsers?: () => void) {
+  const [state, dispatch] = useReducer(
+    usersReducer,
+    users,
+    (initial): UsersState => ({
+      userList: loadCachedUsers() ?? initial,
+      searchQuery: '',
+      sessionsUser: null,
+      resetPasswordUser: null,
+      editUser: null,
+      isNewUserModalOpen: false,
+      isSuccessBanner: null,
+    })
+  );
 
+  // La API manda. El cache solo pinta mientras la lista real no llegó. 'usersLoaded'
+  // distingue "todavía cargando" de "la API devolvió []": sin eso, un entorno sin
+  // usuarios dejaba la tabla mostrando los del cache y el badge un número falso.
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
-      if (stored) {
-        dispatch({ type: 'SET_USER_LIST', users: JSON.parse(stored) });
-      } else {
-        dispatch({ type: 'SET_USER_LIST', users });
-      }
-    } catch {
-      dispatch({ type: 'SET_USER_LIST', users });
-    }
-  }, [users]);
+    if (!usersLoaded) return;
+    dispatch({ type: 'SET_USER_LIST', users });
+  }, [users, usersLoaded]);
 
   const saveUsersToStorage = (updated: UserItem[]) => {
     dispatch({ type: 'SET_USER_LIST', users: updated });
@@ -96,27 +106,19 @@ export function useAdminUsers(users: UserItem[], onRefreshUsers?: () => void) {
       u.role.toLowerCase().includes(state.searchQuery.toLowerCase())
   );
 
-  const handleSaveRole = (role: string, isAdmin: boolean) => {
-    if (!state.editingUser) return;
-    const editingUser = state.editingUser;
-
-    const updated = state.userList.map((u) => {
-      if (u.id === editingUser.id) {
-        return {
-          ...u,
-          role,
-          is_admin: isAdmin,
-        };
-      }
-      return u;
+  const handleUserSaved = (updatedItem: UserItem) => {
+    // El `updatedItem` viene del UserOut que devolvio PATCH /auth/users/{id},
+    // no de los valores del formulario. Si el servidor no confirmo, el modal
+    // muestra el error y esta funcion nunca corre.
+    dispatch({
+      type: 'SET_USER_LIST',
+      users: state.userList.map((u) => (u.id === updatedItem.id ? updatedItem : u)),
     });
-
-    saveUsersToStorage(updated);
     dispatch({
       type: 'SET_SUCCESS_BANNER',
-      message: `Rol actualizado exitosamente para ${editingUser.name} -> ${role}`,
+      message: `Perfil de '${updatedItem.name}' actualizado: ${updatedItem.role}${updatedItem.is_admin ? ' (Super Admin)' : ''}.`,
     });
-    dispatch({ type: 'CLOSE_EDIT' });
+    if (onRefreshUsers) onRefreshUsers();
     setTimeout(() => dispatch({ type: 'SET_SUCCESS_BANNER', message: null }), 3500);
   };
 
@@ -135,7 +137,7 @@ export function useAdminUsers(users: UserItem[], onRefreshUsers?: () => void) {
     state,
     dispatch,
     filteredUsers,
-    handleSaveRole,
     handleUserCreated,
+    handleUserSaved,
   };
 }

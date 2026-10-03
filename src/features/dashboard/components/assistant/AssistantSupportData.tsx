@@ -13,15 +13,15 @@ export const AssistantSupportData: React.FC<AssistantSupportDataProps> = ({ resu
   }
 
   return (
-    <div className="assistant-response-support bg-gradient-to-br from-zinc-900/90 via-zinc-900/60 to-zinc-950/90 border border-white/10 rounded-3xl p-6 shadow-2xl space-y-4 animate-fadeIn">
+    <div className="assistant-response-support bg-gradient-to-br from-white dark:from-zinc-900/90 via-slate-100 dark:via-zinc-900/60 to-slate-50 dark:to-zinc-950/90 border border-slate-200 dark:border-white/10 rounded-3xl p-6 shadow-2xl space-y-4 animate-fadeIn">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <Database className="w-4 h-4 text-emerald-400" />
-          <h3 className="text-sm font-bold text-white tracking-tight">
+          <h3 className="text-sm font-bold text-app-text tracking-tight">
             Registros de Respaldo Extraídos de SQLite ({result.data_rows.length})
           </h3>
         </div>
-        <span className="text-xs text-zinc-400 bg-zinc-950 px-3 py-1 rounded-lg border border-white/5 font-mono">
+        <span className="text-xs text-slate-600 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-950 px-3 py-1 rounded-lg border border-white/5 font-mono">
           {result.traceability?.schema_tables_used?.join(', ') || 'SQLite'}
         </span>
       </div>
