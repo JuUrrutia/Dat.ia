@@ -16,13 +16,14 @@ export const ReportFindingsView: React.FC<ReportFindingsViewProps> = ({ result }
     `Estructura organizada en ${colsCount} columnas de información disponible.`,
     result.kpis && result.kpis.length > 0 && result.kpis[0]?.value
       ? `Indicador principal: ${result.kpis[0].title} = ${result.kpis[0].value}.`
-      : `Consulta ejecutada y validada con permisos de rol corporativo.`,
+      : `Consulta ejecutada sobre la fuente de datos activa.`,
   ];
 
-  const findings =
-    result.executive_report?.key_findings && result.executive_report.key_findings.length > 0
-      ? result.executive_report.key_findings
-      : fallbackFindings;
+  const hasRealFindings = !!result.executive_report?.key_findings?.length;
+
+  const findings = hasRealFindings
+    ? result.executive_report!.key_findings!
+    : fallbackFindings;
 
   // Build clean fallback recommendations
   const fallbackRecommendations = [
@@ -80,7 +81,7 @@ export const ReportFindingsView: React.FC<ReportFindingsViewProps> = ({ result }
       <div className="space-y-3">
         <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center space-x-2">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-          <span>2. Hallazgos Clave & Puntos Críticos</span>
+          <span>{hasRealFindings ? '2. Hallazgos Clave & Puntos Críticos' : '2. Resumen de la Consulta'}</span>
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {findings.map((finding, idx) => (
@@ -88,7 +89,9 @@ export const ReportFindingsView: React.FC<ReportFindingsViewProps> = ({ result }
               key={idx}
               className="bg-zinc-950/70 border border-white/10 rounded-2xl p-4 flex items-start space-x-3 text-xs text-zinc-200 shadow-md hover:border-emerald-500/30 transition-colors"
             >
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              {/* A green check per card is a verdict. Only earned by real
+                  backend findings; the fallback cards are query metadata. */}
+              {hasRealFindings && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />}
               <span className="leading-relaxed font-normal">{finding}</span>
             </div>
           ))}

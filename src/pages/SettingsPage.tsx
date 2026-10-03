@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAuth } from '../features/auth/context/AuthContext';
 import { useSettingsDiagnostics } from '../features/settings/hooks/useSettingsDiagnostics';
-import { Settings, CheckCircle2, Save, Cpu, Database, ShieldCheck, Activity } from 'lucide-react';
+import { Settings, CheckCircle2, AlertCircle, Save, Cpu, Database, ShieldCheck, Activity } from 'lucide-react';
 import { SettingsLLMSection } from '../components/settings/SettingsLLMSection';
 import { SettingsInferenceSection } from '../components/settings/SettingsInferenceSection';
 import { SettingsPostgresSection } from '../components/settings/SettingsPostgresSection';
@@ -29,14 +29,31 @@ export const SettingsPage: React.FC = () => {
     testingPG,
     pgStatus,
     savedSuccess,
+    saveError,
+    dirty,
     detectedModels,
+    detectedEndpoint,
     elapsedSeconds,
     handleProviderChange,
     handleTestLLMConnection,
+    handleApplyDetected,
     handleRunInferenceTest,
     handleTestPG,
     handleSave,
   } = useSettingsDiagnostics(settings, updateSettings);
+
+  // Covers reload/close. HashRouter navigations cannot be blocked from here:
+  // react-router's useBlocker requires a data router and this app uses
+  // HashRouter, so the always-visible amber warning is what covers that case.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
 
   const providerLabel =
     provider === 'llama_cpp' ? 'llama.cpp' : provider === 'ollama' ? 'Ollama' : 'OpenAI Compatible';
@@ -65,6 +82,13 @@ export const SettingsPage: React.FC = () => {
             <span className="font-semibold">Configuración guardada correctamente</span>
           </div>
         )}
+
+        {saveError && (
+          <div className="flex items-center space-x-2 text-xs text-rose-700 dark:text-rose-400 bg-rose-500/10 border border-rose-500/30 px-3.5 py-2 rounded-xl animate-fadeIn shadow-sm" role="alert">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span className="font-semibold">{saveError}</span>
+          </div>
+        )}
       </div>
 
       {/* Main Form & Diagnostic Grid Layout (12-Columns) */}
@@ -77,12 +101,14 @@ export const SettingsPage: React.FC = () => {
             ollamaUrl={ollamaUrl}
             modelName={modelName}
             detectedModels={detectedModels}
+            detectedEndpoint={detectedEndpoint}
             testingLLM={testingLLM}
             llmTestResult={llmTestResult}
             onProviderChange={handleProviderChange}
             onOllamaUrlChange={setOllamaUrl}
             onModelNameChange={setModelName}
             onTestLLMConnection={handleTestLLMConnection}
+            onApplyDetected={handleApplyDetected}
           />
 
           {/* Section 2: PostgreSQL Metadata DB */}
@@ -101,13 +127,25 @@ export const SettingsPage: React.FC = () => {
           {/* Floating Action Bar */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 glass-panel rounded-2xl border border-white/10 shadow-xl">
             <div className="text-xs text-gray-600 dark:text-gray-400 flex items-center space-x-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>Los parámetros guardados tomarán efecto inmediatamente en las siguientes consultas.</span>
+              {dirty ? (
+                <>
+                  <AlertCircle className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" />
+                  <span className="font-semibold text-amber-700 dark:text-amber-300">
+                    Tienes cambios sin guardar. Se perderán si sales de esta página sin pulsar Guardar.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>Los parámetros guardados tomarán efecto inmediatamente en las siguientes consultas.</span>
+                </>
+              )}
             </div>
 
             <button
               type="submit"
-              className="w-full sm:w-auto flex items-center justify-center space-x-2 text-xs bg-brand-600 hover:bg-brand-500 active:scale-[0.99] text-white font-bold px-6 py-3 rounded-xl shadow-sm transition-all shrink-0 focus-visible:ring-2 focus-visible:ring-brand-500 cursor-pointer"
+              disabled={!dirty}
+              className="w-full sm:w-auto flex items-center justify-center space-x-2 text-xs bg-brand-600 hover:bg-brand-500 active:scale-[0.99] text-white font-bold px-6 py-3 rounded-xl shadow-sm transition-all shrink-0 focus-visible:ring-2 focus-visible:ring-brand-500 cursor-pointer disabled:opacity-40 disabled:pointer-events-none disabled:cursor-default"
             >
               <Save className="w-4 h-4" />
               <span>Guardar Configuración</span>
@@ -132,7 +170,7 @@ export const SettingsPage: React.FC = () => {
             <div className="flex items-center space-x-2 border-b border-slate-200 dark:border-dark-border/80 pb-3">
               <Activity className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
               <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider">
-                Estado Actual del Servidor
+                Configuración del Servidor de Metadatos
               </h3>
             </div>
 

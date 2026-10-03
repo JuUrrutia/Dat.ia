@@ -18,7 +18,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY . .
 
 # Set environment paths
+# DATIA_ROOT pins the project root inside the image: /app's parent is /, so
+# without it data_sources would resolve to /data_sources, outside the volume
+# mounted at /app/data_sources, and every uploaded database would be lost.
 ENV PYTHONPATH=/app \
+    DATIA_ROOT=/app \
     HOST=0.0.0.0 \
     PORT=8000 \
     PYTHONUNBUFFERED=1

@@ -2,6 +2,7 @@ import { ChartType, THEME_COLORS, computeChartStats, deriveProcessedRows, format
 import { buildBarChartOption } from '../../features/dashboard/components/charts/barChartConfig';
 import { buildPieChartOption } from '../../features/dashboard/components/charts/pieChartConfig';
 import { buildLineChartOption } from '../../features/dashboard/components/charts/lineChartConfig';
+import { buildExtraChartOption } from '../../features/dashboard/components/charts/extraChartConfig';
 
 export {
   THEME_COLORS,
@@ -40,6 +41,15 @@ export function buildDynamicChartOption(params: {
 
   if (activeChartType === 'line' || activeChartType === 'area') {
     return buildLineChartOption({ ...params, activeChartType });
+  }
+
+  if (
+    activeChartType === 'radial' ||
+    activeChartType === 'scatter' ||
+    activeChartType === 'gauge' ||
+    activeChartType === 'treemap'
+  ) {
+    return buildExtraChartOption({ ...params, activeChartType });
   }
 
   return fallbackChartOption;

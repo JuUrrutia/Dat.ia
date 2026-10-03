@@ -1,4 +1,6 @@
 import os
+import re
+from contextlib import contextmanager
 from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -54,6 +56,35 @@ def ensure_schema_migrations(eng):
             for s in stmts:
                 conn.execute(text(s))
 
+        # Indices de las tablas que el motor de chat consulta en CADA request.
+        # SQLAlchemy no crea indices en columnas FK, asi que los `Index(...)` de
+        # los modelos solo valen para bases creadas desde cero: una instalacion
+        # existente se los tiene que crear aqui. `IF NOT EXISTS` funciona igual
+        # en PostgreSQL y en SQLite, y hace que esto sea idempotente.
+        #
+        # Sin esto, `get_authorized_schema_prompt` (3 veces por query, via
+        # `governance_guard`) hace un seq scan de las tablas de permisos.
+        #
+        # ponytail: se crean al arrancar, no hay migracion incremental; con
+        # tablas de permisos de miles de filas el CREATE INDEX bloquea la
+        # escritura en PostgreSQL durante unos segundos. Si eso molestara,
+        # crear con CONCURRENTLY fuera de la transaccion.
+        _indexes = [
+            ("role_table_permissions", "ix_role_table_perm_lookup",
+             "CREATE INDEX IF NOT EXISTS ix_role_table_perm_lookup ON role_table_permissions (role_id, connection_id, is_allowed)"),
+            ("role_column_permissions", "ix_role_column_perm_lookup",
+             "CREATE INDEX IF NOT EXISTS ix_role_column_perm_lookup ON role_column_permissions (role_id, connection_id)"),
+            ("semantic_catalog", "ix_semantic_catalog_connection",
+             "CREATE INDEX IF NOT EXISTS ix_semantic_catalog_connection ON semantic_catalog (connection_id)"),
+        ]
+        pending_indexes = [sql for tbl, _name, sql in _indexes if tbl in table_names]
+        if pending_indexes:
+            try:
+                with eng.begin() as conn:
+                    _safe_alter(conn, pending_indexes)
+            except Exception:
+                pass
+
         if "corporate_connections" in table_names:
             try:
                 conn_cols = {c["name"] for c in inspector.get_columns("corporate_connections")}
@@ -93,12 +124,82 @@ def ensure_schema_migrations(eng):
             except Exception:
                 pass
 
+            # `validation_status` era NOT NULL. Eso no era una garantia de dato, era
+            # la causa de que el router inventara "APROBADO" cuando la respuesta no
+            # traia trazabilidad: en el CSV de compliance que abre el admin, "" y
+            # "APROBADO" tienen que significar cosas distintas (no lo se / validado).
+            # Se abre la columna en vez de meter un centinela "DESCONOCIDO" porque el
+            # proyecto ya tiene el valor honesto para eso: None.
+            try:
+                vs = next(
+                    (c for c in inspector.get_columns("audit_logs") if c["name"] == "validation_status"),
+                    None,
+                )
+                if vs is not None and not vs.get("nullable", True):
+                    if is_pg:
+                        with eng.begin() as conn:
+                            _safe_alter(conn, [
+                                "ALTER TABLE audit_logs ALTER COLUMN validation_status DROP NOT NULL"
+                            ])
+                    else:
+                        # SQLite no tiene ALTER COLUMN. Se reconstruye la tabla
+                        # desde su propio DDL en sqlite_master quitando el NOT NULL
+                        # de ESA columna: no hay DDL hardcodeado que pueda quedar
+                        # desfasado del modelo.
+                        with eng.begin() as conn:
+                            row = conn.execute(text(
+                                "SELECT sql FROM sqlite_master WHERE type='table' AND name='audit_logs'"
+                            )).scalar()
+                            new_ddl = re.sub(
+                                r"(\bvalidation_status\b[^,\n]*?)\s+NOT\s+NULL",
+                                r"\1",
+                                row,
+                                count=1,
+                                flags=re.IGNORECASE,
+                            )
+                            idx = [r[0] for r in conn.execute(text(
+                                "SELECT sql FROM sqlite_master WHERE type='index' "
+                                "AND tbl_name='audit_logs' AND sql IS NOT NULL"
+                            )).fetchall()]
+                            cols = ", ".join(
+                                '"%s"' % c["name"] for c in inspector.get_columns("audit_logs")
+                            )
+                            # PRAGMA fuera de transaccion: SQLite la ignora dentro de BEGIN.
+                            conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+                            conn.execute(text("ALTER TABLE audit_logs RENAME TO audit_logs__old"))
+                            conn.execute(text(new_ddl.replace("audit_logs", "audit_logs__new", 1)))
+                            conn.execute(text(
+                                f"INSERT INTO audit_logs__new ({cols}) SELECT {cols} FROM audit_logs__old"
+                            ))
+                            conn.execute(text("DROP TABLE audit_logs__old"))
+                            conn.execute(text("ALTER TABLE audit_logs__new RENAME TO audit_logs"))
+                            # Los indices se recreationan con su SQL original: la tabla
+                            # ya volvio a llamarse audit_logs y el DROP del "__old" libero
+                            # los nombres.
+                            for sql in idx:
+                                conn.execute(text(sql))
+                            conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+            except Exception:
+                pass
+
         if "query_learning_memories" in table_names:
             try:
                 mem_cols = {c["name"] for c in inspector.get_columns("query_learning_memories")}
                 if "is_golden" not in mem_cols:
                     with eng.begin() as conn:
                         _safe_alter(conn, ["ALTER TABLE query_learning_memories ADD COLUMN is_golden BOOLEAN DEFAULT FALSE NOT NULL"])
+            except Exception:
+                pass
+
+        if "chat_conversations" in table_names:
+            try:
+                conv_cols = {c["name"] for c in inspector.get_columns("chat_conversations")}
+                if "is_shared" not in conv_cols:
+                    # Los hilos existentes NO se marcan como compartidos: el valor
+                    # por defecto falla cerrado, asi que un despliegue que actualice
+                    # no expone historiales que antes eran privados por accidente.
+                    with eng.begin() as conn:
+                        _safe_alter(conn, ["ALTER TABLE chat_conversations ADD COLUMN is_shared BOOLEAN DEFAULT FALSE NOT NULL"])
             except Exception:
                 pass
     except Exception:
@@ -115,6 +216,26 @@ def get_db() -> Generator:
         yield db
     finally:
         db.close()
+
+def discard_failed_transaction(db) -> None:
+    """Deja la sesión utilizable después de un error que el código se tragó.
+
+    En PostgreSQL una sentencia fallida ABORTA la transacción: todo lo que se
+    ejecute después en esa misma sesión responde `InFailedSqlTransaction` hasta que
+    se hace rollback. Los handlers "best-effort" (guardas de esquema, memoria de
+    aprendizaje, Lookups de conexion) se tragan su excepción y seguían usando la
+    sesión de la request, así que el query siguiente moría con un error sin
+    relación con lo que estaba haciendo. El caso reportado: `GET /system/anomalies`
+    devolvía 500 desde su propio `except Exception: pass`, en la línea siguiente.
+
+    Deliberadamente NO va en el `finally` de `get_db`. Medido contra PostgreSQL: una
+    sesión sucia NO contamina a la request siguiente, porque `Session.close()`
+    devuelve la conexión al pool con rollback. El defecto es siempre intra-request.
+    """
+    try:
+        db.rollback()
+    except Exception:
+        pass
 
 def update_database_engine(server: str, port: int, user: str, password: str, db_name: str):
     """Updates global engine with new PostgreSQL credentials (used by Setup Wizard)."""
@@ -150,3 +271,22 @@ def build_engine_for_connector(conn):
     # SQLite (local file database)
     db_path = conn.host if (conn.host and os.path.exists(conn.host)) else settings.SQLITE_DB_PATH
     return create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+
+
+@contextmanager
+def connector_engine(conn):
+    """Engine del conector, liberado siempre al salir del bloque.
+
+    `with eng.connect()` cierra la CONEXION pero no el ENGINE: el pool de sockets
+    (pool_size=5 + max_overflow=10) queda abierto. Como cada consulta del chat
+    creaba su propio engine y ninguno hacia dispose(), se acumulaban pools
+    huerfanos contra el Postgres del cliente hasta "too many clients already".
+
+    No se cachean engines a proposito: reconectar cuesta ~100 ms contra un LLM que
+    tarda 8-25 s, asi que un registro de engines seria complejidad sin beneficio.
+    """
+    eng = build_engine_for_connector(conn)
+    try:
+        yield eng
+    finally:
+        eng.dispose()

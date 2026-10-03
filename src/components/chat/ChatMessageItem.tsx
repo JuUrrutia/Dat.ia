@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { queryService } from '../../features/chat/services/query_service';
 import { buildDynamicChartOption, deriveProcessedRows, THEME_COLORS, ChartType } from '../dashboard/executiveDashboardUtils';
+import { copyToClipboard } from '../../shared/clipboard';
 
 interface ChatMessageItemProps {
   result: QueryResult;
@@ -48,15 +49,23 @@ const PipelineBadge: React.FC<{ source?: string }> = ({ source }) => {
       </span>
     );
   }
-  return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-500/15 dark:bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-md">
-      <WifiOff className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-      Modo Offline
-    </span>
-  );
+  if (source === 'fallback') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-500/15 dark:bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-md">
+        <WifiOff className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+        Modo Offline
+      </span>
+    );
+  }
+
+  // No pipeline_source means the server did not report one. Rendering
+  // "Modo Offline" there would be a provenance claim nobody made — and this
+  // badge is the only signal telling an executive whether an answer came from
+  // the backend, straight from the LLM, or degraded.
+  return null;
 };
 
-export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
+const ChatMessageItemBase: React.FC<ChatMessageItemProps> = ({
   result,
   user,
   userRole,
@@ -77,9 +86,11 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
     const threadId = activeThreadId || (result as any).thread_id;
     if (!threadId) return;
     const shareUrl = `${window.location.origin}${window.location.pathname}?thread=${encodeURIComponent(threadId)}`;
-    navigator.clipboard.writeText(shareUrl);
-    setCopiedShareLink(true);
-    setTimeout(() => setCopiedShareLink(false), 2000);
+    void copyToClipboard(shareUrl).then((ok: boolean) => {
+      if (!ok) return;
+      setCopiedShareLink(true);
+      setTimeout(() => setCopiedShareLink(false), 2000);
+    });
   };
 
   const handleToggleGolden = async () => {
@@ -87,12 +98,15 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
     const nextState = !isGolden;
     setIsGolden(nextState);
     try {
-      await queryService.toggleGoldenQuery({
+      const res = await queryService.toggleGoldenQuery({
         question: result.question,
         sql: result.traceability.sql_executed,
         connection_id: (result as any).connection_id || 1,
         is_golden: nextState,
       });
+      // toggleGoldenQuery no lanza: devuelve {success:false}. El catch de abajo
+      // nunca corria y la estrella quedaba marcada sin estar guardada.
+      if (!res.success) setIsGolden(!nextState);
     } catch {
       setIsGolden(!nextState);
     }
@@ -137,9 +151,11 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
 
   const handleCopySql = () => {
     if (result.traceability?.sql_executed) {
-      navigator.clipboard.writeText(result.traceability.sql_executed);
-      setCopiedSql(true);
-      setTimeout(() => setCopiedSql(false), 2000);
+      void copyToClipboard(result.traceability.sql_executed).then((ok: boolean) => {
+        if (!ok) return;
+        setCopiedSql(true);
+        setTimeout(() => setCopiedSql(false), 2000);
+      });
     }
   };
 
@@ -166,7 +182,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
               <button
                 type="button"
                 onClick={() => onEditPrompt(result.question)}
-                className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1 text-[10px] text-brand-700 dark:text-brand-300 hover:text-brand-900 dark:hover:text-white bg-brand-500/15 hover:bg-brand-500/25 px-2 py-0.5 rounded-md border border-brand-500/30"
+                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex items-center space-x-1 text-[10px] text-brand-700 dark:text-brand-300 hover:text-brand-900 dark:hover:text-white bg-brand-500/15 hover:bg-brand-500/25 px-2 py-0.5 rounded-md border border-brand-500/30"
                 title="Cargar esta pregunta en el editor para reintentar"
               >
                 <Edit3 className="w-3 h-3" />
@@ -194,6 +210,16 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
               <span className="font-semibold text-slate-700 dark:text-zinc-300">DATIA</span>
               <span>•</span>
               <span className="font-mono text-[10px] tabular-nums">{result.timestamp}</span>
+              {/* Provenance: whether this answer came from the backend, straight
+                  from the LLM, or degraded to offline. An executive needs it to
+                  weigh an unverified number. Renders nothing when the server
+                  did not report a source. */}
+              {result.pipeline_source && (
+                <>
+                  <span>•</span>
+                  <PipelineBadge source={result.pipeline_source} />
+                </>
+              )}
             </div>
           </div>
 
@@ -329,4 +355,14 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
     </div>
   );
 };
+
+// Memoized at the top of the message list. ChatDashboardPage re-renders every
+// second while a query is generating (the elapsed-seconds timer), and this
+// subtree holds the KPIs, the ECharts instance and the data grid. Without
+// memo, every chart in the thread rebuilt its series once per tick for the
+// whole 8-25s of "thinking".
+const MemoChatMessageItem = React.memo(ChatMessageItemBase);
+MemoChatMessageItem.displayName = 'ChatMessageItem';
+
+export const ChatMessageItem = MemoChatMessageItem;
 

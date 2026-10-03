@@ -95,6 +95,22 @@ class ASTValidator:
                 )
 
         # Rule 4.5: Expand SELECT * / table.* to explicit allowed columns
+        # A projection star (SELECT * / tabla.*) cannot be filtered without column metadata,
+        # so without table_columns we fail CLOSED instead of letting the star through untouched.
+        # COUNT(*) is an aggregate, not a projection star, and reveals no column.
+        projection_star = any(
+            isinstance(item, exp.Star)
+            or (isinstance(item, exp.Column) and isinstance(item.this, exp.Star))
+            for select_node in expression.find_all(exp.Select)
+            for item in select_node.expressions
+        )
+        if projection_star and not table_columns:
+            raise ASTValidationError(
+                "Seguridad: No se puede expandir 'SELECT *' porque no hay información de columnas "
+                "disponible para esta conexión. Escribe las columnas explícitas "
+                "(ej. SELECT id, monto FROM fact_ventas) o pide al administrador que publique el catálogo."
+            )
+
         has_star = expression.find(exp.Star) is not None
         if has_star:
             if table_columns:
@@ -207,19 +223,36 @@ class ASTValidator:
                     f"Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos. Columnas bloqueadas: {', '.join(sorted(attempted_blocked))}."
                 )
 
-        # Rule 6: Inject LIMIT / TOP if not present or exceeds max_limit
-        existing_limit = expression.args.get("limit")
-        if existing_limit is None:
-            expression = expression.limit(max_limit)
-        else:
+        # Rule 6: Inject LIMIT / TOP if not present or exceeds max_limit.
+        # Clamp every Limit in the tree (root and subqueries): the clamp is a ceiling, never a floor.
+        # sqlglot >=30 exposes Literal.this as a read-only property, so nodes are replaced, not mutated.
+        for limit_node in expression.find_all(exp.Limit):
             try:
-                current_val = int(existing_limit.expression.this)
-                if current_val > max_limit:
-                    expression.args["limit"].expression.this = str(max_limit)
+                current_val = int(limit_node.expression.this)
             except Exception:
-                expression.args["limit"].expression.this = str(max_limit)
+                current_val = None
+            if current_val is None or current_val > max_limit:
+                limit_node.set("expression", exp.Literal.number(max_limit))
+
+        if expression.args.get("limit") is None:
+            expression = expression.limit(max_limit)
 
         sanitized_sql = expression.sql(dialect=sqlglot_dialect)
+
+        # sqlglot emite la sentencia SIN terminador, y eso hace que el SQL que el
+        # producto muestra y deja copiar no sea ejecutable tal cual: pegado en un
+        # psql interactivo queda en bucle esperando `;` y no imprime nada — ni
+        # filas, ni `(0 rows)`, ni error, solo el prompt de vuelta. Se lee como
+        # "no hay datos" cuando en realidad la consulta nunca corrio.
+        #
+        # Se termina aqui, y no en el boton de copiar, para que tambien quede
+        # bien en `audit_logs`, en la trazabilidad y en los exports PDF/Excel: la
+        # verificacion a mano es justamente el caso de uso.
+        #
+        # Verificado que no rompe la ejecucion: PostgreSQL (psycopg) y SQLite
+        # (sqlite3) aceptan igual un `;` final en un SELECT.
+        if not sanitized_sql.rstrip().endswith(";"):
+            sanitized_sql = sanitized_sql.rstrip() + ";"
 
         metadata = {
             "tables_used": sorted(list(physical_extracted)),

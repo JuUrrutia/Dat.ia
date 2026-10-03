@@ -1,7 +1,8 @@
 import time
 import httpx
 from typing import Any, List
-from fastapi import APIRouter, Depends
+from urllib.parse import urlsplit
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from app.api.deps import get_current_user
@@ -11,6 +12,43 @@ from app.core.config import settings
 from app.core.prompts import PromptManager
 
 llm_diagnostic_router = APIRouter()
+
+# Datia es local-first: el servidor LLM solo puede estar en el loopback de la
+# maquina que corre el backend. Antes `base_url` venia del body sin validar y
+# estas rutas hacian POST a donde el usuario dijera, con respuesta cruda de vuelta:
+# un SSRF autenticado (cualquier usuario, cualquier rol) que con
+# base_url="http://169.254.169.254" leia metadatos de la nube interna.
+LLM_ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _resolve_llm_base_url(raw: str) -> str:
+    """
+    Valida el `base_url` que manda el cliente y devuelve la base usable.
+
+    Levanta 400 sin hacer NINGUNA request si el host no esta en el allowlist, de
+    modo que una URL invalida no llega a tocar la red.
+    """
+    url = (raw or "").strip()
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="base_url es obligatorio.",
+        )
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"base_url invalida: '{raw}'. Debe ser una URL http/https.",
+        )
+    if parts.hostname.lower() not in LLM_ALLOWED_HOSTS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Host '{parts.hostname}' no permitido. El servidor LLM debe correr "
+                f"en local ({', '.join(sorted(LLM_ALLOWED_HOSTS))})."
+            ),
+        )
+    return url.rstrip('/')
 
 class LLMTestRequest(BaseModel):
     provider: str  # "ollama" | "openai_compatible" | "llama_cpp" | "custom"
@@ -42,9 +80,12 @@ async def test_llm_connection(
     current_user: User = Depends(get_current_user)
 ) -> Any:
     """Tests live HTTP connectivity to local LLM server."""
+    # Se valida antes de llamar a HealthService: si la URL no pasa el allowlist,
+    # no se emite ninguna request.
+    base_url = _resolve_llm_base_url(req.base_url)
     result = await HealthService.check_llm_connectivity(
         provider=req.provider,
-        base_url=req.base_url,
+        base_url=base_url,
         model_name=req.model_name,
         timeout=3.0
     )
@@ -62,8 +103,12 @@ async def test_llm_completion(
 ) -> Any:
     """Executes real inference completion against Ollama or llama.cpp / OpenAI-compatible endpoint."""
     start_time = time.time()
-    url = req.base_url.rstrip('/')
-    system_prompt = PromptManager.SQL_TEST_SYSTEM_PROMPT
+    url = _resolve_llm_base_url(req.base_url)
+    # No existe PromptManager.SQL_TEST_SYSTEM_PROMPT: esa linea era un
+    # AttributeError garantizado en cada request, ejecutado ANTES de los tres
+    # try y sin exception_handler en la app, o sea un 500 siempre. El endpoint
+    # solo prueba conectividad, asi que alcanza con el prompt base.
+    system_prompt = PromptManager.DEFAULT_SYSTEM_PROMPT
 
     chat_url = f"{url}/v1/chat/completions"
     payload_chat = {

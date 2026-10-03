@@ -31,6 +31,7 @@ export const AdminCatalogTab: React.FC<AdminCatalogTabProps> = () => {
     isEnriching,
     enrichSuccessMsg,
     enrichErrorMsg,
+    catalogErrorMsg,
     dataDictionary,
     isLoadingDictionary,
     expandedTables,
@@ -171,10 +172,10 @@ export const AdminCatalogTab: React.FC<AdminCatalogTabProps> = () => {
         </div>
       )}
 
-      {enrichErrorMsg && (
+      {(enrichErrorMsg || catalogErrorMsg) && (
         <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-800 dark:text-rose-400 text-xs flex items-center space-x-2 animate-fadeIn">
           <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>{enrichErrorMsg}</span>
+          <span>{enrichErrorMsg || catalogErrorMsg}</span>
         </div>
       )}
 
@@ -211,6 +212,7 @@ export const AdminCatalogTab: React.FC<AdminCatalogTabProps> = () => {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onAdd={handleAddItem as any}
+        errorMsg={catalogErrorMsg}
         connectionName={selectedConnector?.name}
         connectionId={selectedConnectionId ?? undefined}
       />
