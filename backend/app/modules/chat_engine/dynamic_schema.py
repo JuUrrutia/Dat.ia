@@ -1,5 +1,6 @@
 import os
 import time
+import re
 import sqlite3
 from typing import List, Dict, Set, Any, Optional, Tuple
 from sqlalchemy.orm import Session
@@ -17,9 +18,52 @@ class DynamicSchemaPruningService:
     _schema_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
     _SCHEMA_CACHE_TTL: float = 600.0  # 10 minutes cache to avoid constant disk/DB introspection
 
+    # Introspeccion FISICA (que tablas existen, que columnas tienen). Es distinta de
+    # `_schema_cache` a proposito: `_schema_cache` guarda el prompt ya armado y su
+    # key incluye el texto de la pregunta, asi que entre dos preguntas distintas
+    # nunca hay hit. Lo caro no es el armado, es la introscpeccion: `get_physical_*`
+    # abre una conexion nueva (o un `create_engine` + `dispose()` contra el
+    # Postgres del cliente) EN CADA llamada. Medido en un `POST /chat/query` con 10
+    # tablas permitidas: ~30 aperturas, porque el cache del prompt se llenaba dos
+    # veces (los guards de `governance_guard` llaman sin `query`, `sql_generator`
+    # con `query=question` -> dos keys) y `engine.py` volca las columnas otra vez
+    # por su cuenta. Ademas todo eso corre dentro de un `async def`, o sea
+    # bloqueando el event loop entero.
+    #
+    # Cachear la INTROSPECCION y no el prompt es lo que baja de verdad el numero
+    # de conexiones. La key se arma con los datos de la conexion (db_type, host,
+    # port, database_name) y NO con `id(target)`: `target` es un objeto ORM
+    # detached distinto en cada request, y una identidad que cambia haria que el
+    # cache nunca acierte.
+    _physical_cache: Dict[str, Tuple[float, Any]] = {}
+    _PHYSICAL_CACHE_MAX: int = 512
+
+    @classmethod
+    def _physical_key(cls, target: Any) -> str:
+        """Identidad estable de la base fisica a la que apunta `target`.
+
+        `target` es un `CorporateConnection` (Postgres) o una ruta de fichero
+        SQLite, y ambos determinan por completo que se va a leer.
+        """
+        if hasattr(target, "db_type"):
+            return "pg|{}|{}|{}|{}".format(
+                getattr(target, "db_type", ""),
+                getattr(target, "host", "") or "",
+                getattr(target, "port", "") or "",
+                getattr(target, "database_name", "") or "",
+            )
+        path = target if (isinstance(target, str) and target) else settings.SQLITE_DB_PATH
+        return f"sqlite|{path}"
+
     @classmethod
     def invalidate_schema_cache(cls, connection_id: Optional[int] = None) -> None:
         """Clears cached schema prompt representations (e.g. after table/column permissions or catalog changes)."""
+        # La introscpeccion fisica se purga SIEMPRE, tambien cuando se filtra por
+        # conexion: no se puede mapear `connection_id` a la key del cache fisico
+        # sin volver a consultar la BD, y un DDL o una subida nueva tienen que
+        # verse ya. Purgar de mas solo cuesta una re-introspeccion; purgarse de
+        # menos seria servir columnas de una base que ya no existe.
+        cls._physical_cache.clear()
         if connection_id is not None:
             cls._schema_cache = {k: v for k, v in cls._schema_cache.items() if not k.startswith(f"{connection_id}:")}
         else:
@@ -47,8 +91,53 @@ class DynamicSchemaPruningService:
         return settings.SQLITE_DB_PATH
 
     @classmethod
+    def get_physical_cache(cls, key: str, compute):
+        """Devuelve el valor cacheado de `key` o lo calcula con `compute()` y lo guarda.
+
+        `compute` devuelve el valor crudo; la copia la hace el caller segun el
+        tipo, porque un `set` y una `list` comparten el problema opuesto (el set
+        mutable se puede mutar en el sitio, la list se puede appendear).
+
+        Un resultado VACIO nunca se cachea, y esa es la parte que importa: los dos
+        introspectores de abajo tragan su excepcion y devuelven `set()` / `[]`.
+        Cachear eso convertiria un Postgres caido durante 30 s en diez minutos de
+        "esta base no tiene tablas" para todo el mundo que consulta ahi. Es el
+        mismo criterio que ya aplica `SchemaInspector` con
+        `SchemaIntrospectionError` ("no se pudo leer" no es "base vacia"): el
+        fallo se vuelve a intentar en la proxima llamada, que es lo que pasaba
+        antes de este cache.
+        """
+        now = time.time()
+        hit = cls._physical_cache.get(key)
+        if hit is not None and now - hit[0] < cls._SCHEMA_CACHE_TTL:
+            return hit[1]
+        value = compute()
+        if not value:
+            return value
+        # Se purga lo vencido ANTES de insertar y con un tope duro: la key
+        # fisica no lleva el texto de la pregunta, pero si es una ruta de
+        # fichero o una conexion que se reimporta, el dict no debe crecer sin
+        # limite en un proceso de larga vida. `_schema_cache` tenia el mismo
+        # problema (una entrada por pregunta, con el prompt entero adentro) y
+        # por eso ahora se poda en el mismo paso.
+        if len(cls._physical_cache) >= cls._PHYSICAL_CACHE_MAX:
+            cls._physical_cache = {
+                k: v for k, v in cls._physical_cache.items() if now - v[0] < cls._SCHEMA_CACHE_TTL
+            }
+            if len(cls._physical_cache) >= cls._PHYSICAL_CACHE_MAX:
+                cls._physical_cache.clear()
+        cls._physical_cache[key] = (now, value)
+        return value
+
+    @classmethod
     def get_physical_db_tables(cls, target: Any = None) -> Set[str]:
         """Inspects active PostgreSQL connection or SQLite database to retrieve physically existing data tables."""
+        return set(cls.get_physical_cache(
+            f"tables|{cls._physical_key(target)}", lambda: cls._introspect_tables(target)
+        ))
+
+    @classmethod
+    def _introspect_tables(cls, target: Any) -> Set[str]:
         ignored_metadata = {
             "sqlite_sequence", "roles", "domains", "corporate_connections",
             "users", "role_domain_links", "role_table_permissions",
@@ -60,11 +149,11 @@ class DynamicSchemaPruningService:
         if hasattr(target, "db_type") and (target.db_type == DatabaseType.POSTGRESQL or str(target.db_type).lower() == "postgresql"):
             try:
                 from sqlalchemy import inspect as sa_inspect
-                from app.core.database import build_engine_for_connector
-                eng = build_engine_for_connector(target)
-                inspector = sa_inspect(eng)
-                raw_tables = [t.lower() for t in inspector.get_table_names(schema="public")]
-                return {t for t in raw_tables if t not in ignored_metadata}
+                from app.core.database import connector_engine
+                with connector_engine(target) as eng:
+                    inspector = sa_inspect(eng)
+                    raw_tables = [t.lower() for t in inspector.get_table_names(schema="public")]
+                    return {t for t in raw_tables if t not in ignored_metadata}
             except Exception:
                 return set()
 
@@ -84,6 +173,45 @@ class DynamicSchemaPruningService:
             return set()
 
     @classmethod
+    def _inspect_columns_with_engine(cls, eng, clean_table: str, include_samples: bool, sa_inspect) -> List[Dict[str, Any]]:
+        """Inspecciona columnas con un engine ya abierto; el que lo llama lo dispone.
+
+        Vive aparte para que el `dispose()` del engine cubra TODOS los caminos de
+        salida, incluidos los `return` tempranos.
+        """
+        from sqlalchemy import text
+        inspector = sa_inspect(eng)
+        cols_info = inspector.get_columns(clean_table, schema="public")
+        pk_info = inspector.get_pk_constraint(clean_table, schema="public")
+        pk_cols = set(pk_info.get("constrained_columns", [])) if pk_info else set()
+
+        col_samples_map: Dict[str, List[str]] = {}
+        if include_samples:
+            try:
+                with eng.connect() as connection:
+                    res = connection.execute(text(f'SELECT * FROM "{clean_table}" LIMIT 20'))
+                    for row in res.mappings():
+                        for k, val in row.items():
+                            if val is not None and str(val).strip():
+                                s_list = col_samples_map.setdefault(k, [])
+                                val_str = str(val)[:35]
+                                if val_str not in s_list and len(s_list) < 3:
+                                    s_list.append(val_str)
+            except Exception:
+                pass
+
+        result = []
+        for col in cols_info:
+            col_name = col["name"]
+            result.append({
+                "name": col_name,
+                "type": str(col["type"]),
+                "is_pk": col_name in pk_cols,
+                "samples": col_samples_map.get(col_name, []),
+            })
+        return result
+
+    @classmethod
     def get_physical_table_columns(cls, table_name: str, db_path: Any = None, include_samples: bool = True) -> List[Dict[str, Any]]:
         """
         Inspects active PostgreSQL connection or SQLite database file to retrieve real physical columns, data types,
@@ -92,46 +220,24 @@ class DynamicSchemaPruningService:
         clean_table = "".join(c for c in table_name if c.isalnum() or c == "_")
         if not clean_table:
             return []
+        # `include_samples` va EN la key, no como detalle del compute: el prompt
+        # del LLM pide muestras y el ranking de tablas (`include_samples=False`)
+        # no. Compartir la entrada devolveria en el prompt valores que el caller
+        # pidio no leer.
+        return [dict(c) for c in cls.get_physical_cache(
+            f"cols|{cls._physical_key(db_path)}|{clean_table}|{int(include_samples)}",
+            lambda: cls._introspect_columns(clean_table, db_path, include_samples),
+        )]
 
+    @classmethod
+    def _introspect_columns(cls, clean_table: str, db_path: Any, include_samples: bool) -> List[Dict[str, Any]]:
         # Case 1: PostgreSQL CorporateConnection object
         if hasattr(db_path, "db_type") and (db_path.db_type == DatabaseType.POSTGRESQL or str(db_path.db_type).lower() == "postgresql"):
             try:
-                from sqlalchemy import inspect as sa_inspect, text
-                from app.core.database import build_engine_for_connector
-                eng = build_engine_for_connector(db_path)
-                inspector = sa_inspect(eng)
-                cols_info = inspector.get_columns(clean_table, schema="public")
-                pk_info = inspector.get_pk_constraint(clean_table, schema="public")
-                pk_cols = set(pk_info.get("constrained_columns", [])) if pk_info else set()
-
-                col_samples_map: Dict[str, List[str]] = {}
-                if include_samples:
-                    try:
-                        with eng.connect() as connection:
-                            res = connection.execute(text(f'SELECT * FROM "{clean_table}" LIMIT 20'))
-                            for row in res.mappings():
-                                for k, val in row.items():
-                                    if val is not None and str(val).strip():
-                                        s_list = col_samples_map.setdefault(k, [])
-                                        val_str = str(val)[:35]
-                                        if val_str not in s_list and len(s_list) < 3:
-                                            s_list.append(val_str)
-                    except Exception:
-                        pass
-
-                result = []
-                for col in cols_info:
-                    col_name = col["name"]
-                    col_type = str(col["type"])
-                    is_pk = col_name in pk_cols
-                    samples = col_samples_map.get(col_name, [])
-                    result.append({
-                        "name": col_name,
-                        "type": col_type,
-                        "is_pk": is_pk,
-                        "samples": samples
-                    })
-                return result
+                from sqlalchemy import inspect as sa_inspect
+                from app.core.database import connector_engine
+                with connector_engine(db_path) as eng:
+                    return cls._inspect_columns_with_engine(eng, clean_table, include_samples, sa_inspect)
             except Exception:
                 return []
 
@@ -197,6 +303,101 @@ class DynamicSchemaPruningService:
         "estado", "status", "fecha", "date", "nombre", "name", "id", "tipo",
         "type", "valor", "registro", "tabla", "descripcion", "description"
     }
+
+    # El DDL se arma aparte del resto de metodos porque lo necesitan DOS
+    # consumidores con formatos distintos: el prompt del LLM y el extractor de
+    # sugerencias de `suggestions_service.py`, que hace regex sobre el prompt.
+    # Antes cada uno parseaba el formato con vinetas por su cuenta y cambiar uno
+    # obligaba a cambiar el otro sin que el error se notara en ninguno.
+
+    @classmethod
+    def _render_table_as_ddl(cls, table: str, table_synonyms: str, col_lines: List[str]) -> str:
+        """Vuelca las lineas de columna de una tabla como `CREATE TABLE`.
+
+        Por que DDL y no la lista con viñetas
+        -------------------------------------
+        El modelo base es un **Coder** (Qwen2.5-Coder): su preentrenamiento es
+        mayoritariamente codigo, y dentro de el el esquema de una base aparece
+        como `CREATE TABLE t (col TYPE, ...)`. Entregarle el mismo esquema en
+        forma de lista con vinetas desperdicia la familiaridad que el modelo ya
+        tiene: es la senal de que el prompt quiere que escriba SQL.
+
+        `col_lines` sigue siendo la MISMA lista con vinetas que se usaba antes
+        (`nombre (TIPO, ej: 'x') - descripcion`), y se parsea acá. Se preserva
+        el formato de entrada a proposito: el resto de la construccion del prompt
+        —filtrado de columnas bloqueadas, `[ENMASCARADO]`, sinonimos, limpieza de
+        descripciones redundantes— no cambia, y el test que verifica que una
+        formula de negocio llega al prompt sigue绿茶 pasando.
+        """
+        body: List[str] = []
+        for raw in col_lines:
+            name, _, rest = raw.partition(" ")
+            name = name.strip()
+            if not name:
+                continue
+            rest = rest.strip()
+
+            # `rest` arranca con `(TIPO, ej: 'x')` y detras puede venir la
+            # descripcion, los sinonimos y la marca de enmascarado.
+            col_type = ""
+            comment_parts: List[str] = []
+            if rest.startswith("("):
+                depth = 0
+                close = -1
+                for i, ch in enumerate(rest):
+                    if ch == "(":
+                        depth += 1
+                    elif ch == ")":
+                        depth -= 1
+                        if depth == 0:
+                            close = i
+                            break
+                if close > 0:
+                    inner = rest[1:close]
+                    # Solo el tipo: los ejemplos de valor van al comentario.
+                    col_type = inner.split(", ej:")[0].strip()
+                    tail = rest[close + 1:].strip()
+                    if tail:
+                        comment_parts.append(tail)
+                else:
+                    comment_parts.append(rest)
+            elif rest:
+                comment_parts.append(rest)
+
+            # `rest` ya venia con el guion del formato viejo (` - descripcion`):
+            # se saca para no dejar un `-- - descripcion` en el comentario del DDL.
+            comment_parts = [
+                c[1:].strip() if c.startswith("- ") else c.strip()
+                for c in comment_parts
+            ]
+            comment_parts = [c for c in comment_parts if c]
+
+            # Los ejemplos de valor se recuperan del parentesis original: son la
+            # unica senal que tiene el modelo de COMO se ven los datos (fechas en
+            # ISO, montos con puntos, estados en mayusculas) y sin eso inventa
+            # literales que despues no matchean nada.
+            samples = re.search(r", ej: ([^)]*)\)", rest)
+            if samples and samples.group(1).strip():
+                comment_parts.insert(0, f"ej: {samples.group(1).strip()}")
+
+            line = f"  {name}"
+            if col_type:
+                line += f" {col_type}"
+            if comment_parts:
+                line += "  -- " + " ".join(comment_parts).strip()
+            body.append(line)
+
+        if not body:
+            # Sin columnas no hay `CREATE TABLE` que valga: un bloque vacio le
+            # dice al modelo que la tabla existe pero no tiene nada consultable,
+            # que no es lo que dice "solo lectura".
+            syn = f" (Sinónimos: {table_synonyms})" if table_synonyms else ""
+            return f'Tabla "{table}"{syn} (Columnas de solo lectura)'
+
+        header = f'CREATE TABLE "{table}" ('
+        if table_synonyms:
+            header += f"  -- Sinónimos: {table_synonyms}\n"
+        return header + "\n" + ",\n".join(body) + "\n);"
 
     NON_FORMULAS = {
         "columna directa", "directa", "direct column", "direct", "none", "n/a",
@@ -352,6 +553,7 @@ class DynamicSchemaPruningService:
                 effective_role_id = role_obj.id
 
         blocked_columns: Set[str] = set()
+        masked_columns: Set[str] = set()
         column_perm_map: Dict[str, str] = {}
 
         if is_admin:
@@ -394,6 +596,11 @@ class DynamicSchemaPruningService:
                 column_perm_map[key] = cp.permission_type.value
                 if cp.permission_type == ColumnPermissionType.BLOCKED:
                     blocked_columns.add(cp.column_name.lower())
+                elif cp.permission_type == ColumnPermissionType.MASKED:
+                    # MASKED NO va a blocked_columns a proposito: la columna debe
+                    # seguir consultable para que el LLM pueda usarla en joins y
+                    # agregaciones. Lo que se tapa es el valor, no el acceso.
+                    masked_columns.add(cp.column_name.lower())
 
             catalog_entries = db.query(SemanticCatalog).filter(
                 SemanticCatalog.connection_id == effective_conn_id
@@ -477,7 +684,7 @@ class DynamicSchemaPruningService:
             tbl_syns = catalog_synonyms_map.get(f"{tbl}.*", "")
             tbl_header = f"Tabla `{tbl}`" + (f" (Sinónimos: {tbl_syns})" if tbl_syns else "")
             if col_lines:
-                schema_text_lines.append(f"{tbl_header}:\n  - " + "\n  - ".join(col_lines))
+                schema_text_lines.append(cls._render_table_as_ddl(tbl, tbl_syns, col_lines))
             else:
                 schema_text_lines.append(f"{tbl_header} (Columnas de solo lectura)")
 
@@ -532,9 +739,22 @@ class DynamicSchemaPruningService:
         result = {
             "schema_prompt": "\n\n".join(schema_text_lines) if schema_text_lines else "Esquema de la base de datos activa.",
             "allowed_tables": allowed_tables,
-            "blocked_columns": blocked_columns
+            "blocked_columns": blocked_columns,
+            "masked_columns": masked_columns,
         }
         if not is_mock_db:
+            # La key lleva `q_norm` (el texto de la pregunta), o sea que hay una
+            # entrada DISTINTA por cada pregunta que se ha hecho. Con solo TTL y
+            # sin poda, el dict crecia para siempre guardando el `schema_prompt`
+            # completo de cada una. Se purga lo vencido antes de insertar y, si
+            # aun asi se pasa, se cae el cache entero: reconstruuirlo es una
+            # introspeccion, no una perdida de datos.
+            if len(cls._schema_cache) >= cls._PHYSICAL_CACHE_MAX:
+                cls._schema_cache = {
+                    k: v for k, v in cls._schema_cache.items() if now - v[0] < cls._SCHEMA_CACHE_TTL
+                }
+                if len(cls._schema_cache) >= cls._PHYSICAL_CACHE_MAX:
+                    cls._schema_cache.clear()
             cls._schema_cache[cache_key] = (now, result)
         return result
 

@@ -170,7 +170,11 @@ class TraceabilityAuditData(BaseModel):
     sql_executed: Optional[str] = ""
     execution_time_ms: Optional[int] = 0
     rows_returned: Optional[int] = 0
-    validation_status: Optional[str] = "APROBADO"
+    # ponytail: si no lo se, es None. El default "APROBADO" afirmaba una
+    # validacion que nadie hacia: un snapshot de auditoria sin este campo
+    # entraba al export con el default ya puesto y el informe ejecutivo
+    # imprimia "Estado AST: APROBADO" sobre una consulta no validada.
+    validation_status: Optional[str] = None
     schema_tables_used: List[str] = []
     explanation: Optional[str] = None
 

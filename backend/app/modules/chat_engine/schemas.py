@@ -29,6 +29,12 @@ class TraceabilityAudit(BaseModel):
     schema_tables_used: List[str]
     explanation: str
     audit_log_id: Optional[int] = None
+    # Contra que base se ejecuto este SQL. Sin esto el texto copiado al
+    # portapapeles es ambiguo: las mismas tablas existen en varias bases y el
+    # mismo SQL pegado en otra da "no existe la relacion" o, peor, datos de otra
+    # fuente. El dato ya vivia en `audit_logs.target_database`; aqui se le
+    # entrega a quien va a verificar la consulta a mano.
+    target_database: Optional[str] = None
 
 class PresentationHints(BaseModel):
     show_executive_report: bool = True
@@ -69,6 +75,8 @@ class ChatThreadCreate(BaseModel):
     title: str
     connection_id: Optional[int] = 1
     results: List[Dict[str, Any]] = []
+    # Opt-in explicito: sin esto el hilo es privado y /threads/shared/{id} responde 404.
+    is_shared: bool = False
 
 class ChatThreadSummary(BaseModel):
     id: str

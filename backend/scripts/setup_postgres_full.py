@@ -484,13 +484,19 @@ def setup_metadata_database():
                         RoleTablePermission.connection_id == connection_id,
                         RoleTablePermission.table_name == tbl
                     ).first()
-                    if not exists:
+                    if exists:
+                        # Decision explicita del seeder de la demo: se marca como
+                        # concedida para que la migracion de default-deny (que borra
+                        # lo que nadie concedio a proposito) no se la lleve.
+                        exists.granted_by_admin = True
+                    else:
                         db.add(RoleTablePermission(
                             role_id=r.id,
                             connection_id=connection_id,
                             schema_name="public",
                             table_name=tbl,
-                            is_allowed=True
+                            is_allowed=True,
+                            granted_by_admin=True
                         ))
         db.commit()
 

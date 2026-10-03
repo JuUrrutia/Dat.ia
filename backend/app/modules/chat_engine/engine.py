@@ -1,11 +1,13 @@
 import time
 import re
 import logging
-from typing import List, Dict, Any, Optional, Set
+from typing import Any, Callable, List, Dict, Optional, Set, Tuple
 from sqlalchemy.orm import Session
 
 from app.core.constants import DEFAULT_DEMO_ROLE, ROLE_USUARIO, ADMIN_ROLES
+from app.core.database import discard_failed_transaction
 from app.core.prompts import PromptManager
+from app.core.security import mask_rows
 from app.modules.admin_catalog.models import DatabaseType
 from app.modules.chat_engine.schemas import QueryResponse, PresentationHints
 from app.modules.chat_engine.ast_validator import ASTValidator, ASTValidationError
@@ -32,6 +34,7 @@ class QueryEngine:
     # --- Governance & RBAC Facade ---
     get_allowed_tables_for_role = GovernanceGuard.get_allowed_tables_for_role
     get_blocked_columns_for_role = GovernanceGuard.get_blocked_columns_for_role
+    get_masked_columns_for_role = GovernanceGuard.get_masked_columns_for_role
     check_domain_governance = GovernanceGuard.check_domain_governance
 
     # --- Suggestions Facade ---
@@ -46,11 +49,8 @@ class QueryEngine:
     _build_llm_offline_response = ResponseBuilder.build_llm_offline_response
     _build_rbac_denied_response = ResponseBuilder.build_rbac_denied_response
     _classify_intent = IntentClassifier.classify_intent
-    _classify_presentation_format = IntentClassifier.classify_presentation_format
     _heuristic_presentation_hints = IntentClassifier.heuristic_presentation_hints
     _generate_conversational_response = IntentClassifier.generate_conversational_response
-    _generate_deep_executive_report_with_llm = KPICalculator.generate_deep_executive_report_with_llm
-    _generate_semantic_analysis_with_llm = KPICalculator.generate_semantic_analysis_with_llm
     _generate_unified_synthesis_with_llm = KPICalculator.generate_unified_synthesis_with_llm
     _build_dynamic_visualization = KPICalculator.build_dynamic_visualization
     _get_grounding_query_for_question = SQLExecutor.get_grounding_query
@@ -114,8 +114,20 @@ class QueryEngine:
         db: Optional[Session] = None,
         role_id: Optional[int] = None,
         connection_id: int = 1,
-        conversation_history: Optional[List[Dict[str, Any]]] = None
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
+        narrative_sink: Optional[Callable[[str], Any]] = None
     ) -> QueryResponse:
+        """
+        `narrative_sink` es opcional y solo lo usa `POST /chat/query/stream`.
+
+        Opcional a proposito: cuando es `None` (o sea, en TODOS los caminos que
+        ya existian, incluido `POST /chat/query`) el motor se comporta exactamente
+        igual que antes. El sink se invoca DESPUES del enmascarado de
+        `mask_rows` y en el mismo punto donde hoy se construye la narrativa, asi
+        que lo que se emite al navegador sale del mismo `rows` enmascarado que
+        alimenta la respuesta completa: stremear no abre una via de datos sin
+        enmascarar.
+        """
 
         # 1. Null remediation directive resolution
         remediation_action = NullHandler.detect_remediation_intent(question)
@@ -183,6 +195,7 @@ class QueryEngine:
             )
 
         blocked_columns = cls.get_blocked_columns_for_role(user_role, is_admin, db=db, role_id=role_id, connection_id=connection_id)
+        masked_columns = cls.get_masked_columns_for_role(user_role, is_admin, db=db, role_id=role_id, connection_id=connection_id)
         start_time = time.time()
         is_llm_active = False
 
@@ -198,15 +211,47 @@ class QueryEngine:
                 if not conn_record:
                     conn_record = db.query(CorporateConnection).order_by(CorporateConnection.id.desc()).first()
             except Exception:
-                pass
+                # `conn_record` queda None y la request sigue por el resto del
+                # camino, pero la sesion no: la consulta fallida la dejo
+                # abortada, asi que todo lo que se ejecute despues en esta misma
+                # request moriria con `InFailedSqlTransaction` sin relacion con
+                # nada. Es exactamente el defecto de los demas handlers
+                # best-effort, y por eso usa el mismo helper.
+                discard_failed_transaction(db)
 
+        # El retorno de `apply_null_policy` NO se descarta: devuelve `status:
+        # no_op` / `rows_affected: 0` cuando no remedio nada. Mirar solo el exito
+        # hacia que el chat anunciara "remediacion aplicada" sobre una base sin
+        # remediar. La politica aplicada no cambia aqui; solo se comunica el
+        # resultado (el banner de la seccion 8 usa este texto en vez del exito).
+        remediation_notice: Optional[str] = None
         if remediation_action and conn_record and db:
             try:
-                NullManagerService.apply_null_policy(conn_record, remediation_action, db)
+                result = NullManagerService.apply_null_policy(conn_record, remediation_action, db) or {}
                 conn_record.null_policy = 'open'
                 db.commit()
+                if result.get("status") != "success" or not (result.get("rows_affected") or 0):
+                    remediation_notice = (
+                        "⚠️ **No se remedió ningún valor nulo**\n\n"
+                        f"{result.get('message') or 'La remediación no modificó ninguna celda.'}\n\n"
+                    )
             except Exception as ex:
                 logger.warning(f"Error applying null remediation to DB: {ex}")
+                # Medido contra PostgreSQL, y NO es el mismo estado que una query
+                # fallida: un `db.commit()` que revienta en el flush deja la sesion
+                # en `PendingRollbackError` ("rolled back due to a previous
+                # exception during flush"), mientras que una sentencia fallida la
+                # deja en `InFailedSqlTransaction`. Los dos envenenan la sesion y
+                # los dos se limpian con el mismo rollback; lo que cambia es que
+                # aqui el fallo puede venir del propio commit, asi que el rollback
+                # va DESPUES de la excepcion, nunca antes.
+                discard_failed_transaction(db)
+                # `apply_null_policy` revierte la política si falla: tampoco se
+                # logro remediar nada, y decirlo es lo unico honesto.
+                remediation_notice = (
+                    "⚠️ **No se remedió ningún valor nulo**\n\n"
+                    f"La remediación falló y se revirtió: {ex}. La base queda sin cambios.\n\n"
+                )
 
         is_pg = conn_record is not None and (
             getattr(conn_record, "db_type", None) == DatabaseType.POSTGRESQL
@@ -241,6 +286,8 @@ class QueryEngine:
                 meta = {"tables_used": []}
                 rows = []
             except Exception:
+                secured_sql = "-- CONSULTA NO EJECUTADA POR ERROR TÉCNICO"
+                meta = {"tables_used": []}
                 rows = []
 
             exec_time_ms = int((time.time() - start_time) * 1000)
@@ -301,7 +348,8 @@ class QueryEngine:
                 role_id=role_id,
                 connection_id=connection_id,
                 is_admin=is_admin,
-                conversation_history=conversation_history
+                conversation_history=conversation_history,
+                dialect=engine_dialect,
             )
             if rbac_denial and not is_admin:
                 return ResponseBuilder.build_rbac_denied_response(effective_question, rbac_denial)
@@ -346,6 +394,13 @@ class QueryEngine:
         except Exception as e:
             exec_time_ms = int((time.time() - start_time) * 1000)
             return ResponseBuilder.build_execution_error_response(effective_question, str(e), exec_time_ms)
+
+        # Enmascarado de columnas MASKED: se aplica a las filas recien ejecutadas y
+        # ANTES de que entren a cualquier respuesta. A partir de aca `rows` es lo
+        # unico que circula, asi que el RUT en claro no llega ni al snapshot de
+        # auditoria, ni a los reportes exportados a PDF/Excel, ni a la vista.
+        if masked_columns and rows:
+            mask_rows(rows, masked_columns)
 
         SQLExecutor.persist_learning_memory(
             db=db,
@@ -430,7 +485,8 @@ class QueryEngine:
                 columns=columns,
                 secured_sql=secured_sql,
                 conversation_context=conv_context,
-                is_llm_active=is_llm_active
+                is_llm_active=is_llm_active,
+                narrative_sink=narrative_sink
             )
             if unified_res:
                 if unified_res.get("narrative"):
@@ -449,7 +505,7 @@ class QueryEngine:
                 )
 
         if is_remediation:
-            banner = NullHandler.format_remediation_banner(remediation_action, effective_question)
+            banner = remediation_notice or NullHandler.format_remediation_banner(remediation_action, effective_question)
             conversational = (banner + conversational) if conversational else banner
             if fallback_summary:
                 fallback_summary = banner + fallback_summary

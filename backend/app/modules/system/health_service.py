@@ -27,6 +27,28 @@ class HealthService:
         primary_url = (base_url or "").rstrip('/')
         default_model = model_name or settings.OLLAMA_MODEL
 
+        # El `base_url` se valida ACA, en el sink, y no solo en el router: los
+        # routers validan la entrada conocida, pero esta clase emite httpx GET a
+        # donde le digan y no tiene por que confiar en quien la llame (por
+        # ejemplo system/router.py:51 le pasa settings.OLLAMA_BASE_URL, que en
+        # Docker es http://host.docker.internal:11434 y debe seguir valiendo).
+        # Idempotente con la validación del router: si ya pasó, no cambia nada.
+        # Un base_url rechazado no se probea ni se reporta como activo: se
+        # devuelve success:False con el motivo, sin afirmar nada sobre el LLM.
+        if base_url:
+            try:
+                from app.modules.chat_engine.llm_service import validate_llm_base_url
+                primary_url = validate_llm_base_url(base_url)
+            except ValueError as exc:
+                return {
+                    "success": False,
+                    "latency_ms": 0,
+                    "message": f"No se pudo verificar el servidor LLM: {exc}",
+                    "available_models": [],
+                    "active_url": "",
+                    "provider": provider or "ollama",
+                }
+
         candidates = []
         if primary_url:
             candidates.append((provider or "auto", primary_url))
@@ -143,9 +165,24 @@ class HealthService:
                     if os.path.exists(candidate):
                         db_target = candidate
 
-                if os.path.exists(db_target):
-                    conn = sqlite3.connect(db_target)
+                if not os.path.exists(db_target):
+                    # Antes el `if` no tenia else: si el fichero no existia en ninguna
+                    # ruta candidata se saltaba el bloque entero y caia al `return`
+                    # de abajo con success=True. Es decir, reportaba como verificada
+                    # una conexion a un fichero inexistente, y `except` tambien
+                    # devolvia True. El panel de salud miente y, como alimentaba
+                    # `global_status`, un conector caido dejaba el sistema en
+                    # OPERATIVO y sin emitir la anomalia `conn-offline`.
+                    return {
+                        "success": False,
+                        "latency_ms": max(int((time.time() - start_time) * 1000), 1),
+                        "message": f"No se encontro el fichero SQLite en {db_target}.",
+                    }
+
+                conn = sqlite3.connect(f"file:{os.path.abspath(db_target)}?mode=ro", uri=True)
+                try:
                     conn.execute("SELECT 1;").fetchone()
+                finally:
                     conn.close()
                 
                 latency_ms = int((time.time() - start_time) * 1000)
@@ -154,12 +191,14 @@ class HealthService:
                     "latency_ms": max(latency_ms, 1),
                     "message": f"Conexión verificada a {db_type.upper()} ({os.path.basename(db_target) or database_name}) en modo SOLO LECTURA."
                 }
-            except Exception:
+            except Exception as exc:
+                # Tambien decia "verificada" cuando la apertura fallaba por
+                # permisos, corrupcion o error de disco.
                 latency_ms = int((time.time() - start_time) * 1000)
                 return {
-                    "success": True,
+                    "success": False,
                     "latency_ms": max(latency_ms, 1),
-                    "message": f"Conexión verificada a SQLite ({database_name}) en modo SOLO LECTURA."
+                    "message": f"No se pudo verificar la conexión a SQLite ({database_name}): {exc}"
                 }
 
         try:

@@ -33,6 +33,10 @@ class ChatConversation(Base):
     title = Column(String(255), nullable=False)
     connection_id = Column(Integer, nullable=True, default=1)
     messages_json = Column(Text, nullable=False, default="[]")
+    # Un hilo solo es legible por otro usuario si el dueño lo marcó como compartido.
+    # Antes `/threads/shared/{id}` no filtraba ni por user_id ni por nada, asi que
+    # cualquier usuario autenticado podia leer los data_rows corporativos de otro.
+    is_shared = Column(Boolean, nullable=False, default=False, index=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 

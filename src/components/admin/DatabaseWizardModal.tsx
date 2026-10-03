@@ -33,6 +33,7 @@ import {
   DataDictionaryColumn,
   NullsAuditResponse,
 } from '../../features/admin/services/catalog_service';
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 interface DatabaseWizardModalProps {
   isOpen: boolean;
@@ -107,6 +108,9 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
   const [nullsData, setNullsData] = useState<NullsAuditResponse | null>(null);
   const [selectedNullPolicy, setSelectedNullPolicy] = useState<'delete_rows' | 'mode' | 'nearest' | 'open'>('open');
   const [isApplyingNullPolicy, setIsApplyingNullPolicy] = useState(false);
+
+  // Dialog semantics, Escape, focus containment and focus restore.
+  const modalRef = useModalA11y<HTMLDivElement>(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -294,24 +298,47 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
     setErrorMessage(null);
 
     try {
-      // Save all reviewed items
-      for (const table of dictionaryData.tables || []) {
-        for (const col of table.columns || []) {
-          const key = `${table.table_name}.${col.name}`;
-          const current = editedColumns[key];
-          if (current) {
-            await catalogService.createCatalogItem({
-              connection_id: registeredConnection.id,
-              schema_name: table.schema_name || 'main',
-              table_name: table.table_name,
-              column_name: col.name,
-              friendly_name: current.friendly_name,
-              description: current.description,
-              business_formula: current.business_formula,
-              is_ai_generated: creationMode === 'ai',
-            }).catch(() => null);
-          }
+      // Save all reviewed items. Sequential, and failures are NO LONGER
+      // swallowed: the previous `.catch(() => null)` let the wizard land on
+      // "Diccionario Instalado Exitosamente" with a silently partial catalog,
+      // so the AI-reviewed descriptions the admin just read did not exist and
+      // the text-to-SQL engine had nothing to read.
+      // ponytail: one request per column, serialized. 300 round-trips behind a
+      // single button; batch endpoint only if this gets slow in practice.
+      const tables = dictionaryData.tables || [];
+      const pending = tables.flatMap((table) =>
+        (table.columns || [])
+          .filter((col) => editedColumns[`${table.table_name}.${col.name}`])
+          .map((col) => ({ table, col }))
+      );
+
+      const failed: string[] = [];
+      for (const { table, col } of pending) {
+        const current = editedColumns[`${table.table_name}.${col.name}`];
+        try {
+          await catalogService.createCatalogItem({
+            connection_id: registeredConnection.id,
+            schema_name: table.schema_name || 'main',
+            table_name: table.table_name,
+            column_name: col.name,
+            friendly_name: current.friendly_name,
+            description: current.description,
+            business_formula: current.business_formula,
+            is_ai_generated: creationMode === 'ai',
+          });
+        } catch {
+          failed.push(`${table.table_name}.${col.name}`);
         }
+      }
+
+      if (failed.length > 0) {
+        setIsSavingReview(false);
+        setErrorMessage(
+          `No se pudieron guardar ${failed.length} de ${pending.length} columnas (por ejemplo ${failed
+            .slice(0, 3)
+            .join(', ')}). El diccionario quedó incompleto; revisa la conexión y reintenta.`
+        );
+        return;
       }
 
       setIsSavingReview(false);
@@ -356,7 +383,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
   const activeTable: DataDictionaryTable | undefined = dictionaryData?.tables?.[selectedTableIndex];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Asistente de instalación de base de datos" tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
       <div className="glass-panel w-full max-w-3xl rounded-2xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Top Header */}
         <div className="shrink-0 px-6 py-4 border-b border-dark-border flex items-center justify-between bg-dark-surface/95 backdrop-blur">
@@ -366,7 +393,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-white tracking-tight leading-tight">
+                <h3 className="text-base font-bold text-app-text tracking-tight leading-tight">
                   Asistente de Instalación y Onboarding de Base de Datos
                 </h3>
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30">
@@ -382,7 +409,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
             type="button"
             onClick={handleClose}
             aria-label="Cerrar asistente"
-            className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-dark-card transition-colors shrink-0"
+            className="text-gray-400 hover:text-app-text p-1.5 rounded-lg hover:bg-dark-card transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
@@ -433,7 +460,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
             <form id="wizard-step-1" onSubmit={handleIngestDatabase} className="space-y-4">
               <div className="flex items-center justify-between pb-2 border-b border-dark-border/80">
                 <div>
-                  <h4 className="text-sm font-bold text-white">Selecciona el método de ingreso de la Base de Datos</h4>
+                  <h4 className="text-sm font-bold text-app-text">Selecciona el método de ingreso de la Base de Datos</h4>
                   <p className="text-xs text-gray-400">Puedes importar un archivo o conectar un servidor corporativo en red</p>
                 </div>
                 {/* Tabs */}
@@ -442,7 +469,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                     type="button"
                     onClick={() => setIngestionMode('file')}
                     className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors flex items-center space-x-1.5 ${
-                      ingestionMode === 'file' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'
+                      ingestionMode === 'file' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-app-text'
                     }`}
                   >
                     <UploadCloud className="w-3.5 h-3.5" />
@@ -452,7 +479,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                     type="button"
                     onClick={() => setIngestionMode('remote')}
                     className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors flex items-center space-x-1.5 ${
-                      ingestionMode === 'remote' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'
+                      ingestionMode === 'remote' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-app-text'
                     }`}
                   >
                     <Server className="w-3.5 h-3.5" />
@@ -483,7 +510,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                       onChange={(e) => setCustomName(e.target.value)}
                       placeholder="Ej: FINANZAS_2026, INVENTARIO_GENERAL..."
                       required
-                      className="w-full bg-dark-base border border-dark-border rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                      className="w-full bg-dark-base border border-dark-border rounded-xl px-3.5 py-2.5 text-xs text-app-text placeholder-gray-500 focus:outline-none focus:border-purple-500"
                     />
                   </div>
                 </div>
@@ -541,7 +568,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                     <Database className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-white">{registeredConnection.name}</h4>
+                    <h4 className="text-sm font-bold text-app-text">{registeredConnection.name}</h4>
                     <p className="text-xs text-gray-400">
                       Motor: <span className="font-mono text-cyan-300 uppercase">{registeredConnection.db_type}</span> • Estado: <span className="text-emerald-400 font-semibold">Evaluada y Conectada</span>
                     </p>
@@ -555,7 +582,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
               </div>
 
               <div>
-                <h4 className="text-sm font-bold text-white">¿Cómo deseas estructurar el Diccionario y Catálogo de Datos?</h4>
+                <h4 className="text-sm font-bold text-app-text">¿Cómo deseas estructurar el Diccionario y Catálogo de Datos?</h4>
                 <p className="text-xs text-gray-400 mt-0.5">
                   Elige si deseas que la Inteligencia Artificial analice y describa las columnas, o hacerlo manualmente:
                 </p>
@@ -584,7 +611,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                     </span>
                   </div>
                   <div>
-                    <h5 className="text-sm font-bold text-white flex items-center gap-1.5">
+                    <h5 className="text-sm font-bold text-app-text flex items-center gap-1.5">
                       <span>Generar con Inteligencia Artificial</span>
                     </h5>
                     <p className="text-xs text-gray-400 mt-1">
@@ -624,7 +651,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                     </span>
                   </div>
                   <div>
-                    <h5 className="text-sm font-bold text-white">Creación Manual por el Usuario</h5>
+                    <h5 className="text-sm font-bold text-app-text">Creación Manual por el Usuario</h5>
                     <p className="text-xs text-gray-400 mt-1">
                       Construye las descripciones y definiciones tú mismo sin inferencias de IA, manteniendo el control absoluto de cada término.
                     </p>
@@ -654,7 +681,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
               </div>
 
               <div className="space-y-1.5">
-                <h4 className="text-base font-bold text-white">
+                <h4 className="text-base font-bold text-app-text">
                   Generando Diccionario de Datos con IA
                 </h4>
                 <p className="text-xs text-gray-400">
@@ -692,7 +719,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                 <div className="flex items-center space-x-2.5 text-indigo-200">
                   <Edit3 className="w-4 h-4 text-indigo-400 shrink-0" />
                   <div>
-                    <span className="font-bold text-white">Revisión y Validación del Diccionario:</span>{' '}
+                    <span className="font-bold text-app-text">Revisión y Validación del Diccionario:</span>{' '}
                     <span>
                       {creationMode === 'ai'
                         ? 'Verifica que la IA haya generado descripciones correctas. Puedes ajustar cualquier campo antes de autorizar.'
@@ -701,7 +728,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                   </div>
                 </div>
                 <div className="text-right text-[11px] text-gray-400 shrink-0 pl-3">
-                  <span className="text-white font-bold">{dictionaryData.total_tables}</span> tablas •{' '}
+                  <span className="text-app-text font-bold">{dictionaryData.total_tables}</span> tablas •{' '}
                   <span className="text-purple-400 font-bold">{dictionaryData.total_columns}</span> columnas
                 </div>
               </div>
@@ -717,7 +744,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                       className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors flex items-center space-x-1.5 border ${
                         selectedTableIndex === idx
                           ? 'bg-purple-600 text-white border-purple-500'
-                          : 'bg-dark-base text-gray-400 border-dark-border hover:text-white'
+                          : 'bg-dark-base text-gray-400 border-dark-border hover:text-app-text'
                       }`}
                     >
                       <TableIcon className="w-3.5 h-3.5" />
@@ -735,7 +762,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs text-gray-400 pb-1">
                     <div>
-                      Tabla activa: <strong className="text-white font-mono">{activeTable.table_name}</strong> ({activeTable.columns.length} columnas)
+                      Tabla activa: <strong className="text-app-text font-mono">{activeTable.table_name}</strong> ({activeTable.columns.length} columnas)
                     </div>
                     {creationMode === 'ai' && (
                       <span className="text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
@@ -765,7 +792,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                                   <Key className="w-3.5 h-3.5 text-amber-400" />
                                 </span>
                               )}
-                              <span className="font-mono text-xs font-bold text-white">{col.name}</span>
+                              <span className="font-mono text-xs font-bold text-app-text">{col.name}</span>
                               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-dark-card border border-dark-border text-cyan-300">
                                 {col.data_type}
                               </span>
@@ -806,7 +833,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                                   handleColumnEditChange(activeTable.table_name, col.name, 'friendly_name', e.target.value)
                                 }
                                 placeholder="Ej: Monto Facturado"
-                                className="w-full bg-dark-base border border-dark-border rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                                className="w-full bg-dark-base border border-dark-border rounded-xl px-2.5 py-1.5 text-xs text-app-text focus:outline-none focus:border-purple-500"
                               />
                             </div>
 
@@ -825,7 +852,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                                   handleColumnEditChange(activeTable.table_name, col.name, 'description', e.target.value)
                                 }
                                 placeholder="Describe el significado para el negocio..."
-                                className="w-full bg-dark-base border border-dark-border rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                                className="w-full bg-dark-base border border-dark-border rounded-xl px-2.5 py-1.5 text-xs text-app-text focus:outline-none focus:border-purple-500"
                               />
                             </div>
                           </div>
@@ -850,7 +877,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2.5 text-amber-300">
                     <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
-                    <h4 className="text-sm font-bold text-white">Auditoría de Calidad: Valores Nulos Detectados</h4>
+                    <h4 className="text-sm font-bold text-app-text">Auditoría de Calidad: Valores Nulos Detectados</h4>
                   </div>
                   <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
                     {nullsData.total_tables_with_nulls} {nullsData.total_tables_with_nulls === 1 ? 'tabla afectada' : 'tablas afectadas'}
@@ -870,7 +897,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                 <div className="space-y-2">
                   {nullsData.tables.map((tbl) => (
                     <div key={tbl.table_name} className="flex flex-wrap items-center gap-1.5 text-xs">
-                      <span className="font-mono font-bold text-white bg-dark-card px-2 py-0.5 rounded border border-dark-border">
+                      <span className="font-mono font-bold text-app-text bg-dark-card px-2 py-0.5 rounded border border-dark-border">
                         {tbl.table_name}
                       </span>
                       <span className="text-gray-500">→</span>
@@ -909,7 +936,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                       Depuración
                     </span>
                   </div>
-                  <h5 className="text-xs font-bold text-white">1. Eliminar registros con nulos</h5>
+                  <h5 className="text-xs font-bold text-app-text">1. Eliminar registros con nulos</h5>
                   <p className="text-[11px] text-gray-400 leading-relaxed">
                     Elimina físicamente de la base de datos las filas que contienen campos vacíos, garantizando que solo existan filas 100% completas.
                   </p>
@@ -935,7 +962,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                       Estadística
                     </span>
                   </div>
-                  <h5 className="text-xs font-bold text-white">2. Adaptar a la moda estadística</h5>
+                  <h5 className="text-xs font-bold text-app-text">2. Adaptar a la moda estadística</h5>
                   <p className="text-[11px] text-gray-400 leading-relaxed">
                     Imputa cada valor nulo con el valor más frecuente de su columna, preservando la tendencia y distribución mayoritaria.
                   </p>
@@ -961,7 +988,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                       Proximidad
                     </span>
                   </div>
-                  <h5 className="text-xs font-bold text-white">3. Adaptar al más cercano</h5>
+                  <h5 className="text-xs font-bold text-app-text">3. Adaptar al más cercano</h5>
                   <p className="text-[11px] text-gray-400 leading-relaxed">
                     Rellena cada valor nulo con el dato contiguo no-nulo más próximo (interpolación de arrastre / forward-fill).
                   </p>
@@ -987,7 +1014,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                       Recomendado
                     </span>
                   </div>
-                  <h5 className="text-xs font-bold text-white">4. Dejar la opción abierta al usuario</h5>
+                  <h5 className="text-xs font-bold text-app-text">4. Dejar la opción abierta al usuario</h5>
                   <p className="text-[11px] text-gray-400 leading-relaxed">
                     Conserva los datos intactos. Cuando una consulta maneje nulos, la IA le advertirá previamente y le dará a elegir qué hacer.
                   </p>
@@ -1003,18 +1030,18 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                 <CheckCircle2 className="w-8 h-8" />
               </div>
               <div className="space-y-1.5">
-                <h4 className="text-base font-bold text-white">
+                <h4 className="text-base font-bold text-app-text">
                   ¡Base de Datos y Diccionario Instalados Exitosamente!
                 </h4>
                 <p className="text-xs text-gray-400">
-                  La fuente de datos <strong className="text-white">{registeredConnection.name}</strong> ha sido registrada, estructurada y catalogada.
+                  La fuente de datos <strong className="text-app-text">{registeredConnection.name}</strong> ha sido registrada, estructurada y catalogada.
                 </p>
               </div>
 
               <div className="p-4 rounded-2xl bg-dark-base border border-dark-border text-left text-xs space-y-2">
                 <div className="flex justify-between">
                   <span className="text-gray-400">Fuente:</span>
-                  <span className="text-white font-semibold">{registeredConnection.name}</span>
+                  <span className="text-app-text font-semibold">{registeredConnection.name}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Modo de Creación:</span>
@@ -1040,7 +1067,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
             <button
               type="button"
               onClick={() => setCurrentStep('input')}
-              className="flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-medium text-gray-300 hover:text-white hover:bg-dark-card transition-colors"
+              className="flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-medium text-gray-300 hover:text-app-text hover:bg-dark-card transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Volver a Fuente</span>
@@ -1057,7 +1084,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                   type="button"
                   onClick={handleClose}
                   disabled={isProcessing}
-                  className="px-4 py-2 rounded-xl text-xs font-medium text-gray-300 hover:text-white hover:bg-dark-card transition-colors"
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-gray-300 hover:text-app-text hover:bg-dark-card transition-colors"
                 >
                   Cancelar
                 </button>
@@ -1115,7 +1142,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                   type="button"
                   onClick={() => setCurrentStep('choice')}
                   disabled={isSavingReview}
-                  className="px-4 py-2 rounded-xl text-xs font-medium text-gray-300 hover:text-white hover:bg-dark-card transition-colors"
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-gray-300 hover:text-app-text hover:bg-dark-card transition-colors"
                 >
                   Volver a Modo
                 </button>
@@ -1146,7 +1173,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                   type="button"
                   onClick={() => setCurrentStep('review')}
                   disabled={isApplyingNullPolicy}
-                  className="px-4 py-2 rounded-xl text-xs font-medium text-gray-300 hover:text-white hover:bg-dark-card transition-colors"
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-gray-300 hover:text-app-text hover:bg-dark-card transition-colors"
                 >
                   Volver a Diccionario
                 </button>
@@ -1180,7 +1207,7 @@ export const DatabaseWizardModal: React.FC<DatabaseWizardModalProps> = ({
                       handleClose();
                       onNavigateToCatalog();
                     }}
-                    className="px-4 py-2 rounded-xl text-xs font-medium text-purple-300 hover:text-white bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 transition-colors"
+                    className="px-4 py-2 rounded-xl text-xs font-medium text-purple-300 hover:text-app-text bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 transition-colors"
                   >
                     Ver en Catálogo
                   </button>

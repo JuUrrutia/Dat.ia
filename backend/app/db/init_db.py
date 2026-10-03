@@ -52,6 +52,23 @@ def init_db(db: Session):
             with engine.begin() as conn:
                 if "is_golden" not in mem_cols:
                     conn.execute(text("ALTER TABLE query_learning_memories ADD COLUMN is_golden BOOLEAN DEFAULT FALSE NOT NULL"))
+
+        # Procedencia del permiso de tabla. Mismo mecanismo que `is_shared`: se
+        # agrega la columna con el default que falla cerrado. Las filas existentes
+        # quedan en False (o sea "nadie lo concedio a proposito"), que es
+        # justamente lo que la migracion de default-deny de mas abajo revoca.
+        if "role_table_permissions" in table_names:
+            perm_cols = {c["name"] for c in inspector.get_columns("role_table_permissions")}
+            with engine.begin() as conn:
+                if "granted_by_admin" not in perm_cols:
+                    conn.execute(text("ALTER TABLE role_table_permissions ADD COLUMN granted_by_admin BOOLEAN DEFAULT FALSE NOT NULL"))
+                    # No se marca nada como concedido: el default FALSE deja a todas
+                    # las filas existentes sin procedencia demostrable, que es
+                    # exactamente lo que la migracion de default-deny de mas abajo
+                    # revoca en los datasets subidos. La matriz de la demo no pasa
+                    # por aca: vive en las conexiones de plataforma (is_uploaded
+                    # == False), que la migracion no toca, y el seeder declarativo
+                    # la (re)marca como concedida fila por fila.
     except Exception:
         pass
 
@@ -102,8 +119,6 @@ def init_db(db: Session):
         {"username": "juan_ti", "email": "juan@empresa.com", "pwd": "ti123", "is_admin": False, "role": ti_role},
     ]
 
-    from app.core.security import verify_password
-
     for u_info in demo_users:
         existing_user = db.query(User).filter(User.username == u_info["username"]).first()
         if not existing_user:
@@ -117,15 +132,13 @@ def init_db(db: Session):
                 role_id=u_info["role"].id if u_info["role"] else None
             )
             db.add(new_user)
-        else:
-            # Ensure demo accounts always have functional passwords and valid roles
-            if not verify_password(u_info["pwd"], existing_user.hashed_password):
-                existing_user.hashed_password = get_password_hash(u_info["pwd"])
-            if u_info["role"] and existing_user.role_id is None:
-                existing_user.role_id = u_info["role"].id
-            existing_user.is_active = True
-            existing_user.failed_login_attempts = 0
-            existing_user.locked_until = None
+        elif u_info["role"] and existing_user.role_id is None:
+            # Solo backfill de rol. Una cuenta existente NO se toca mas: revertir
+            # su contrasena en cada arranque deshacia los cambios del admin,
+            # reactivaba cuentas desactivadas y ponia el lockout en cero, con lo
+            # que un reinicio de Docker hacia la fuerza bruta infinitamente
+            # reutilizable.
+            existing_user.role_id = u_info["role"].id
     db.commit()
 
     import os
@@ -211,13 +224,21 @@ def init_db(db: Session):
                         RoleTablePermission.connection_id == s_conn.id,
                         RoleTablePermission.table_name == tbl
                     ).first()
-                    if not existing_perm:
+                    if existing_perm:
+                        existing_perm.granted_by_admin = True
+                    else:
+                        # Esta matriz SI es una decision explicita de la demo (los
+                        # 12 roles y las tablas SAP declaradas arriba), asi que las
+                        # filas se marcan como concedidas por un admin: es lo que
+                        # las distingue del auto-grant y las protege de la
+                        # migracion de default-deny.
                         db.add(RoleTablePermission(
                             role_id=r_obj.id,
                             connection_id=s_conn.id,
                             schema_name=s_schema,
                             table_name=tbl,
-                            is_allowed=True
+                            is_allowed=True,
+                            granted_by_admin=True
                         ))
 
     # Ensure financial roles strictly do NOT have access to tech/server infrastructure tables
@@ -297,52 +318,63 @@ def init_db(db: Session):
                             permission_type=ColumnPermissionType.BLOCKED
                         ))
 
-    # Seed permissions for uploaded user datasets (is_uploaded == True)
-    from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
-    uploaded_connections = db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == True).all()
-    operational_roles = db.query(Role).filter(~Role.name.in_(["Usuario", "Usuario Consultor"])).all()
+    # MIGRACION default-deny: los datasets ya cargados.
+    #
+    # Antes, el bloque que vivia aqui (y `upload_database_file`) creaba un
+    # RoleTablePermission(is_allowed=True) por cada (rol, tabla) de cada conexion
+    # subida, saltandose solo unas tablas de la demo SAP por substring sobre el
+    # nombre del rol. En cualquier dataset real la exclusion no excluye nada y
+    # queda over-grant para casi todos los roles.
+    #
+    # Que decide esta migracion: revocar, nunca conceder. Las filas que no son
+    # decision de un admin (granted_by_admin = False, que es el default y por eso
+    # cubre tanto las del auto-grant viejo como cualquier fila sin procedencia
+    # demostrable) se borran de las conexiones SUBIDAS. Las conexiones de
+    # plataforma (is_uploaded == False) NO se tocan: ahi esta la matriz de la demo
+    # declarada arriba, y borrarla dejaria el producto sin acceso.
+    #
+    # Consecuencia asumida: un dataset preexistente queda sin acceso hasta que el
+    # admin re-asigne con PUT /api/v1/permissions. Es el trade correcto:
+    # revocar de mas es recuperable en un click; dejar el over-grant no lo es.
+    #
+    # Idempotente: corre en cada arranque, y la segunda vez no hay nada que borrar.
+    uploaded_ids = [
+        c[0] for c in db.query(CorporateConnection.id)
+        .filter(CorporateConnection.is_uploaded == True).all()
+    ]
+    if uploaded_ids:
+        revoked = db.query(RoleTablePermission).filter(
+            RoleTablePermission.connection_id.in_(uploaded_ids),
+            RoleTablePermission.granted_by_admin == False,
+        ).delete(synchronize_session=False)
+        db.commit()
+        if revoked:
+            print(f"[migracion default-deny] {revoked} permisos de tabla no decisions por un admin fueron revocados de {len(uploaded_ids)} dataset(s) subido(s). Re-asignalos desde el panel de permisos.")
 
-    for o_conn in uploaded_connections:
-        is_o_pg = (o_conn.db_type == DatabaseType.POSTGRESQL or "postgres" in str(o_conn.db_type).lower())
-        if is_o_pg:
-            phys_tables = DynamicSchemaPruningService.get_physical_db_tables(o_conn)
-            target_schema = "public"
-        else:
-            db_path = o_conn.host if (o_conn.host and os.path.exists(o_conn.host)) else (
-                o_conn.database_name if (o_conn.database_name and os.path.exists(o_conn.database_name)) else None
-            )
-            phys_tables = DynamicSchemaPruningService.get_physical_db_tables(db_path) if db_path else set()
-            target_schema = "main"
-
-        if not phys_tables:
-            cat_entries = db.query(SemanticCatalog).filter(SemanticCatalog.connection_id == o_conn.id).all()
-            phys_tables = {e.table_name for e in cat_entries if e.table_name}
-        for r_obj in operational_roles:
-            is_r_ti = any(k in r_obj.name.lower() for k in ["ti", "infraestructura"])
-            is_r_fin = any(k in r_obj.name.lower() for k in ["economista", "financiero"])
-            for tbl in phys_tables:
-                t_lower = tbl.lower()
-                if is_r_ti and t_lower in [
-                    "fact_ventas", "fact_ingresos_costos", "dim_clientes",
-                    "dim_productos", "dim_categorias", "vbak_cabpedidoventa",
-                    "vbap_pospedidoventa", "ekko_cabpedidocompra", "ekpo_pospedidocompra", "kna1_clientes"
-                ]:
-                    continue
-                if is_r_fin and t_lower in ["dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos"]:
-                    continue
-                existing_perm = db.query(RoleTablePermission).filter(
-                    RoleTablePermission.role_id == r_obj.id,
-                    RoleTablePermission.connection_id == o_conn.id,
-                    RoleTablePermission.table_name.ilike(tbl)
-                ).first()
-                if not existing_perm:
-                    db.add(RoleTablePermission(
-                        role_id=r_obj.id,
-                        connection_id=o_conn.id,
-                        schema_name=target_schema,
-                        table_name=tbl,
-                        is_allowed=True
-                    ))
+    # MIGRACION conector unico: `is_active` se leia como un singleton (los
+    # lectores hacen `ORDER BY id DESC LIMIT 1`) pero las escrituras no lo
+    # trataban como tal, asi que se acumularon varias conexiones activas. Con la
+    # demo de plataforma y un dataset subido los dos marcados, el motor respondia
+    # contra el dataset (id mas alto), que por default-deny no tiene permisos:
+    # todos los no-admin se quedaban sin datos en todo el producto.
+    #
+    # Gana la de id mas alto, que es exactamente lo que el motor ya elegia: la
+    # migracion quita el estado incoherente sin cambiar cual es la fuente que
+    # estaba en uso. Idempotente: la segunda vez no hay nada que apagar.
+    active_ids = [
+        c[0] for c in db.query(CorporateConnection.id)
+        .filter(CorporateConnection.is_active == True)
+        .order_by(CorporateConnection.id.desc()).all()
+    ]
+    if len(active_ids) > 1:
+        db.query(CorporateConnection).filter(
+            CorporateConnection.id.in_(active_ids[1:])
+        ).update({CorporateConnection.is_active: False}, synchronize_session=False)
+        db.commit()
+        print(
+            f"[migracion conector unico] {len(active_ids) - 1} conexion(es) "
+            f"activa(s) extra(s) apagadas. Queda activa la {active_ids[0]}."
+        )
 
     db.commit()
 

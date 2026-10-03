@@ -6,13 +6,48 @@ from typing import List, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_user, get_current_admin
-from app.core.security import verify_password, get_password_hash, create_access_token
+from app.core.security import verify_password, get_password_hash, create_access_token, decode_token_payload
 from app.modules.auth.models import User, Role, UserSession
-from app.core.constants import MAX_FAILED_LOGIN_ATTEMPTS, ACCOUNT_LOCKOUT_DURATION_MINUTES
+from app.core.constants import (
+    MAX_FAILED_LOGIN_ATTEMPTS, ACCOUNT_LOCKOUT_DURATION_MINUTES, ADMIN_ROLES
+)
 from app.modules.auth.schemas import (
     UserLogin, UserSelfRegister, UserOut, Token, PasswordChangeRequest,
-    PasswordResetResponse, SessionOut
+    PasswordResetResponse, SessionOut, UserRoleUpdate, validate_password_strength
 )
+
+def _require_strong_password(raw: str) -> str:
+    """Aplica la regla única de schemas.validate_password_strength como HTTP 400."""
+    try:
+        return validate_password_strength(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+def _has_admin_rights(user: User) -> bool:
+    """
+    "¿Este usuario administra?" con la MISMA regla que `get_current_admin`:
+    el flag `is_admin` o el rol del catalogo que este en ADMIN_ROLES.
+
+    No se puede usar solo `is_admin`: un usuario con rol "Administrador" pero
+    `is_admin=False` entra igual a /auth/users, asi que contarlo como no-admin
+    dejaria pasar el guard de "ultimo administrador" y el sistema se quedaria
+    sin nadie que pueda administrarlo.
+    """
+    return bool(user.is_admin) or (user.role is not None and user.role.name in ADMIN_ROLES)
+
+def _jti_from_request(request: Request) -> Optional[str]:
+    """
+    JTI de la sesión con la que se está haciendo el request.
+
+    `get_current_user` solo devuelve el User, y revocar "todas menos la actual"
+    necesita saber cuál es la actual para no expulsar al propio usuario de su
+    sesión recién autenticada.
+    """
+    header = request.headers.get("authorization", "")
+    if not header.lower().startswith("bearer "):
+        return None
+    payload = decode_token_payload(header.split(" ", 1)[1].strip())
+    return payload.get("jti") if payload else None
 
 router = APIRouter()
 
@@ -44,7 +79,7 @@ def register_user(
     assigned_role_id = default_role.id if default_role else None
     role_name = default_role.name if default_role else "Usuario"
 
-    hashed_pwd = get_password_hash(user_in.password)
+    hashed_pwd = get_password_hash(_require_strong_password(user_in.password))
 
     new_user = User(
         username=user_in.username,
@@ -170,6 +205,7 @@ def read_current_user_profile(
 @router.post("/change-password")
 def change_user_password(
     pwd_in: PasswordChangeRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -180,19 +216,30 @@ def change_user_password(
             detail="La contraseña actual ingresada es incorrecta."
         )
 
-    if len(pwd_in.new_password.strip()) < 6:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La nueva contraseña debe tener al menos 6 caracteres."
-        )
+    new_password = _require_strong_password(pwd_in.new_password)
 
-    current_user.hashed_password = get_password_hash(pwd_in.new_password.strip())
+    current_user.hashed_password = get_password_hash(new_password)
     current_user.must_change_password = False
     current_user.failed_login_attempts = 0
     current_user.locked_until = None
+
+    # Revoca el resto de las sesiones del usuario, igual que hace el reset de
+    # admin. Sin esto, un token robado seguia valiendo hasta expirar: el usuario
+    # detectaba el robo, cambiaba la contraseña y la credencial expuesta
+    # sobrevivia al cambio. Se conserva la sesión con la que se está haciendo el
+    # cambio para que el cliente no quede desconectado.
+    current_jti = _jti_from_request(request)
+    revoke_filter = [
+        UserSession.user_id == current_user.id,
+        UserSession.is_revoked == False,
+    ]
+    if current_jti:
+        revoke_filter.append(UserSession.jti != current_jti)
+    revoked = db.query(UserSession).filter(*revoke_filter).update({"is_revoked": True})
+
     db.commit()
 
-    return {"message": "Contraseña actualizada exitosamente."}
+    return {"message": "Contraseña actualizada exitosamente.", "revoked_sessions": revoked}
 
 # =========================================================================
 # ADMIN GOVERNANCE ENDPOINTS: SESSIONS & PASSWORD RESETS
@@ -200,17 +247,19 @@ def change_user_password(
 
 @router.get("/roles")
 def list_available_roles(
+    current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ) -> Any:
-    """Lists available roles for administration management."""
+    """Lists available roles for administration management (Admin only)."""
     roles = db.query(Role).all()
     return [{"id": r.id, "name": r.name, "description": r.description} for r in roles]
 
 @router.get("/users", response_model=List[UserOut])
 def list_all_users(
+    current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ) -> Any:
-    """Lists registered users from metadata database for admin governance."""
+    """Lists registered users from metadata database for admin governance (Admin only)."""
     users = db.query(User).all()
     out = []
     for u in users:
@@ -265,6 +314,109 @@ def revoke_session(
     session.is_revoked = True
     db.commit()
     return {"message": "Sesión revocada exitosamente."}
+
+@router.patch("/users/{user_id}", response_model=UserOut)
+def admin_update_user(
+    user_id: int,
+    payload: UserRoleUpdate,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Actualiza rol y/o `is_admin` de un usuario (Admin only).
+
+    Devuelve el `UserOut` ya releido de la base: la UI confirma contra esta
+    respuesta, no contra un estado local.
+
+    Decisión de diseño — revoca las sesiones del usuario afectado: SÍ, y solo
+    cuando el cambio le QUITA permisos de administrador. El motivo es el mismo
+    que en `admin_reset_user_password`: el token es un JWT de 24h que no lleva
+    el rol adentro, así que un token emitido con `is_admin=True` sigue valiendo
+    hasta expirar aunque al usuario ya se le haya quitado. Bajar privilegios
+    tiene que cortar las sesiones abiertas, no esperar al vencimiento.
+
+    En los demas casos NO se revoca. Subir privilegios no deja nada peligroso
+    vivo (el token viejo no podia mas de lo que ya podia), y cambiar el rol sin
+    tocar `is_admin` ya surte efecto en la siguiente llamada porque
+    `get_current_admin` relee el rol de la base en cada request. Revocar ahi
+    botaria a usuarios a los que no se les cambio el acceso.
+    """
+    if payload.role is None and payload.is_admin is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Indica al menos un campo a actualizar: 'role' y/o 'is_admin'.",
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado."
+        )
+
+    new_role = None
+    if payload.role is not None:
+        role_name = payload.role.strip()
+        if not role_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El rol no puede ser una cadena vacía."
+            )
+        new_role = db.query(Role).filter(Role.name == role_name).first()
+        if not new_role:
+            available = [r.name for r in db.query(Role).order_by(Role.name).all()]
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"El rol '{role_name}' no existe en el catálogo. Roles disponibles: {', '.join(available)}."
+            )
+
+    # --- Salvaguardas de administración -----------------------------------
+    # Se calculan sobre el estado RESULTANTE (rol nuevo + is_admin nuevo), no
+    # solo sobre `is_admin`: un admin con rol de catálogo también administra.
+    had_admin_rights = _has_admin_rights(user)
+
+    keeps_admin_rights = bool(payload.is_admin) if payload.is_admin is not None else user.is_admin
+    if new_role is not None:
+        keeps_admin_rights = keeps_admin_rights or new_role.name in ADMIN_ROLES
+
+    losing_admin_rights = had_admin_rights and not keeps_admin_rights
+
+    if losing_admin_rights and user.id == current_admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No puedes quitarte a ti mismo los permisos de administrador. Pídele el cambio a otro administrador."
+        )
+
+    if losing_admin_rights:
+        remaining_admins = [
+            u for u in db.query(User).filter(User.id != user.id).all()
+            if u.is_active and _has_admin_rights(u)
+        ]
+        if not remaining_admins:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede quitar los permisos de administrador al último administrador del sistema."
+            )
+
+    # --- Aplicación --------------------------------------------------------
+    if new_role is not None:
+        user.role_id = new_role.id
+    if payload.is_admin is not None:
+        user.is_admin = payload.is_admin
+
+    if losing_admin_rights:
+        db.query(UserSession).filter(
+            UserSession.user_id == user.id,
+            UserSession.is_revoked == False
+        ).update({"is_revoked": True})
+
+    db.commit()
+    db.refresh(user)
+
+    role_name = user.role.name if user.role else ("Super Administrador" if user.is_admin else "Usuario")
+    user_out = UserOut.model_validate(user)
+    user_out.role_name = role_name
+    return user_out
 
 @router.post("/users/{user_id}/revoke-all-sessions")
 def revoke_all_user_sessions(

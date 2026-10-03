@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../features/auth/context/AuthContext';
-import { ShieldCheck, Database, Lock, KeyRound, Mail, UserPlus, LogIn, ArrowRight, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Database, Lock, KeyRound, Mail, UserPlus, LogIn, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import logoDatiaDark from './Logo_datia_2.png';
 import logoDatiaLight from './Logo_Datia_3.png';
 
@@ -11,7 +11,7 @@ const PRESET_USERS = [
 ];
 
 export const LoginPage: React.FC = () => {
-  const { login, register, loginDemo, error, clearError } = useAuth();
+  const { login, register, error, clearError } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
 
   // Form Fields
@@ -22,6 +22,9 @@ export const LoginPage: React.FC = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  // One toggle for both password fields on purpose: confirming a password means
+  // comparing the two, which needs them visible at the same time.
+  const [showPasswords, setShowPasswords] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,7 +70,18 @@ export const LoginPage: React.FC = () => {
     try {
       await login(u.username, u.password);
     } catch (err: any) {
-      loginDemo(u.username, u.role, u.is_admin);
+      // Antes caia a `loginDemo(...)`, que fabricaba una sesion con is_admin:true y
+      // la guardaba en localStorage. Con un password incorrecto, una cuenta bloqueada
+      // o el backend caido, el usuario entraba igual, el Header decia "Super
+      // Administrador" y la sesion sobrevivia a un F5. El backend rechazaba cada
+      // llamada por no haber token, asi que no habia fuga de datos: habia un panel
+      // de gobierno creible para alguien que nunca se autentico.
+      // Si el login falla, el login falla.
+      setLocalError(
+        err?.message
+        ? `No se pudo iniciar sesión: ${err.message}`
+        : 'No se pudo iniciar sesión. Verificá las credenciales o que el backend esté en ejecución.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -84,7 +98,7 @@ export const LoginPage: React.FC = () => {
             <img src={logoDatiaLight} alt="Logo Datia" className="block dark:hidden w-full h-full object-contain p-1" />
             <img src={logoDatiaDark} alt="Logo Datia" className="hidden dark:block w-full h-full object-contain p-1" />
           </div>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight">Dat.ia</h1>
+          <h1 className="text-2xl font-extrabold text-app-text tracking-tight">Dat.ia</h1>
           <p className="text-xs text-gray-400">Transformando datos en decisiones</p>
         </div>
 
@@ -98,7 +112,7 @@ export const LoginPage: React.FC = () => {
               className={`flex-1 flex items-center justify-center space-x-2 py-2 rounded-lg text-xs font-semibold transition-colors ${
                 mode === 'login'
                   ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
-                  : 'text-gray-400 hover:text-white'
+                  : 'text-gray-400 hover:text-app-text'
               }`}
             >
               <LogIn className="w-3.5 h-3.5" />
@@ -110,7 +124,7 @@ export const LoginPage: React.FC = () => {
               className={`flex-1 flex items-center justify-center space-x-2 py-2 rounded-lg text-xs font-semibold transition-colors ${
                 mode === 'register'
                   ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
-                  : 'text-gray-400 hover:text-white'
+                  : 'text-gray-400 hover:text-app-text'
               }`}
             >
               <UserPlus className="w-3.5 h-3.5" />
@@ -138,7 +152,7 @@ export const LoginPage: React.FC = () => {
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="ej. economista"
                   required
-                  className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
+                  className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-app-text placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
                 />
                 <KeyRound className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
               </div>
@@ -155,7 +169,7 @@ export const LoginPage: React.FC = () => {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="usuario@empresa.com"
                     required
-                    className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
+                    className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-app-text placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
                   />
                   <Mail className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
                 </div>
@@ -167,14 +181,24 @@ export const LoginPage: React.FC = () => {
               <div className="relative">
                 <input
                   id="login-password-input"
-                  type="password"
+                  name="password"
+                  type={showPasswords ? 'text' : 'password'}
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
+                  className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-10 py-2.5 text-xs text-app-text placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
                 />
                 <Lock className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
+                <button
+                  type="button"
+                  onClick={() => setShowPasswords((v) => !v)}
+                  aria-label={showPasswords ? 'Ocultar contraseñas' : 'Mostrar contraseñas'}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-gray-400 hover:text-app-text hover:bg-dark-card transition-colors"
+                >
+                  {showPasswords ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 
@@ -184,12 +208,14 @@ export const LoginPage: React.FC = () => {
                 <div className="relative">
                   <input
                     id="login-confirm-password-input"
-                    type="password"
+                    name="confirmPassword"
+                    type={showPasswords ? 'text' : 'password'}
+                    autoComplete="new-password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
                     required
-                    className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
+                    className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-10 py-2.5 text-xs text-app-text placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
                   />
                   <Lock className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
                 </div>

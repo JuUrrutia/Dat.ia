@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { useChatEngine } from '../features/chat/hooks/useChatEngine';
 import { SidebarChatHistory } from '../components/chat/SidebarChatHistory';
@@ -23,15 +23,21 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { queryService } from '../features/chat/services/query_service';
+import { useNotifications } from '../context/NotificationContext';
+import { prefersReducedMotion } from '../features/dashboard/components/charts/theme';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 export const ChatDashboardPage: React.FC = () => {
+  const { notify } = useNotifications();
   const {
     user,
     userRole,
     promptInput,
     setPromptInput,
     isGenerating,
-    generatingPhase,
+    elapsedSeconds,
+    longWaitNotice,
+    streamingNarrative,
     activeTraceability,
     setActiveTraceability,
     isMobileHistoryOpen,
@@ -42,6 +48,7 @@ export const ChatDashboardPage: React.FC = () => {
     promptSuggestions,
     activeThread,
     sidebarThreads,
+    threadsError,
     activeThreadId,
     pendingPrompt,
     chatBottomRef,
@@ -51,6 +58,7 @@ export const ChatDashboardPage: React.FC = () => {
     handleNewThread,
     handleDeleteThread,
     handleSendPrompt,
+    handleCancelPrompt,
     handleSelectConnection,
     handleEditPrompt,
     handleFeedback,
@@ -58,24 +66,86 @@ export const ChatDashboardPage: React.FC = () => {
 
   const [isPresentationMode, setIsPresentationMode] = useState(false);
 
+  // Stable identities for the props that cross into ChatMessageItem.
+  // elapsedSeconds ticks every second and re-renders this page; as inline
+  // arrows these two were new on every render, which defeated React.memo on
+  // the message list and made every chart in the thread rebuild its ECharts
+  // instance once per second for the whole 8-25s of "thinking".
+  const openTraceability = useCallback((trace: any) => setActiveTraceability(trace), []);
+  const sendFollowUp = useCallback(
+    (text: string) => {
+      void handleSendPrompt(text);
+    },
+    [handleSendPrompt]
+  );
+
   // Tableros Ejecutivos & Anomalías Proactivas
+  // `anomaliesData` arranca en null y no en {count: 0}: null es "el servidor
+  // todavía no confirmó nada". Los flags `*Loaded` / `*Error` separan los tres
+  // estados (cargando / vacío real / error). Mismo patrón que `usersLoaded` en
+  // useAdminUsers.
   const [widgets, setWidgets] = useState<any[]>([]);
+  const [widgetsLoaded, setWidgetsLoaded] = useState(false);
+  const [widgetsError, setWidgetsError] = useState<string | null>(null);
   const [isWidgetsOpen, setIsWidgetsOpen] = useState(false);
+
+  // Dialog semantics, Escape, focus containment and focus restore.
+  const widgetsModalRef = useModalA11y<HTMLDivElement>(isWidgetsOpen, () =>
+    setIsWidgetsOpen(false)
+  );
+
+  // Parsed once per widgets change. The JSON.parse calls used to live inside the
+  // .map callback, so they re-parsed every pinned widget's chart option and KPI
+  // payload on any state change in the modal — including unpinning one, and
+  // including the 1Hz elapsed-seconds tick of the page behind it.
+  const parsedWidgets = useMemo(
+    () =>
+      widgets.map((w: any) => {
+        let chartOpt: any = null;
+        let kpis: any[] = [];
+        try {
+          if (w.chart_option_json) chartOpt = JSON.parse(w.chart_option_json);
+        } catch {
+          /* unparseable payload renders as "no series" instead of throwing */
+        }
+        try {
+          if (w.kpis_json) kpis = JSON.parse(w.kpis_json);
+        } catch {
+          /* same */
+        }
+        return { w, chartOpt, kpis };
+      }),
+    [widgets]
+  );
   const [anomaliesData, setAnomaliesData] = useState<{
     count: number;
     anomalies: any[];
     has_critical: boolean;
-  }>({ count: 0, anomalies: [], has_critical: false });
+  } | null>(null);
+  const [anomaliesError, setAnomaliesError] = useState<string | null>(null);
   const [isAnomaliesOpen, setIsAnomaliesOpen] = useState(false);
 
   const fetchWidgets = async () => {
-    const list = await queryService.getWidgets();
-    setWidgets(list);
+    try {
+      setWidgets(await queryService.getWidgets());
+      setWidgetsError(null);
+      setWidgetsLoaded(true);
+    } catch (err: any) {
+      // Sin fallback a []: la UI dice "DESCONOCIDO" en vez de "Tablero (0)".
+      setWidgetsError(err.message || 'No se pudieron consultar los tableros.');
+    }
   };
 
   const fetchAnomalies = async (connId?: number | null) => {
-    const data = await queryService.getAnomalies(connId || undefined);
-    setAnomaliesData(data);
+    try {
+      setAnomaliesData(await queryService.getAnomalies(connId || undefined));
+      setAnomaliesError(null);
+    } catch (err: any) {
+      // "No pude preguntar" no es "no hay anomalías": se descarta el dato y se
+      // muestra el error.
+      setAnomaliesData(null);
+      setAnomaliesError(err.message || 'No se pudo consultar las anomalías.');
+    }
   };
 
   useEffect(() => {
@@ -87,8 +157,14 @@ export const ChatDashboardPage: React.FC = () => {
   }, [activeConnectionId]);
 
   const handleUnpin = async (id: number) => {
-    await queryService.unpinWidget(id);
-    setWidgets((prev) => prev.filter((w) => w.id !== id));
+    // Si el DELETE falla, el widget sigue fijado en el servidor y no puede
+    // desaparecer de la pantalla.
+    const ok = await queryService.unpinWidget(id);
+    if (ok) {
+      setWidgets((prev) => prev.filter((w) => w.id !== id));
+    } else {
+      notify('error', 'No se pudo desfijar el widget en el servidor; sigue fijado.');
+    }
   };
 
   useEffect(() => {
@@ -165,7 +241,16 @@ export const ChatDashboardPage: React.FC = () => {
 
           <div className="flex items-center gap-2">
             {/* Proactive Anomalies Badge & Popover */}
-            {anomaliesData.count > 0 && (
+            {anomaliesError && (
+              <span
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border border-slate-300 dark:border-zinc-700/60 bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400"
+                title={anomaliesError}
+              >
+                <AlertTriangle size={13} className="text-slate-400" />
+                <span>Alertas: DESCONOCIDO</span>
+              </span>
+            )}
+            {anomaliesData && anomaliesData.count > 0 && (
               <div className="relative">
                 <button
                   type="button"
@@ -203,6 +288,11 @@ export const ChatDashboardPage: React.FC = () => {
                         </button>
                       </div>
                       <div className="max-h-60 overflow-y-auto space-y-2">
+                        {anomaliesData.anomalies.length === 0 && (
+                          <p className="p-2.5 text-[11px] text-gray-600 dark:text-zinc-400">
+                            El servidor registró {anomaliesData.count} pero no devolvió el detalle.
+                          </p>
+                        )}
                         {anomaliesData.anomalies.map((a) => (
                           <div key={a.id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 space-y-1.5">
                             <div className="flex items-start justify-between gap-1">
@@ -261,7 +351,7 @@ export const ChatDashboardPage: React.FC = () => {
               title="Ver Tablero Ejecutivo con gráficos fijados"
             >
               <LayoutDashboard size={13} className="text-amber-500 dark:text-amber-400" />
-              <span>Tablero ({widgets.length})</span>
+              <span>Tablero ({widgetsError ? '?' : widgetsLoaded ? widgets.length : '…'})</span>
             </button>
 
 
@@ -280,6 +370,16 @@ export const ChatDashboardPage: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* El historial de la barra lateral sale de localStorage; si el servidor no
+            lo confirmó, se lo dice en vez de dejarlo parecer un historial verificado. */}
+        {threadsError && (
+          <div className="px-4 pt-2 sm:px-8">
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-1.5">
+              {threadsError} El historial que se ve es la copia local de este navegador, sin confirmar por el servidor.
+            </p>
+          </div>
+        )}
 
         {/* Scrollable Conversation Stream */}
         <div className={`flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6 scrollbar-thin scrollbar-thumb-slate-800 ${isPresentationMode ? 'max-w-6xl mx-auto w-full' : ''}`}>
@@ -300,10 +400,10 @@ export const ChatDashboardPage: React.FC = () => {
                   user={user}
                   userRole={userRole}
                   activeThreadId={activeThreadId}
-                  onOpenTraceability={(trace) => setActiveTraceability(trace)}
+                  onOpenTraceability={openTraceability}
                   onEditPrompt={handleEditPrompt}
                   onFeedback={handleFeedback}
-                  onFollowUp={(text) => handleSendPrompt(text)}
+                  onFollowUp={sendFollowUp}
                 />
               ))}
 
@@ -346,8 +446,50 @@ export const ChatDashboardPage: React.FC = () => {
                         <span className="inline-block w-2 h-2 rounded-full bg-brand-500 dark:bg-cyan-400 animate-bounce [animation-delay:0.2s]" />
                         <span className="inline-block w-2 h-2 rounded-full bg-brand-500 dark:bg-cyan-400 animate-bounce [animation-delay:0.4s]" />
                         <span className="text-brand-700 dark:text-cyan-300 text-xs pl-1 font-medium animate-fadeIn">
-                          {generatingPhase || 'Generando consulta SQL y preparando visualizaciones...'}
+                          Analizando tu pregunta con el modelo local
                         </span>
+                        {/* Lo unico que el navegador sabe con certeza: que sigue
+                            corriendo y cuanto lleva. Sin barra de progreso: no
+                            hay forma de saber cuanto falta sin streaming. */}
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums pl-1">
+                          {elapsedSeconds}s
+                        </span>
+                      </div>
+
+                      {/* Narrativa en vivo. Solo aparece cuando el modelo YA
+                          produjo estos tokens: no es una animación ni una
+                          estimación. Convive con el reloj (no lo reemplaza) y se
+                          borra si el stream se corta, porque lo que se confirma
+                          en el hilo es siempre la respuesta completa. */}
+                      {streamingNarrative && (
+                        <div className="mt-1 text-xs sm:text-sm leading-relaxed text-slate-700 dark:text-slate-200 whitespace-pre-wrap break-words animate-fadeIn">
+                          {streamingNarrative}
+                          <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-brand-500 align-text-bottom animate-pulse" />
+                        </div>
+                      )}
+
+                      {longWaitNotice && (
+                        <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-2 animate-fadeIn">
+                          La primera respuesta con un modelo local puede tardar entre 8 y 25 segundos: el motor encadena varias
+                          llamadas al LLM en CPU antes de poder responder. No está colgado. Podés seguir esperando o
+                          cancelar y reformular la pregunta.
+                        </p>
+                      )}
+
+                      <div className="flex items-center justify-between gap-2 pt-0.5">
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                          El motor no informa en qué etapa está hasta que responda.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCancelPrompt}
+                          aria-label="Cancelar la consulta en curso"
+                          title="Dejar de esperar. El servidor puede seguir trabajando: esto corta la espera, no el trabajo."
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-rose-500/10 hover:border-rose-500/40 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                        >
+                          <X className="w-3 h-3" />
+                          <span>Cancelar</span>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -387,14 +529,14 @@ export const ChatDashboardPage: React.FC = () => {
 
       {/* Tablero Ejecutivo Modal */}
       {isWidgetsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+        <div ref={widgetsModalRef} role="dialog" aria-modal="true" aria-label="Tablero Ejecutivo Corporativo" tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="w-full max-w-5xl max-h-[85vh] flex flex-col rounded-2xl bg-white dark:bg-dark-surface border border-slate-200 dark:border-dark-border shadow-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200 dark:border-dark-border flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2 text-gray-900 dark:text-white font-bold text-base">
                 <LayoutDashboard className="w-5 h-5 text-brand-600 dark:text-brand-400" />
                 <span>Tablero Ejecutivo Corporativo</span>
                 <span className="text-xs font-medium text-gray-600 dark:text-gray-400 bg-slate-100 dark:bg-dark-base px-2.5 py-0.5 rounded-full border border-slate-300 dark:border-dark-border ml-2">
-                  {widgets.length} {widgets.length === 1 ? 'widget fijado' : 'widgets fijados'}
+                  {widgetsError ? 'conteo DESCONOCIDO' : widgetsLoaded ? `${widgets.length} ${widgets.length === 1 ? 'widget fijado' : 'widgets fijados'}` : 'Cargando...'}
                 </span>
               </div>
               <button
@@ -407,7 +549,19 @@ export const ChatDashboardPage: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-zinc-700">
-              {widgets.length === 0 ? (
+              {widgetsError ? (
+                <div className="text-center py-16 space-y-3">
+                  <Pin className="w-10 h-10 text-zinc-400 dark:text-zinc-600 mx-auto" />
+                  <p className="text-slate-800 dark:text-zinc-300 font-medium text-sm">No se pudo consultar el tablero</p>
+                  <p className="text-slate-500 dark:text-zinc-500 text-xs max-w-sm mx-auto">
+                    {widgetsError} No se muestra un conteo de widgets porque el servidor no lo confirmó.
+                  </p>
+                </div>
+              ) : !widgetsLoaded ? (
+                <div className="text-center py-16">
+                  <p className="text-slate-500 dark:text-zinc-500 text-xs">Consultando tableros fijados...</p>
+                </div>
+              ) : widgets.length === 0 ? (
                 <div className="text-center py-16 space-y-3">
                   <Pin className="w-10 h-10 text-zinc-400 dark:text-zinc-600 mx-auto" />
                   <p className="text-slate-800 dark:text-zinc-300 font-medium text-sm">No tienes widgets fijados en el tablero</p>
@@ -417,16 +571,7 @@ export const ChatDashboardPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {widgets.map((w) => {
-                    let chartOpt = null;
-                    let kpis: any[] = [];
-                    try {
-                      if (w.chart_option_json) chartOpt = JSON.parse(w.chart_option_json);
-                    } catch {}
-                    try {
-                      if (w.kpis_json) kpis = JSON.parse(w.kpis_json);
-                    } catch {}
-
+                  {parsedWidgets.map(({ w, chartOpt, kpis }) => {
                     const hasChartSeries = Boolean(
                       chartOpt &&
                       Array.isArray(chartOpt.series) &&
@@ -473,7 +618,7 @@ export const ChatDashboardPage: React.FC = () => {
                               <ReactECharts
                                 option={{
                                   ...chartOpt,
-                                  animation: true,
+                                  animation: !prefersReducedMotion(),
                                   grid: { top: 25, right: 15, bottom: 25, left: 35, containLabel: true },
                                   tooltip: {
                                     show: true,

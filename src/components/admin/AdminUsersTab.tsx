@@ -1,9 +1,9 @@
 import React from 'react';
-import { Users, UserPlus, Search, ShieldCheck, Edit3, Check, Monitor, KeyRound } from 'lucide-react';
-import { UserEditModal } from './UserEditModal';
+import { Users, UserPlus, Search, ShieldCheck, Check, Monitor, KeyRound, Pencil, RefreshCw } from 'lucide-react';
 import { UserAddModal } from './UserAddModal';
 import { UserSessionsModal } from './UserSessionsModal';
 import { UserPasswordResetModal } from './UserPasswordResetModal';
+import { UserEditModal } from './UserEditModal';
 import { useAdminUsers } from '../../features/admin/hooks/useAdminUsers';
 import { getRoleBadgeStyle } from '../../constants';
 
@@ -18,17 +18,18 @@ export interface UserItem {
 
 interface AdminUsersTabProps {
   users: UserItem[];
+  usersLoaded: boolean;
   onRefreshUsers?: () => void;
 }
 
-export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({ users, onRefreshUsers }) => {
+export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({ users, usersLoaded, onRefreshUsers }) => {
   const {
     state,
     dispatch,
     filteredUsers,
-    handleSaveRole,
     handleUserCreated,
-  } = useAdminUsers(users, onRefreshUsers);
+    handleUserSaved,
+  } = useAdminUsers(users, usersLoaded, onRefreshUsers);
 
   return (
     <div className="glass-panel rounded-2xl p-6 border border-slate-200 dark:border-white/10 space-y-5 bg-white dark:bg-zinc-900/90 shadow-sm">
@@ -91,9 +92,42 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({ users, onRefreshUs
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 dark:divide-dark-border text-slate-800 dark:text-gray-200 bg-white dark:bg-transparent">
-            {filteredUsers.map((u) => (
+            {!usersLoaded ? (
+              <tr>
+                <td colSpan={5} className="py-12 text-center text-slate-600 dark:text-gray-400">
+                  <div className="flex items-center justify-center space-x-2">
+                    <RefreshCw className="w-4 h-4 animate-spin text-brand-600 dark:text-purple-400" />
+                    <span>Cargando usuarios...</span>
+                  </div>
+                </td>
+              </tr>
+            ) : users.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-12 text-center text-slate-500 dark:text-gray-400 space-y-3">
+                  <p>No hay usuarios registrados.</p>
+                  {onRefreshUsers && (
+                    <button
+                      type="button"
+                      onClick={onRefreshUsers}
+                      className="inline-flex items-center space-x-1.5 text-xs bg-slate-100 hover:bg-slate-200 dark:bg-dark-card dark:hover:bg-dark-border text-slate-700 hover:text-slate-900 dark:text-gray-300 dark:hover:text-white border border-slate-200 dark:border-dark-border rounded-xl px-3 py-1.5 transition-colors"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Reintentar</span>
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ) : filteredUsers.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-12 text-center text-slate-500 dark:text-gray-400">
+                  Ningún usuario coincide con «{state.searchQuery}».
+                </td>
+              </tr>
+            ) : (
+              filteredUsers.map((u) => (
               <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-dark-card/50 transition-colors">
-                <td className="px-4 py-3 font-medium text-slate-900 dark:text-white flex items-center space-x-2">
+                <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
+                  <div className="flex items-center space-x-2">
                   <span className="w-7 h-7 rounded-full bg-brand-50 border border-brand-200 text-brand-700 dark:bg-purple-500/20 dark:border-purple-500/30 dark:text-purple-300 font-bold text-xs flex items-center justify-center">
                     {u.name.charAt(0).toUpperCase()}
                   </span>
@@ -102,6 +136,7 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({ users, onRefreshUs
                     {u.username && u.username !== u.name && (
                       <p className="text-[10px] text-slate-500 dark:text-gray-500">@{u.username}</p>
                     )}
+                  </div>
                   </div>
                 </td>
                 <td className="px-4 py-3 text-slate-600 dark:text-gray-400 font-mono">{u.email}</td>
@@ -124,6 +159,16 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({ users, onRefreshUs
                   <div className="flex items-center justify-end space-x-1.5">
                     <button
                       type="button"
+                      onClick={() => dispatch({ type: 'OPEN_EDIT', user: u })}
+                      aria-label={`Editar rol de ${u.name}`}
+                      title="Editar rol y privilegios"
+                      className="flex items-center space-x-1 text-xs text-purple-700 dark:text-purple-400 hover:text-purple-900 dark:hover:text-purple-300 bg-purple-50 dark:bg-purple-500/10 hover:bg-purple-100 dark:hover:bg-purple-500/20 border border-purple-200 dark:border-purple-500/20 px-2.5 py-1 rounded-lg transition-colors"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      <span>Editar Rol</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => dispatch({ type: 'OPEN_SESSIONS', user: u })}
                       aria-label={`Ver sesiones de ${u.name}`}
                       title="Ver sesiones activas"
@@ -142,36 +187,28 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({ users, onRefreshUs
                       <KeyRound className="w-3.5 h-3.5" />
                       <span>Reset Clave</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => dispatch({ type: 'OPEN_EDIT', user: u })}
-                      aria-label={`Editar rol para ${u.name}`}
-                      className="flex items-center space-x-1 text-xs text-brand-700 dark:text-purple-400 hover:text-brand-900 dark:hover:text-purple-300 bg-brand-50 dark:bg-purple-500/10 hover:bg-brand-100 dark:hover:bg-purple-500/20 border border-brand-200 dark:border-purple-500/20 px-2.5 py-1 rounded-lg transition-colors"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      <span>Editar Rol</span>
-                    </button>
                   </div>
                 </td>
               </tr>
-            ))}
+              ))
+            )}
           </tbody>
         </table>
       </div>
-
-      {/* Edit Role Modal */}
-      <UserEditModal
-        isOpen={Boolean(state.editingUser)}
-        user={state.editingUser}
-        onClose={() => dispatch({ type: 'CLOSE_EDIT' })}
-        onSave={handleSaveRole}
-      />
 
       {/* User Sessions Modal */}
       <UserSessionsModal
         isOpen={Boolean(state.sessionsUser)}
         user={state.sessionsUser}
         onClose={() => dispatch({ type: 'CLOSE_SESSIONS' })}
+      />
+
+      {/* User Role Edit Modal */}
+      <UserEditModal
+        isOpen={Boolean(state.editUser)}
+        user={state.editUser}
+        onClose={() => dispatch({ type: 'CLOSE_EDIT' })}
+        onSaved={handleUserSaved}
       />
 
       {/* User Password Reset Modal */}
