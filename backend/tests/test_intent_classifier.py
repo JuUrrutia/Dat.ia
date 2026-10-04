@@ -75,6 +75,20 @@ class TestChipsRespectAllowedTables(unittest.TestCase):
         self.assertGreaterEqual(len(IntentClassifier.detect_ambiguity_and_options("clientes")), 3)
         self.assertEqual(IntentClassifier.detect_ambiguity_and_options("ventas de enero 2026"), [])
 
+    def test_detect_ambiguity_and_options(self):
+        # Consulta amplia y ambigua: tiene que ofrecer el desglose de "total"
+        # y las preguntas de desambiguacion.
+        options = IntentClassifier.detect_ambiguity_and_options("ventas")
+        self.assertGreaterEqual(len(options), 3)
+        self.assertTrue(any("total" in opt.lower() for opt in options))
+
+        options_clients = IntentClassifier.detect_ambiguity_and_options("clientes")
+        self.assertGreaterEqual(len(options_clients), 3)
+
+        # Una consulta ya especifica NO es ambigua.
+        specific_options = IntentClassifier.detect_ambiguity_and_options("ventas totales de enero 2026 en sucursal centro")
+        self.assertEqual(len(specific_options), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

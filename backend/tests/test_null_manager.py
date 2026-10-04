@@ -9,6 +9,7 @@ legitimos.
 Cada test reproduce un escenario concreto verificado contra el codigo real.
 """
 
+import asyncio
 import os
 import sqlite3
 import tempfile
@@ -17,6 +18,7 @@ from unittest.mock import MagicMock, patch
 
 from app.modules.admin_catalog.models import DatabaseType
 from app.modules.catalog.services.null_manager import NullManagerService
+from app.modules.chat_engine.engine import QueryEngine
 
 
 def _make_sqlite_conn(path, db_mock=None):
@@ -358,6 +360,133 @@ class TestPolicyIsNotPersistedBeforeItIsApplied(NullManagerTestCase):
 
         self.assertEqual(result["status"], "success")
         self.db.commit.assert_called_once()
+
+
+class _NullDbFixture(unittest.TestCase):
+    """Base SQLite temporal con 2 filas con nulos, como el resto de la suite.
+
+    `engine.execute_query` descartaba el retorno de `NullManagerService.apply_null_policy`.
+    El servicio ya devuelve `status: "no_op"` / `rows_affected: 0` cuando no
+    remedio nada, pero el chat miraba el exito viejo: el usuario clickeaba
+    "eliminar nulos", la base no se tocaba y la respuesta decia
+    "Tratamiento de nulos aplicado".
+    """
+
+    def setUp(self):
+        fd, self.db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("CREATE TABLE test_sales (id INTEGER PRIMARY KEY, category TEXT, amount REAL)")
+        conn.executemany(
+            "INSERT INTO test_sales VALUES (?, ?, ?)",
+            [(1, "Electronics", 100.0), (2, None, 200.0), (3, "Books", 50.0)],
+        )
+        conn.commit()
+        conn.close()
+
+    def tearDown(self):
+        if os.path.exists(self.db_path):
+            try:
+                os.remove(self.db_path)
+            except OSError:
+                pass
+
+    def _chat(self):
+        mock_conn = MagicMock()
+        mock_conn.id = 1
+        mock_conn.db_type = DatabaseType.SQLITE
+        mock_conn.host = self.db_path
+        mock_conn.database_name = self.db_path
+        mock_conn.null_policy = "open"
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_conn
+        mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_conn
+        mock_db.query.return_value.order_by.return_value.first.return_value = mock_conn
+
+        return asyncio.run(QueryEngine.execute_query(
+            question="Tratar nulos en test_sales (eliminar registros con nulos) para la consulta: SELECT * FROM test_sales",
+            user_role="Administrador",
+            is_admin=True,
+            db=mock_db,
+            connection_id=1,
+            conversation_history=[
+                {"question": "SELECT * FROM test_sales", "sql": "SELECT * FROM test_sales"}
+            ],
+        ))
+
+
+class TestChatReportsNullRemediationResult(_NullDbFixture):
+    """Lo que el CHAT dice tras remediar: tiene que calcar lo que el servicio reporto."""
+
+    def test_no_op_is_communicated_instead_of_claiming_success(self):
+        no_op = {
+            "status": "no_op",
+            "policy": "delete_rows",
+            "rows_affected": 0,
+            "message": "No se detectaron valores nulos: no había nada que remediar.",
+        }
+        with patch("app.modules.chat_engine.engine.NullManagerService.apply_null_policy", return_value=no_op):
+            response = self._chat()
+
+        text = response.conversational_response
+        self.assertIn("No se remedió ningún valor nulo", text)
+        self.assertIn("no había nada que remediar", text)
+        self.assertNotIn(
+            "Tratamiento de nulos",
+            text,
+            "el banner de exito no puede seguir apareciendo cuando no se remedio nada",
+        )
+
+    def test_zero_rows_with_success_status_is_also_not_claimed_as_applied(self):
+        """El `status` viejo Sayba success con 0 filas: el aviso no depende solo de el."""
+        with patch(
+            "app.modules.chat_engine.engine.NullManagerService.apply_null_policy",
+            return_value={"status": "success", "policy": "mode", "rows_affected": 0, "message": "0 celdas."},
+        ):
+            response = self._chat()
+
+        self.assertIn("No se remedió ningún valor nulo", response.conversational_response)
+        self.assertNotIn("Tratamiento de nulos", response.conversational_response)
+
+    def test_remediation_with_rows_affected_is_reported_as_applied(self):
+        applied = {
+            "status": "success",
+            "policy": "delete_rows",
+            "rows_affected": 2,
+            "message": "Remediación de nulos aplicada bajo la política 'delete_rows': 2 celda(s) modificada(s).",
+        }
+        with patch("app.modules.chat_engine.engine.NullManagerService.apply_null_policy", return_value=applied):
+            response = self._chat()
+
+        text = response.conversational_response
+        self.assertIn("Tratamiento de nulos", text)
+        self.assertIn("Eliminación de registros con nulos", text)
+        self.assertNotIn("No se remedió ningún valor nulo", text)
+
+    def test_policy_is_still_forced_to_open_afterwards(self):
+        """El aviso no puede cambiar la politica aplicada: sigue siendo 'open'."""
+        no_op = {"status": "no_op", "policy": "delete_rows", "rows_affected": 0, "message": "nada que remediar"}
+        mock_conn = MagicMock()
+        mock_conn.id = 1
+        mock_conn.db_type = DatabaseType.SQLITE
+        mock_conn.host = self.db_path
+        mock_conn.database_name = self.db_path
+        mock_conn.null_policy = "delete_rows"
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_conn
+        mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_conn
+        mock_db.query.return_value.order_by.return_value.first.return_value = mock_conn
+
+        with patch("app.modules.chat_engine.engine.NullManagerService.apply_null_policy", return_value=no_op):
+            asyncio.run(QueryEngine.execute_query(
+                question="Tratar nulos en test_sales (eliminar registros con nulos) para la consulta: SELECT * FROM test_sales",
+                user_role="Administrador", is_admin=True, db=mock_db, connection_id=1,
+                conversation_history=[{"question": "SELECT * FROM test_sales", "sql": "SELECT * FROM test_sales"}],
+            ))
+
+        self.assertEqual(mock_conn.null_policy, "open")
 
 
 if __name__ == "__main__":
