@@ -1,3 +1,4 @@
+import time
 import unittest
 from unittest.mock import MagicMock
 from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
@@ -246,6 +247,22 @@ class TestDynamicSchema(unittest.TestCase):
         self.assertIn("monto_total - costo_total", prompt)
         self.assertNotIn("Columna directa", prompt)
         self.assertNotIn("Registro de datos tipo", prompt)
+
+    def test_schema_cache_ttl_and_invalidation(self):
+        """La cache de schema se puebla, se invalida por conexion y se vacia entera."""
+        DynamicSchemaPruningService.invalidate_schema_cache()
+        self.assertEqual(len(DynamicSchemaPruningService._schema_cache), 0)
+
+        # Se siembra a mano una entrada en la cache
+        key = "1:1:Economista:False"
+        dummy_result = {"schema_prompt": "Prompt Test", "allowed_tables": {"fact_ventas"}, "blocked_columns": set()}
+        DynamicSchemaPruningService._schema_cache[key] = (time.time(), dummy_result)
+
+        self.assertIn(key, DynamicSchemaPruningService._schema_cache)
+
+        # Invalidacion selectiva por conexion
+        DynamicSchemaPruningService.invalidate_schema_cache(connection_id=1)
+        self.assertNotIn(key, DynamicSchemaPruningService._schema_cache)
 
 if __name__ == "__main__":
     unittest.main()

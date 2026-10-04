@@ -27,7 +27,7 @@ from app.core.security import create_access_token, get_password_hash
 # Usuario propio de este archivo: los endpoints de chat filtran por `user_id`, asi
 # que tests que usan cuentas demo se pisan entre si (y con el resto de la suite,
 # que es order-dependent). Un usuario dedicado deja los conteos deterministas.
-TEST_USERNAME = "test_delete_honesty_user"
+TEST_USERNAME = "test_delete_honesty_user"  # nombre en BD, no renombrado: filas existentes
 
 
 class TestDeleteEndpointHonesty(unittest.TestCase):

@@ -264,5 +264,40 @@ class TestSintesisConCantidadVariableDeKpis(unittest.TestCase):
         self.assertEqual(res["kpis"][0].value, "$0.00")
 
 
+class TestAnomalyDetection(unittest.TestCase):
+    """La deteccion de anomalias tiene que señalar la fila que la produce.
+
+    `detect_statistical_anomalies` devuelve una lista de diccionarios; sin los
+    campos `column`/`entity`/`direction`/`probable_cause` el frontend no puede
+    explicarle al usuario QUE se salio y POR QUE.
+    """
+
+    def test_detect_statistical_anomalies_and_causes(self):
+        # 10 filas, una con un outlier extremo
+        rows = [
+            {"sucursal": "Centro", "monto": 100},
+            {"sucursal": "Norte", "monto": 105},
+            {"sucursal": "Sur", "monto": 98},
+            {"sucursal": "Este", "monto": 102},
+            {"sucursal": "Oeste", "monto": 101},
+            {"sucursal": "Aeropuerto", "monto": 99},
+            {"sucursal": "Puerto", "monto": 103},
+            {"sucursal": "Mall", "monto": 1000},  # Pico extremo
+            {"sucursal": "Plaza", "monto": 97},
+            {"sucursal": "Parque", "monto": 102}
+        ]
+        columns = ["sucursal", "monto"]
+
+        anomalies = KPICalculator.detect_statistical_anomalies(rows, columns)
+        self.assertGreaterEqual(len(anomalies), 1)
+        spike = anomalies[0]
+        self.assertEqual(spike["column"], "monto")
+        self.assertEqual(spike["entity"], "Mall")
+        self.assertEqual(spike["value"], 1000)
+        self.assertEqual(spike["direction"], "spike")
+        self.assertIn("Mall", spike["description"])
+        self.assertIn("Desviación atípica", spike["probable_cause"])
+
+
 if __name__ == "__main__":
     unittest.main()
