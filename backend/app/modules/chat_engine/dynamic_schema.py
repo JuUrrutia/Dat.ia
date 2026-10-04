@@ -5,6 +5,7 @@ import sqlite3
 from typing import List, Dict, Set, Any, Optional, Tuple
 from sqlalchemy.orm import Session
 from app.core.config import settings
+from app.core.database import discard_failed_transaction
 from app.modules.admin_catalog.models import RoleTablePermission, RoleColumnPermission, ColumnPermissionType, SemanticCatalog, CorporateConnection, DatabaseType
 from app.modules.auth.models import Role
 
@@ -86,8 +87,18 @@ class DynamicSchemaPruningService:
                         return conn.host
                     if conn.database_name and os.path.exists(conn.database_name):
                         return conn.database_name
-            except Exception:
-                pass
+            except Exception as ex:
+                # Fallar aqui significa que NO sabemos a que base del cliente
+                # apuntan los permisos ya calculados. Devolver `SQLITE_DB_PATH`
+                # (la BD demo interna de Datia) ejecutaba la consulta del cliente
+                # contra la base interna de la plataforma, con los permisos de otra
+                # conexion: un fallo de resolucion se.convertia en una lectura de
+                # otra base. Se falla cerrado y se propaga; el rollback deja la
+                # sesion usable para el handler que lo reciba.
+                discard_failed_transaction(db)
+                raise RuntimeError(
+                    f"No se pudo resolver la base de datos de la conexion {connection_id}: {ex}"
+                ) from ex
         return settings.SQLITE_DB_PATH
 
     @classmethod
@@ -537,7 +548,9 @@ class DynamicSchemaPruningService:
                 if not conn_record:
                     conn_record = db.query(CorporateConnection).order_by(CorporateConnection.id.desc()).first()
             except Exception:
-                pass
+                # Sin esto la sesion queda abortada y los `db.query(...)` de mas
+                # abajo de esta misma funcion mueren con `InFailedSqlTransaction`.
+                discard_failed_transaction(db)
 
         effective_conn_id = conn_record.id if conn_record else (connection_id or 1)
 

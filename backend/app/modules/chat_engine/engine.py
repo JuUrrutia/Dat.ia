@@ -258,7 +258,15 @@ class QueryEngine:
             or "postgres" in str(getattr(conn_record, "db_type", "")).lower()
         )
         engine_dialect = "postgres" if is_pg else "sqlite"
-        target_db_path = DynamicSchemaPruningService.resolve_db_path(db, connection_id)
+        try:
+            target_db_path = DynamicSchemaPruningService.resolve_db_path(db, connection_id)
+        except Exception as ex:
+            # Fallar cerrado: sin ruta resuelta no se sabe a que base del cliente
+            # apuntan los permisos ya calculados, y seguir con `exec_target` caeria
+            # en la BD demo interna de Datia.
+            return ResponseBuilder.build_execution_error_response(
+                effective_question, str(ex), int((time.time() - start_time) * 1000)
+            )
         exec_target = conn_record if is_pg else target_db_path
 
         table_columns_map: Dict[str, List[str]] = {}
@@ -289,6 +297,21 @@ class QueryEngine:
                 secured_sql = "-- CONSULTA NO EJECUTADA POR ERROR TÉCNICO"
                 meta = {"tables_used": []}
                 rows = []
+
+            # Enmascarado de columnas MASKED, identico al de la rama analitica mas
+            # abajo. Esta rama estaba fuera del:`mask_rows` solo se aplicaba en
+            # BRANCH B, y el grounding query es `SELECT * ... LIMIT 20`, o sea que
+            # se llevaba al LLM (y de ahi al snapshot de auditoria y a los exports
+            # PDF/Excel) el RUT/token/API key en claro aunque el usuario no tuviera
+            # permiso de lectura. `forecast_service.py` ya lo hacia y lo documentaba
+            # como "una prediccion no es una exencion del RBAC": el hueco era
+            # accidental.
+            # ponytail: el sitio definitivo seria `SQLExecutor.execute_raw_sql`, que
+            # es el punto unico por el que pasa TODA ejecucion (incluido
+            # `execute_with_self_healing`). Ahi no se puede sin cambiar su contrato:
+            # el executor es agnostico al RBAC y no recibe `masked_columns`.
+            if masked_columns and rows:
+                mask_rows(rows, masked_columns)
 
             exec_time_ms = int((time.time() - start_time) * 1000)
             conversational = await IntentClassifier.generate_conversational_response(
