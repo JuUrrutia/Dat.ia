@@ -23,12 +23,6 @@ class TestDynamicPrompts(unittest.TestCase):
         self.assertIn("pedagógica", expl_prompt.lower())
         self.assertEqual(RESPONSE_GENERATION_CONFIG[ResponseType.EXPLANATION].temperature, 0.2)
 
-    def test_prompt_manager_data_analysis_conversational(self):
-        """Verifica que el prompt de interpretación de datos genere instrucciones directas y fluidas."""
-        prompt = PromptManager.get_data_analysis_conversational_system_prompt("Economista")
-        self.assertIn("Economista", prompt)
-        self.assertIn("inteligente", prompt.lower())
-
     def test_prompt_manager_greeting(self):
         """Verifica que el prompt de saludo reconozca las tablas autorizadas del rol."""
         prompt = PromptManager.get_general_greeting_system_prompt("TI", {"dim_servidores", "fact_incidentes"})

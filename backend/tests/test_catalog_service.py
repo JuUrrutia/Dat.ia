@@ -18,11 +18,11 @@ from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 
-from app.modules.admin_catalog.models import DatabaseType
+from app.modules.admin_catalog.models import DatabaseType, SemanticCatalog
 from app.modules.admin_catalog.schemas import SemanticCatalogCreate
 from app.modules.catalog.services import catalog_service as cs
 from app.modules.catalog.services.catalog_service import CatalogDomainService
-from app.modules.catalog.services.schema_inspector import SchemaIntrospectionError
+from app.modules.catalog.services.schema_inspector import SchemaInspector, SchemaIntrospectionError
 
 
 def _conn_record(cid, active=True):
@@ -31,6 +31,18 @@ def _conn_record(cid, active=True):
     rec.db_type = DatabaseType.SQLITE
     rec.is_active = active
     rec.name = f"conn-{cid}"
+    return rec
+
+
+# Variante con nombre explicito (venia de test_residual_honesty.py, disuelto
+# aqui): el `_conn_record` de arriba no acepta `name`, y estos tests necesitan
+# distinguir dos conexiones por su nombre.
+def _conn_record_named(cid, name="conn"):
+    rec = MagicMock()
+    rec.id = cid
+    rec.name = name
+    rec.db_type = DatabaseType.SQLITE
+    rec.is_active = True
     return rec
 
 
@@ -241,6 +253,187 @@ class TestDataDictionaryDoesNotReportAFailedConnectionAsEmpty(unittest.TestCase)
                     raised = ex
                 self.assertIsNotNone(raised, "la llamada deveria fallar, no devolver un diccionario vacio")
                 self.assertNotEqual(raised.status_code, 200)
+
+
+class TestUnknownConnectionIdIsRejectedByTheInspector(unittest.TestCase):
+    """`SchemaInspector.resolve_connection_db_path` con un `connection_id` explicito
+    e inexistente caia en silencio a "la conexion no-uploadada": el caller terminaba
+    introspeccionando OTRA base creyendola la que pidio (mismo criterio que ya
+    corrijo `create_catalog_item`)."""
+
+    def test_explicit_unknown_id_raises_404(self):
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = None
+
+        with self.assertRaises(HTTPException) as ctx:
+            SchemaInspector.resolve_connection_db_path(db, 999)
+
+        self.assertEqual(ctx.exception.status_code, 404)
+        self.assertIn("999", ctx.exception.detail)
+
+    def test_it_does_not_silently_introspect_another_database(self):
+        """El sintoma: pedir la 999 y terminar leyendo la base no-uploadada."""
+        db = MagicMock()
+        uploaded = _conn_record_named(1, name="Base de Datos Clientes Nuevos")
+        uploaded.is_uploaded = False
+
+        def query_side_effect(_model):
+            q = MagicMock()
+            # id=999 -> None; el fallback is_uploaded=False -> la otra base.
+            q.filter.return_value.first.side_effect = [None, uploaded]
+            return q
+
+        db.query.side_effect = query_side_effect
+
+        with self.assertRaises(HTTPException) as ctx:
+            SchemaInspector.resolve_connection_db_path(db, 999)
+
+        # Si hubiera caido en el fallback, el segundo `first` (la base
+        # no-uploadada) se habria consumido y no habria raising.
+        self.assertIn("999", ctx.exception.detail)
+        self.assertNotEqual(uploaded.id, 999)
+
+    def test_no_connection_id_still_resolves_the_active_one(self):
+        """El camino legitimo: sin connection_id se usa la conexion activa."""
+        active = _conn_record(7)
+        db = MagicMock()
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = active
+
+        db_path, conn = SchemaInspector.resolve_connection_db_path(db, None)
+
+        self.assertIs(conn, active)
+        self.assertTrue(db_path)
+
+    def test_known_connection_id_still_resolves(self):
+        known = _conn_record(3)
+        known.db_type = DatabaseType.POSTGRESQL
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = known
+
+        _db_path, conn = SchemaInspector.resolve_connection_db_path(db, 3)
+
+        self.assertIs(conn, known)
+
+
+# ---------------------------------------------------------------- mapa de catalogo por esquema
+
+def _catalog_entry(table, column, schema, friendly):
+    return SemanticCatalog(
+        id=abs(hash((schema or "", table, column))) % 10000,
+        connection_id=1,
+        domain_id=None,
+        schema_name=schema,
+        table_name=table,
+        column_name=column,
+        friendly_name=friendly,
+        description=f"desc de {friendly}",
+        synonyms=None,
+        business_formula=None,
+        is_ai_generated=False,
+    )
+
+
+def _tables_meta(tables):
+    return [
+        {
+            "table_name": tbl,
+            "schema_name": schema,
+            "row_count": 1,
+            "columns": [{
+                "name": col, "data_type": "TEXT", "is_pk": False,
+                "is_nullable": True, "default_value": None, "sample_values": ["x"],
+            }],
+        }
+        for schema, tbl, col in tables
+    ]
+
+
+def _dictionary(entries, tables):
+    db = MagicMock()
+
+    def query_side_effect(model):
+        q = MagicMock()
+        if model.__name__ == "SemanticCatalog":
+            q.filter.return_value.all.return_value = entries
+        return q
+
+    db.query.side_effect = query_side_effect
+
+    with patch.object(
+        cs.SchemaInspector, "resolve_connection_db_path",
+        return_value=("/tmp/x.db", _conn_record(1)),
+    ), patch.object(cs.SchemaInspector, "introspect_connection_metadata", return_value=tables):
+        return CatalogDomainService.get_data_dictionary(db, connection_id=1)
+
+
+class TestCatalogMapKey(unittest.TestCase):
+    """`get_data_dictionary` armaba `catalog_map` por tabla+columna sin `schema_name`:
+    columnas homonimas de `public` y `priv` colisionaban y una se llevaba la
+    descripcion de la otra."""
+
+    def test_homonymous_columns_in_two_schemas_do_not_collide(self):
+        tables = [("public", "ventas", "codigo"), ("priv", "ventas", "codigo")]
+        entries = [
+            _catalog_entry("ventas", "codigo", "public", "Codigo publico"),
+            _catalog_entry("ventas", "codigo", "priv", "Codigo privado"),
+        ]
+
+        resp = _dictionary(entries, _tables_meta(tables))
+        by_schema = {t.schema_name: t.columns[0] for t in resp.tables}
+
+        self.assertEqual(by_schema["public"].friendly_name, "Codigo publico")
+        self.assertEqual(by_schema["priv"].friendly_name, "Codigo privado")
+
+    def test_lookup_is_case_insensitive(self):
+        """Postgres devuelve la tabla en minuscula y la curaduría la guardo en mayuscula."""
+        tables = [("public", "ventas", "codigo")]
+        entries = [_catalog_entry("VENTAS", "CODIGO", "PUBLIC", "Codigo curado")]
+
+        resp = _dictionary(entries, _tables_meta(tables))
+
+        self.assertEqual(resp.tables[0].columns[0].friendly_name, "Codigo curado")
+
+    def test_legacy_row_without_schema_still_matches(self):
+        """Filas sembradas antes de existir `schema_name` (NULL o "") no desaparecen."""
+        for legacy_schema in (None, ""):
+            with self.subTest(schema=legacy_schema):
+                tables = [("public", "ventas", "codigo")]
+                entries = [_catalog_entry("ventas", "codigo", legacy_schema, "Codigo legado")]
+
+                resp = _dictionary(entries, _tables_meta(tables))
+
+                self.assertEqual(resp.tables[0].columns[0].friendly_name, "Codigo legado")
+
+    def test_specific_schema_wins_over_the_legacy_wildcard(self):
+        tables = [("public", "ventas", "codigo")]
+        entries = [
+            _catalog_entry("ventas", "codigo", None, "Codigo legado"),
+            _catalog_entry("ventas", "codigo", "public", "Codigo publico"),
+        ]
+
+        resp = _dictionary(entries, _tables_meta(tables))
+
+        self.assertEqual(resp.tables[0].columns[0].friendly_name, "Codigo publico")
+
+    def test_table_level_description_also_respects_the_schema(self):
+        entries = [
+            SemanticCatalog(
+                id=1, connection_id=1, domain_id=None, schema_name="public",
+                table_name="ventas", column_name=None, friendly_name="Ventas",
+                description="Tabla de ventas publicas", is_ai_generated=False,
+            ),
+            SemanticCatalog(
+                id=2, connection_id=1, domain_id=None, schema_name="priv",
+                table_name="ventas", column_name=None, friendly_name="Ventas",
+                description="Tabla de ventas privadas", is_ai_generated=False,
+            ),
+        ]
+
+        resp = _dictionary(entries, _tables_meta([("public", "ventas", "codigo"), ("priv", "ventas", "codigo")]))
+        by_schema = {t.schema_name: t.description for t in resp.tables}
+
+        self.assertEqual(by_schema["public"], "Tabla de ventas publicas")
+        self.assertEqual(by_schema["priv"], "Tabla de ventas privadas")
 
 
 if __name__ == "__main__":
