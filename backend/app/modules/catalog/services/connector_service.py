@@ -196,17 +196,34 @@ class ConnectorDomainService:
             clean_db_name = re.sub(r'[^a-zA-Z0-9_]', '_', final_name.lower()).strip('_')
             if not clean_db_name or clean_db_name[0].isdigit():
                 clean_db_name = f"db_{clean_db_name}"
+            # El dedup de arriba (líneas 183-185) es sobre el NOMBRE del conector en
+            # la metadata, y no dice nada de lo que hay en el SERVIDOR. Aquí se
+            # reutilizaba la base si ya existía, y una base que quedó viva (un
+            # conector borrado, una corrida interrumpida) arrastra sus tablas: la
+            # importación de un archivo con el mismo nombre las encontraba ya
+            # existía y el nombre de tabla salía deduplicado (`sensores_iot_1`).
+            # Es el mismo problema que la rama SQLite de más abajo ya resolvió con
+            # el sufijo uuid, y la misma solución: el nombre de la base es único
+            # de verdad, no único "entre conectores que aún existen".
+            clean_db_name = f"{int(time.time())}_{uuid.uuid4().hex[:8]}_{clean_db_name}"
             clean_db_name = clean_db_name[:50]
             pg_target_db_name = clean_db_name
 
-            # Create dedicated PostgreSQL database if not exists
+            # Create dedicated PostgreSQL database. Con el nombre ya unico, la
+            # reutilizacion de una base preexistente no puede ocurrir; si aparece,
+            # es una colision de uuid y conviene que se vea en vez de importarse
+            # encima de los datos de otro.
             maint_url = f"postgresql+psycopg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}/postgres"
             m_engine = create_engine(maint_url, isolation_level="AUTOCOMMIT", pool_pre_ping=True)
             try:
                 with m_engine.connect() as m_conn:
                     exists = m_conn.execute(text("SELECT 1 FROM pg_database WHERE datname = :dbname"), {"dbname": pg_target_db_name}).scalar()
-                    if not exists:
-                        m_conn.execute(text(f'CREATE DATABASE "{pg_target_db_name}" OWNER "{settings.POSTGRES_USER}"'))
+                    if exists:
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail=f"La base '{pg_target_db_name}' ya existe en el servidor. No se importa encima."
+                        )
+                    m_conn.execute(text(f'CREATE DATABASE "{pg_target_db_name}" OWNER "{settings.POSTGRES_USER}"'))
             finally:
                 m_engine.dispose()
 
