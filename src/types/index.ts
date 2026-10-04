@@ -141,6 +141,21 @@ export interface QueryResult {
       prompt: string;
     }>;
   };
+  /**
+   * Modulo C: el chat no tiene tablas que consultar.
+   *
+   * `true` = no hay ninguna conexion activa (nadie encendio una base).
+   * `null` = no se pudo comprobar el estado. Ausente en cualquier otra
+   * respuesta, incluido el rechazo de RBAC, que es otro diagnostico.
+   *
+   * El boton de activar se lee de esta clave, no del texto del mensaje.
+   */
+  no_active_connection?: boolean | null;
+  activate_connection_action?: {
+    connection_id: number;
+    connection_name: string;
+    endpoint?: string;
+  } | null;
 }
 
 /**
