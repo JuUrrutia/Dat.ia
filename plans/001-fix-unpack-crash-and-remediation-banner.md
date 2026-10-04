@@ -3,7 +3,13 @@
 **Commit de referencia:** `c5f1af4`  
 **Prioridad:** Inmediata (Fase 0 - Estabilización de Línea Base)  
 **Complejidad:** S (Bajo esfuerzo, cambios puntuales y seguros)  
-**Riesgo:** BAJO
+**Riesgo:** BAJO  
+
+> **Estado: ✅ IMPLEMENTADO.** Verificado contra el árbol actual: el retorno de
+> `build_dynamic_visualization` es de 5 elementos en la rama vacía
+> (`kpi_calculator.py:155-168`), `engine.py:25` importa `logger`, y el banner se
+> antepone con `if is_remediation:` sin depender de `conversational`
+> (`engine.py:530-532`). Documento conservado como registro.
 
 ---
 
