@@ -143,6 +143,88 @@ export interface QueryResult {
   };
 }
 
+/**
+ * Prediccion del proximo periodo.
+ *
+ * `mape` y `band_pct` NO son opcionales ni decorativos: son el error historico
+ * medido por replay sobre la serie real. Un forecast sin ellos es un numero sin
+ * informacion, asi que la UI esta obligada a mostrarlos.
+ */
+export interface ForecastCard {
+  available: boolean;
+  period?: string | null;
+  point?: number | null;
+  lower?: number | null;
+  upper?: number | null;
+  band_pct?: number | null;
+  mape?: number | null;
+  method?: string | null;
+  n_periods: number;
+  n_backtests: number;
+  reliable: boolean;
+  has_gaps: boolean;
+  reason?: string | null;
+  table?: string | null;
+  metric_column?: string | null;
+  date_column?: string | null;
+  income_only: boolean;
+  series: Record<string, any>[];
+  sql?: string | null;
+}
+
+export interface RetentionTier {
+  tier: string;
+  casos: number;
+  retornaron: number;
+  /** `null` = evidencia insuficiente. NO es 0%: `0%` es una afirmacion, `null` es "no se". */
+  prob?: number | null;
+  evidence_sufficient: boolean;
+}
+
+export interface RetentionClient {
+  entity: string;
+  months_active: number;
+  last_purchase: string;
+  months_since_last: number;
+  revenue: number;
+  revenue_share: number;
+  tier: string;
+  return_prob?: number | null;
+  evidence_sufficient: boolean;
+}
+
+export interface RetentionReport {
+  total_clients: number;
+  total_revenue: number;
+  last_period?: string | null;
+  tiers: RetentionTier[];
+  top: RetentionClient[];
+  truncated_by_limit: boolean;
+  entity_column?: string | null;
+  metric_column?: string | null;
+  date_column?: string | null;
+  income_only: boolean;
+  sql?: string | null;
+  reason?: string | null;
+}
+
+export interface DataQualityFinding {
+  check: string;
+  severity: 'ALTO' | 'MEDIO' | 'BAJO';
+  detail: string;
+  count?: number | null;
+}
+
+export interface PredictionResult {
+  question?: string | null;
+  forecast?: ForecastCard | null;
+  retention?: RetentionReport | null;
+  /** Fallos parciales: son dos predicciones independientes y una puede fallar sin que la otra importe. */
+  errors?: string[];
+  data_quality: DataQualityFinding[];
+  audit_log_id?: number | null;
+}
+
 export interface AppSettings {
   llm_provider: 'llama_cpp' | 'ollama' | 'openai_compatible' | 'custom';
   ollama_url: string;

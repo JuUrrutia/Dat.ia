@@ -55,7 +55,20 @@ _DATA_TAG = "datos_base"
 
 _ZERO_HALLUCINATION_RULE = (
     "CERO ALUCINACIÓN: usa solo cifras, nombres y hechos que aparezcan en los "
-    "DATOS proporcionados abajo. Prohibido inventar cifras, fechas o entidades."
+    "DATOS proporcionados abajo. Prohibido inventar cifras, fechas o entidades.\n"
+    # Proyeccion hacia adelante es imposible de fundamentar con filas: los DATOS
+    # son historicos y ningun modelo de texto puede derivar un valor futuro de
+    # ellos sin inventarlo. La plataforma SI proyecta, pero lo hace de forma
+    # determinista en `POST /chat/predict`, que mide el error historico y lo
+    # publica junto al numero. Si esta regla no existe, un "predice el mes que
+    # viene" que llega por la API directa (sin pasar por el enrutado del
+    # frontend) produce "se espera un aumento del 15%", que es exactamente la
+    # alucinacion que `_ZERO_HALLUCINATION_RULE` deberia impedir.
+    "SOBRE PROYECCIONES: no projectes valores futuros ni inventes porcentajes de "
+    "crecimiento, aunque los DATOS muestren una tendencia clara. Si te piden una "
+    "predicción, una proyección o un pronóstico, explica que la plataforma la "
+    "calcula de forma determinista sobre la serie real y la muestra junto con su "
+    "error histórico medido, en el panel de Pronósticos."
 )
 _NO_SQL_IN_BODY_RULE = "No incluyas código SQL en tu respuesta."
 _SPANISH_MARKDOWN_RULE = "Responde en español, con estilo fluido, directo y Markdown limpio."

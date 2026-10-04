@@ -21,6 +21,97 @@ class ExecutiveReport(BaseModel):
     risk_level: Optional[str] = "BAJO" # BAJO | MEDIO | ALTO | CRITICO
     business_impact: Optional[str] = None
 
+class ForecastCard(BaseModel):
+    """Prediccion del proximo periodo, con la incertidumbre que se midio.
+
+    `mape` y `band_pct` NO son decorativos ni opcionales. Un forecast sin su
+    error historico al lado es un numero sin informacion: la banda se calcula
+    por replay sobre la serie real (`forecast_calculator`), asi que el usuario
+    ve exactamente cuanto le puede costar creerla.
+    """
+    available: bool
+    period: Optional[str] = None
+    point: Optional[float] = None
+    lower: Optional[float] = None
+    upper: Optional[float] = None
+    band_pct: Optional[float] = None
+    mape: Optional[float] = None
+    method: Optional[str] = None
+    n_periods: int = 0
+    n_backtests: int = 0
+    reliable: bool = False
+    has_gaps: bool = False
+    reason: Optional[str] = None # Por que no se publico forecast, en palabras del usuario
+    table: Optional[str] = None
+    metric_column: Optional[str] = None
+    date_column: Optional[str] = None
+    income_only: bool = True
+    series: List[Dict[str, Any]] = []
+    sql: Optional[str] = None # El SQL real que produjo el numero, auditable
+
+class RetentionTier(BaseModel):
+    tier: str
+    casos: int
+    retornaron: int
+    prob: Optional[float] = None # None = evidencia insuficiente, no "0%"
+    evidence_sufficient: bool = False
+
+class RetentionClient(BaseModel):
+    entity: str
+    months_active: int
+    last_purchase: str
+    months_since_last: int
+    revenue: float
+    revenue_share: float
+    tier: str
+    return_prob: Optional[float] = None
+    evidence_sufficient: bool = False
+
+class RetentionReport(BaseModel):
+    total_clients: int = 0
+    total_revenue: float = 0.0
+    last_period: Optional[str] = None
+    tiers: List[RetentionTier] = []
+    top: List[RetentionClient] = []
+    truncated_by_limit: bool = False
+    entity_column: Optional[str] = None
+    metric_column: Optional[str] = None
+    date_column: Optional[str] = None
+    income_only: bool = True
+    sql: Optional[str] = None
+    reason: Optional[str] = None # Por que no se pudo medir, en palabras del usuario
+
+class PredictionRequest(BaseModel):
+    """Que prediccion correr. Los tres flags existen para no pagar lo que no se pidio.
+
+    La auditoria de calidad hace COUNTs sobre la fact table; correrla siempre
+    suma latencia a una consulta que solo queria el forecast. Se pide explicita.
+    """
+    question: Optional[str] = None
+    connection_id: int = 1
+    include_forecast: bool = True
+    include_retention: bool = True
+    include_data_quality: bool = False
+    top_limit: int = 50 # Cuantos clientes se devuelven, NO cuantos se analizan
+
+class PredictionResponse(BaseModel):
+    """Lo que ve el usuario cuando pide una prediccion.
+
+    Un solo envelope para forecast y retencion porque la pregunta del cliente es
+    una sola ("prediccion") y partirla en dos endpoints obliga al frontend a
+    decidir cual llamar antes de saber si hay datos suficientes.
+    """
+    question: Optional[str] = None
+    forecast: Optional[ForecastCard] = None
+    retention: Optional[RetentionReport] = None
+    # Fallos PARCIALES: son dos predicciones independientes sobre la misma base y
+    # que una no se pueda calcular no dice nada de la otra. Sin este campo el
+    # endpoint responderia 200 con un bloque en null y el usuario no sabria si es
+    # que no aplica o que se rompio.
+    errors: List[str] = []
+    data_quality: List[Dict[str, Any]] = [] # Defectos detectados, solo lectura
+    audit_log_id: Optional[int] = None
+
 class TraceabilityAudit(BaseModel):
     sql_executed: str
     execution_time_ms: int
