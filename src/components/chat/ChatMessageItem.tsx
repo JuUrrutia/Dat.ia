@@ -18,6 +18,7 @@ import {
   Star,
 } from 'lucide-react';
 import { queryService } from '../../features/chat/services/query_service';
+import { connectorService } from '../../features/admin/services/connector_service';
 import { buildDynamicChartOption, deriveProcessedRows, THEME_COLORS, ChartType } from '../dashboard/executiveDashboardUtils';
 import { copyToClipboard } from '../../shared/clipboard';
 
@@ -81,6 +82,32 @@ const ChatMessageItemBase: React.FC<ChatMessageItemProps> = ({
   const [feedbackStatus, setFeedbackStatus] = useState<'positive' | 'negative' | null>(null);
   const [isPinned, setIsPinned] = useState(false);
   const [isPinning, setIsPinning] = useState(false);
+
+  // Activar la base que el diagnostico dijo que esta apagada. El boton solo
+  // existe si el backend mando la accion, y el backend solo la manda a un
+  // admin: para el resto de perfiles no hay nada que pintar.
+  const activateAction = result.no_active_connection ? result.activate_connection_action : null;
+  const [isActivating, setIsActivating] = useState(false);
+  const [activateError, setActivateError] = useState<string | null>(null);
+  const [isActivated, setIsActivated] = useState(false);
+
+  const handleActivateConnection = async () => {
+    if (!activateAction || isActivating) return;
+    setIsActivating(true);
+    setActivateError(null);
+    try {
+      await connectorService.toggleActive(activateAction.connection_id);
+      // El servidor confirmo. Volver a preguntar es lo que devuelve los datos;
+      // dejarlo en exito sin repetir la consulta seria una promesa a medias.
+      setIsActivated(true);
+    } catch (err: any) {
+      // Sin fallback optimista: si el POST fallo la conexion sigue apagada en
+      // el servidor, y decir que quedo activa seria falso.
+      setActivateError(err?.message || 'No se pudo activar la conexión. Revisá que tu sesión siga siendo de administrador.');
+    } finally {
+      setIsActivating(false);
+    }
+  };
 
   const handleShareThread = () => {
     const threadId = activeThreadId || (result as any).thread_id;
@@ -222,6 +249,36 @@ const ChatMessageItemBase: React.FC<ChatMessageItemProps> = ({
               )}
             </div>
           </div>
+
+          {/* Accion de govierno: encender la base. Solo aparece con la clave
+              discriminante del backend, nunca por parsear el texto. */}
+          {activateAction && (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-3 text-[12px]">
+              {isActivated ? (
+                <span className="flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-400">
+                  <Check className="w-3.5 h-3.5" />
+                  Conexión activada. Volvé a hacer la pregunta para consultar sus datos.
+                </span>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleActivateConnection}
+                    disabled={isActivating}
+                    className="flex items-center gap-1.5 rounded-lg border border-amber-500/50 bg-amber-500/20 px-3 py-1.5 font-semibold text-amber-800 transition-colors hover:bg-amber-500/30 disabled:opacity-60 disabled:cursor-not-allowed dark:text-amber-200"
+                  >
+                    <WifiOff className="w-3.5 h-3.5" />
+                    {isActivating ? 'Activando...' : `Activar '${activateAction.connection_name}'`}
+                  </button>
+                  {activateError && (
+                    <span role="alert" className="text-rose-700 dark:text-rose-400">
+                      {activateError}
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {/* Render Dynamic Dashboard Views (Report, KPIs, Charts, Tables) */}
           <ExecutiveDashboardView

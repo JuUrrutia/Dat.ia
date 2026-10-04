@@ -3,6 +3,15 @@ from app.modules.chat_engine.schemas import (
     QueryResponse, KPICard, TraceabilityAudit, PresentationHints
 )
 
+# (valor, subtitulo) del KPI de "Estado de las conexiones" segun el diagnostico.
+# Fuera del metodo porque es una tabla de 3 entradas, no logica: leerla pegada al
+# return es mas dificil que leerla aqui.
+_VISIBILITY_KPI = {
+    "no_active_connection": ("SIN CONEXIÓN ACTIVA", "Ninguna base encendida"),
+    "no_connections_registered": ("SIN CONEXIÓN REGISTRADA", "No hay ninguna base dada de alta"),
+    "unknown": ("DESCONOCIDO", "No se pudo comprobar"),
+}
+
 class ResponseBuilder:
     """
     Encapsulates assembling and formatting of QueryResponse objects for all intents
@@ -75,6 +84,130 @@ class ResponseBuilder:
                 execution_time_ms=0,
                 rows_returned=0,
                 validation_status="RECHAZADO_RBAC",
+                schema_tables_used=[],
+                explanation=reason
+            )
+        )
+
+    @classmethod
+    def build_visibility_diagnostic_response(
+        cls,
+        question: str,
+        user_role: str,
+        state: str,  # "no_active_connection" | "unknown"
+        activate_connection: Optional[Dict[str, Any]] = None
+    ) -> QueryResponse:
+        """
+        "No hay tablas" tiene dos causas que el usuario distingue distinto y hoy
+        son el mismo texto: que nadie haya encendido una base, o que su rol no
+        tenga tablas en la matriz RBAC. Esta respuesta solo cubre la PRIMERA
+        (y el caso `unknown`, que es el tercero: no se pudo comprobar), porque
+        la segunda ya la construye `build_rbac_denied_response`.
+
+        `activate_connection` llega `None` para todo perfil que no sea admin: la
+        accion es una escritura que `get_current_admin` rechazaria igual, y
+        ofrecerla seria una promesa que el backend no cumple.
+        """
+        if state == "no_active_connection":
+            reason = (
+                "No hay ninguna conexión de datos activa: ningún administrador ha "
+                "activado una base, así que no hay tablas que consultar."
+            )
+            if activate_connection:
+                action_text = (
+                    f"\n\n**Podés resolverlo vos mismo:** la conexión "
+                    f"'{activate_connection['connection_name']}' está dada de baja. "
+                    "Activándola, el chat vuelve a tener tablas para consultar."
+                )
+            else:
+                action_text = (
+                    "\n\nEncender una base es una tarea de administración: pedile a un "
+                    "administrador que active una conexión desde el panel de conectores."
+                )
+            conversational = (
+                "🔌 **No hay ninguna conexión de datos activa**\n\n"
+                "Ningún administrador ha activado una base de datos en DATIA. "
+                "Por eso el chat no tiene nada que mostrar: **no es que la consulta "
+                "no tenga resultados, es que no hay ninguna fuente de datos encendida**."
+                f"{action_text}"
+            )
+            status = "SIN_CONEXION_ACTIVA"
+            sql_note = "-- CONSULTA NO EJECUTADA: NO HAY NINGUNA CONEXIÓN ACTIVA"
+            grounding = "No se ejecutó ninguna consulta: no hay ninguna conexión activa"
+        elif state == "no_connections_registered":
+            # Ni siquiera hay conectores dados de alta. No es lo mismo que "nadie
+            # encendio uno": la accion que falta es CREAR la base, no activar un
+            # interruptor que no existe. Decir lo otro manda al admin a buscar algo
+            # inexistente.
+            conversational = (
+                "🗄️ **No hay ninguna base de datos registrada**\n\n"
+                "DATIA no tiene ninguna conexión dada de alta todavía, así que no hay "
+                "nada que consultar. No es que la consulta no tenga resultados: es que "
+                "**aún no se ha conectado ninguna fuente de datos**."
+                "\n\nUn administrador tiene que registrar una conexión en el panel de "
+                "conectores antes de que el chat pueda responder algo."
+            )
+            reason = (
+                "No hay ninguna conexión de datos registrada: un administrador debe "
+                "dar de alta una base en el panel de conectores."
+            )
+            status = "SIN_CONEXION_REGISTRADA"
+            sql_note = "-- CONSULTA NO EJECUTADA: NO HAY NINGUNA CONEXIÓN REGISTRADA"
+            grounding = "No se ejecutó ninguna consulta: no hay ninguna conexión registrada"
+        else:
+            # `unknown`: se dice que NO SE PUDO COMPROBAR. Afirmar "no hay
+            # conexiones" sin haberlo comprobado seria exactamente el bug que
+            # esta respuesta viene a cerrar, y decir solo "tu rol no tiene
+            # tablas" esconderia una causa que nadie midio. Lo que si esta
+            # verificado es que este perfil no tiene tablas visibles.
+            reason = (
+                "No se pudo verificar si hay alguna conexión de datos activa, y tu "
+                f"perfil '{user_role}' no tiene tablas visibles en esta conexión. "
+                "Un administrador debe activar una base de datos y comprobar la "
+                "asignación de tablas en la matriz RBAC."
+            )
+            conversational = (
+                "❔ **No se pudo determinar por qué no hay datos**\n\n"
+                f"{reason}"
+            )
+            status = "DIAGNOSTICO_DESCONOCIDO"
+            sql_note = "-- CONSULTA NO EJECUTADA: ESTADO DE LAS CONEXIONES DESCONOCIDO"
+            grounding = "No se ejecutó ninguna consulta: no se pudo verificar el estado de las conexiones"
+
+        return QueryResponse(
+            question=question,
+            summary_text=reason,
+            kpis=[
+                KPICard(
+                    title="Estado de las conexiones",
+                    value=_VISIBILITY_KPI[state][0],
+                    subtitle=_VISIBILITY_KPI[state][1],
+                    change_direction="negative"
+                )
+            ],
+            chart_type="none",
+            chart_option={"series": []},
+            data_columns=[],
+            data_rows=[],
+            response_type="conversational",
+            conversational_response=conversational,
+            grounding_info=grounding,
+            # Clave discriminante: la UI pinta el botón de activar con esto, sin
+            # leer el texto. `None` (desconocido) no ofrece ninguna acción.
+            no_active_connection=True if state == "no_active_connection" else None,
+            activate_connection_action=activate_connection,
+            presentation_hints=PresentationHints(
+                show_executive_report=False,
+                show_kpis=True,
+                show_chart=False,
+                preferred_view="assistant",
+                summary_style="conversational"
+            ),
+            traceability=TraceabilityAudit(
+                sql_executed=sql_note,
+                execution_time_ms=0,
+                rows_returned=0,
+                validation_status=status,
                 schema_tables_used=[],
                 explanation=reason
             )
