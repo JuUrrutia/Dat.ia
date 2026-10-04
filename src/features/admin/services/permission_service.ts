@@ -36,6 +36,33 @@ export interface SetPermissionsResponse {
   permissions: ConfirmedPermission[];
 }
 
+/**
+ * Cobertura de gobernanza de UNA conexion (`GET /api/v1/permissions/coverage`).
+ *
+ * Es DERIVADA: el backend no la guarda, la recalcula desde el mismo guardarrail
+ * que usa el chat. `coverage: 'orphaned'` es el dato que responde la pregunta que
+ * la matriz no puede: que tabla no ve NINGUN rol.
+ */
+export interface GovernanceCoverageTable {
+  table: string;
+  assigned_roles: string[];
+  visible_to_roles: string[];
+  coverage: 'assigned' | 'orphaned';
+  blocked_columns: string[];
+  masked_columns: string[];
+}
+
+export interface GovernanceCoverage {
+  connection_id: number;
+  connection_name: string;
+  tables: GovernanceCoverageTable[];
+  summary: {
+    total_tables: number;
+    assigned_tables: number;
+    orphaned_tables: number;
+  };
+}
+
 export const permissionService = {
   // Sin catch: si /permissions falla (403 por rol no-admin, 500) el error sube.
   // Degradar a `[]` seria afirmar "no hay ningun permiso en la BD" cuando en
@@ -65,6 +92,16 @@ export const permissionService = {
         table_names: input.tableNames,
         is_allowed: input.isAllowed,
       },
+    });
+    return res.data;
+  },
+
+  // Sin catch, como los dos de arriba: si la cobertura falla, la UI tiene que
+  // poder decir "no se pudo calcular" en vez de pintar un resumen de 0 tablas que
+  // en default-deny se lee igual que "nadie ve nada".
+  async getCoverage(connectionId: number): Promise<GovernanceCoverage> {
+    const res = await apiClient.get<GovernanceCoverage>('/permissions/coverage', {
+      params: { connection_id: connectionId },
     });
     return res.data;
   },
