@@ -2,7 +2,8 @@ import asyncio
 import logging
 import datetime
 import json
-from typing import Any, Optional, List
+import time
+from typing import Any, Dict, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -19,13 +20,16 @@ from app.modules.chat_engine.schemas import (
     ChatThreadCreate, ChatThreadSummary, ChatThreadDetail,
     ChatFeedbackRequest, ChatFeedbackResponse,
     DashboardWidgetCreate, DashboardWidgetOut,
-    GoldenQueryRequest
+    GoldenQueryRequest, PredictionRequest, PredictionResponse,
+    ForecastCard, RetentionReport, RetentionTier, RetentionClient
 )
+from app.modules.chat_engine import forecast_service
 from app.modules.chat_engine.engine import QueryEngine
 from app.modules.chat_engine.llm_diagnostic_router import llm_diagnostic_router
 
 from app.core.constants import ADMIN_ROLES, ROLE_USUARIO, ROLE_ADMINISTRADOR
 from app.core.database import discard_failed_transaction
+from app.modules.chat_engine.governance_guard import GovernanceGuard
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -340,6 +344,246 @@ def _sse(event: str, data: Any) -> str:
     """
     payload = json.dumps(data, ensure_ascii=False, default=str)
     return f"event: {event}\ndata: {payload}\n\n"
+
+
+@router.post("/predict", response_model=PredictionResponse)
+async def run_prediction(
+    payload: PredictionRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Predicciones: forecast del proximo periodo y score de retencion por entidad.
+
+    Por que un endpoint y no el chat
+    --------------------------------
+    `/chat/query` deja que el LLM escriba el SQL. Para una prediccion eso agrega
+    una fuente de error que no hace falta: el modelo tiene que acertar el nombre
+    de la tabla y de las columnas, y con 7B cuantizado no es confiable. Aca el
+    SQL lo arma codigo desde los metadatos reales de la BD y despues pasa por el
+    MISMO `ASTValidator` y el MISMO `SQLExecutor` que el chat — misma
+    gobernanza, misma lectura, mismo enmascarado. Lo unico que cambia es quien
+    escribe la consulta.
+
+    El LLM no interviene, y por eso la respuesta no puede alucinar: cada numero
+    sale de `forecast_calculator` sobre filas reales. Un forecast publicado sin
+    su banda de error seria un numero sin informacion; `ForecastCard.mape` y
+    `band_pct` viajan siempre junto al punto.
+
+    Que responda "no disponible" y no un numero
+    ------------------------------------------
+    Si la serie tiene menos periodos que los necesarios, la respuesta es
+    `available: False` con el motivo y la serie a la vista. Fabricar un forecast
+    con 3 puntos no es una aproximacion: es una cifra con mas decimales que
+    evidencia.
+    """
+    user_role_name = current_user.role.name if current_user.role else (ROLE_ADMINISTRADOR if current_user.is_admin else ROLE_USUARIO)
+    conn_id = payload.connection_id or 1
+    target_db_name = _resolve_target_database(db, conn_id)
+
+    # --- Gate 1: perfil "Usuario" sin rol asignado. Idéntico a `engine.py:155`.
+    # `/predict` genera el SQL por código, pero lee la misma base corporativa que
+    # el chat. Sin este corte, un usuario con el perfil inicial sacaba forecast y
+    # retención de la fact table.
+    if not current_user.is_admin and (user_role_name == ROLE_USUARIO or not user_role_name):
+        _persist_audit_log(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=user_role_name,
+            question_prompt=payload.question or "Prediccion: forecast y retencion",
+            sql_generated=None,
+            validation_status="RECHAZADO_RBAC",
+            target_database=target_db_name,
+            error_message="Perfil 'Usuario' sin rol asignado",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Tu cuenta se encuentra registrada con el perfil inicial 'Usuario'. Un "
+                "Administrador debe asignarte un rol (Economista o TI) para acceder a los "
+                "datos corporativos."
+            ),
+        )
+
+    # --- Gate 2: gobernanza de dominio. Idéntico a `engine.py:164-167`.
+    #
+    # Por qué se pasa el conjunto de tablas y no una pregunta
+    # -------------------------------------------------------
+    # `check_domain_governance` es un guard de KEYWORDS sobre el texto de la
+    # consulta, y `/predict` no recibe una pregunta en lenguaje natural que
+    # consultar. Inventar una pseudo-pregunta ("¿cuánto vendremos?") sería un
+    # bypass disfrazado: dependería de una frase que el cliente elige y que
+    # puede no mandar. Lo que `/predict` SÍ decide por código es contra qué
+    # tablas lee — las del rol — y su SQL es siempre una agregación de ingresos
+    # (`income_only`) sobre la fact table. El dominio real de la consulta es,
+    # por tanto, el dominio de esas tablas, y es lo que se le pasa al guard.
+    #
+    # El guard ya reconoce nombres de tabla en sus dos listas de keywords
+    # (`fact_ventas`, `fact_ingresos_costos`, `kna1_clientes` del lado
+    # financiero; `dim_servidores`, `fact_incidentes_ti` del lado TI), así que no
+    # hace falta ninguna ruta nueva en el guard: se le da el sujeto que de
+    # verdad se está leyendo.
+    #
+    # Sin esto, un rol TI con `fact_ventas` en su matriz RBAC se llevaba
+    # agregados de ingresos por acá, mientras la MISMA pregunta escrita en el
+    # chat salía denegada por `governance_guard.py:193`. El endpoint no es un
+    # camino privilegiado alrededor de la gobernanza.
+
+    # Cache de la request. Nace acá porque el gate de dominio ya resolvió las
+    # tablas autorizadas: sembrarlas evita que `_load_fact_table` y
+    # `_run_guarded_sql` vuelvan a pegarle a la metadata DB por lo mismo.
+    budget: Dict[str, Any] = {}
+
+    if not current_user.is_admin and user_role_name not in ADMIN_ROLES:
+        allowed_tables = GovernanceGuard.get_allowed_tables_for_role(
+            user_role=user_role_name, is_admin=current_user.is_admin, db=db,
+            role_id=current_user.role_id, connection_id=conn_id,
+        )
+        budget["allowed_tables"] = allowed_tables
+        domain_denial = GovernanceGuard.check_domain_governance(
+            " ".join(sorted(allowed_tables)), user_role_name, allowed_tables
+        )
+        if domain_denial:
+            _persist_audit_log(
+                db=db,
+                user_id=current_user.id,
+                username=current_user.username,
+                user_role=user_role_name,
+                question_prompt=payload.question or "Prediccion: forecast y retencion",
+                sql_generated=None,
+                validation_status="RECHAZADO_RBAC",
+                target_database=target_db_name,
+                error_message=domain_denial,
+            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=domain_denial)
+
+    started_at = time.perf_counter()
+
+    forecast_data: Optional[Dict[str, Any]] = None
+    retention_data: Optional[Dict[str, Any]] = None
+    quality: List[Dict[str, Any]] = []
+    errors: List[str] = []
+
+    async def _run(label: str, fn, *args, quietly: bool = False):
+        """Ejecuta una prediccion en un hilo, aislando el fallo.
+
+        Un forecast que no se puede calcular no puede tumbar a la retencion que
+        si se puede: son preguntas distintas sobre la misma base. El motivo se
+        acumula en `errors` para que quede a la vista en vez de convertirse en un
+        bloque en null que el usuario no puede distinguir de "no aplica".
+
+        Por que un hilo: los tres bloques son SQLAlchemy/DB SINCRONO dentro de un
+        `async def`, asi que en serie bloqueaban el event loop y cualquier otra
+        request del servidor esperaba a que terminara el forecast. Los tres son
+        independientes (misma conexion, tablas distintas), asi que `to_thread` los
+        superpone sin tocar como funcionan por dentro.
+
+        Cada bloque abre su PROPIA sesion: una `Session` de SQLAlchemy no es
+        thread-safe, y compartir la de la request entre los tres hilos seria una
+        carrera silenciosa. La sesion de la request sigue usandose, en serie, para
+        la auditoria del final.
+        """
+        def _call():
+            session = SessionLocal()
+            try:
+                return fn(session, *args)
+            finally:
+                session.close()
+
+        try:
+            return await asyncio.to_thread(_call)
+        except Exception as exc:
+            logger.warning("Prediccion no disponible (%s): %s", label, exc)
+            if not quietly:
+                errors.append(f"{label}: {exc}")
+            return None
+
+    bloques = {}
+    if payload.include_forecast:
+        bloques["forecast"] = _run(
+            "Pronóstico", forecast_service.run_forecast, conn_id, user_role_name,
+            current_user.is_admin, current_user.role_id, budget,
+        )
+    if payload.include_retention:
+        bloques["retention"] = _run(
+            "Retención", forecast_service.run_retention, conn_id, user_role_name,
+            current_user.is_admin, current_user.role_id, payload.top_limit, budget,
+        )
+    if payload.include_data_quality:
+        # Best-effort: si un check no corre, el reporte entero sigue sirviendo.
+        bloques["quality"] = _run(
+            "Auditoria de calidad", forecast_service.audit_data_quality, conn_id, user_role_name,
+            current_user.is_admin, current_user.role_id, budget, quietly=True,
+        )
+
+    resultados = dict(zip(bloques, await asyncio.gather(*bloques.values())))
+    forecast_data = resultados.get("forecast")
+    retention_data = resultados.get("retention")
+    quality = resultados.get("quality") or []
+
+    forecast_card = None
+    if forecast_data is not None:
+        forecast_card = ForecastCard(**{
+            k: v for k, v in forecast_data.items()
+            if k in ForecastCard.model_fields
+        })
+
+    retention_report = None
+    if retention_data is not None:
+        # `score_retention` devuelve `tiers` como DICT indexado por nombre
+        # ('unico', 'recurrente', 'fiel') y el valor NO incluye la clave. Hay que
+        # inyectarla: `RetentionTier(**valor)` sin esto levanta `Field required:
+        # tier` y el endpoint responde 500 en TODAS las llamadas de retencion.
+        raw_tiers = retention_data.get("tiers") or {}
+        if isinstance(raw_tiers, dict):
+            tiers = [RetentionTier(**{"tier": name, **stats}) for name, stats in raw_tiers.items()]
+        else:
+            tiers = [RetentionTier(**t) for t in raw_tiers]
+        retention_report = RetentionReport(**{
+            "total_clients": retention_data.get("total_clients", 0),
+            "total_revenue": retention_data.get("total_revenue", 0.0),
+            "last_period": retention_data.get("last_period"),
+            "tiers": tiers,
+            "top": [RetentionClient(**c) for c in retention_data.get("top", [])],
+            "truncated_by_limit": retention_data.get("truncated_by_limit", False),
+            "entity_column": retention_data.get("entity_column"),
+            "metric_column": retention_data.get("metric_column"),
+            "date_column": retention_data.get("date_column"),
+            "income_only": retention_data.get("income_only", True),
+            "sql": retention_data.get("sql"),
+            "reason": retention_data.get("reason"),
+        })
+
+    response = PredictionResponse(
+        question=payload.question,
+        forecast=forecast_card,
+        retention=retention_report,
+        errors=errors,
+        data_quality=quality,
+    )
+
+    # La prediccion tambien deja rastro. Sin esto, un forecast publicado no tiene
+    # la misma trazabilidad que un KPI y el compliance ve una cifra en la UI sin
+    # registro de quien la pidio ni con que SQL.
+    #
+    # `execution_time_ms` se mide de verdad. Un 0 hardcodeado no es "instantanea":
+    # es un campo de latencia falso en el CSV de compliance, y la prediccion
+    # recorre N COUNT(*) sobre la fact table.
+    response.audit_log_id = _persist_audit_log(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=user_role_name,
+        question_prompt=payload.question or "Prediccion: forecast y retencion",
+        sql_generated=(forecast_data or {}).get("sql") or (retention_data or {}).get("sql"),
+        validation_status="PREDICCION_DETERMINISTA",
+        target_database=target_db_name,
+        execution_time_ms=int((time.perf_counter() - started_at) * 1000),
+        rows_returned=len((forecast_data or {}).get("series", []) or []),
+        result_snapshot=response.model_dump_json(),
+    )
+    return response
 
 
 @router.get("/suggestions", response_model=SuggestionsResponse)
