@@ -48,6 +48,7 @@ class QueryEngine:
     # --- Response & Intent Facade ---
     _build_llm_offline_response = ResponseBuilder.build_llm_offline_response
     _build_rbac_denied_response = ResponseBuilder.build_rbac_denied_response
+    _build_visibility_diagnostic_response = ResponseBuilder.build_visibility_diagnostic_response
     _classify_intent = IntentClassifier.classify_intent
     _heuristic_presentation_hints = IntentClassifier.heuristic_presentation_hints
     _generate_conversational_response = IntentClassifier.generate_conversational_response
@@ -106,6 +107,67 @@ class QueryEngine:
         return suggested, cleaned_conversational
 
     @classmethod
+    def _diagnose_empty_visibility(
+        cls, db: Optional[Session], connection_id: Optional[int], is_admin: bool
+    ) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """
+        Por que `allowed_tables` vuelve vacio. Sin esto los tres casos son el
+        mismo "sin resultados": no hay datos, tu rol no ve tablas, o NADIE ha
+        encendido la base. El tercero es real en este despliegue (11 conexiones,
+        las 11 con `is_active=False`) y es el unico que el usuario no puede
+        arreglar solo.
+
+        `state`:
+          - `"no_active_connection"`: hay conectores y ninguno activo.
+          - `"role_without_tables"`: hay al menos uno activo (el caso que ya
+            reportaba `build_rbac_denied_response`).
+          - `"unknown"`: no se pudo comprobar. Se devuelve `unknown` y NO
+            "no hay conexiones": afirmar sin medir es el bug que esto cierra
+            (mismo criterio que `test_audit_log_honesty.py`).
+
+        La accion de activar solo se propone al admin y solo cuando se pudo
+        comprobar: es una escritura que `get_current_admin` rechazaria para
+        cualquier otro perfil.
+        """
+        state = "unknown"
+        activate: Optional[Dict[str, Any]] = None
+        if db is None:
+            return state, activate
+        try:
+            from app.modules.admin_catalog.models import CorporateConnection
+            # Una sola lectura y la cuenta en Python: dos `filter` sobre el
+            # mismo modelo se contradicen en cuanto algo cambia entre ambos, y
+            # aqui solo hace falta "hay alguna activa?".
+            conns = db.query(CorporateConnection).all()
+            inactive = [c for c in conns if not c.is_active]
+            if any(c.is_active for c in conns):
+                return "role_without_tables", None
+            if not conns:
+                # Cero conectores NO es "nadie activó uno": es que no hay ninguna
+                # base dada de alta. La accion util es crear una, no activar, y el
+                # mensaje de `no_active_connection` mandaria al admin a buscar un
+                # interruptor que no existe. Se declara aparte.
+                return "no_connections_registered", None
+            state = "no_active_connection"
+            # La del propio pedido manda: es la que el usuario esta mirando en
+            # el selector. Con una sola inactiva no hay duda posible.
+            target = next((c for c in inactive if c.id == connection_id), None)
+            if target is None and len(inactive) == 1:
+                target = inactive[0]
+            if is_admin and target is not None:
+                activate = {
+                    "connection_id": target.id,
+                    "connection_name": target.name,
+                    "endpoint": f"/api/v1/connectors/{target.id}/toggle-active"
+                }
+        except Exception as ex:
+            logger.warning(f"No se pudo verificar el estado de las conexiones de datos: {ex}")
+            # La sesion es del CALLER: tragarnos el error sin deshacer la
+            # transaccion abortada la deja muerta para el resto de la request.
+            discard_failed_transaction(db)
+        return state, activate
+
+    @classmethod
     async def execute_query(
         cls,
         question: str,
@@ -159,6 +221,21 @@ class QueryEngine:
             )
 
         allowed_tables = cls.get_allowed_tables_for_role(user_role, is_admin, db=db, role_id=role_id, connection_id=connection_id)
+
+        # 3.0 Por que no hay tablas, ANTES de gastar un grounding_query o una
+        # llamada al LLM. Sin tablas no hay nada que consultar, y el mensaje
+        # tiene que decir cual de los dos motivos es; el resto del pipeline solo
+        # sabe producir "sin resultados", que es lo que hace que el producto
+        # parezca roto cuando en realidad nadie encendio la base.
+        if not allowed_tables:
+            diag_state, activate_action = cls._diagnose_empty_visibility(db, connection_id, is_admin)
+            if diag_state in ("no_active_connection", "no_connections_registered") or (diag_state == "unknown" and not is_admin):
+                # El `unknown` del admin NO corta el flujo: antes un admin sin
+                # tablas caia al resto del motor y ese comportamiento se
+                # conserva. No hay ningun dato nuevo que contarle.
+                return cls._build_visibility_diagnostic_response(
+                    effective_question, user_role, diag_state, activate_action
+                )
 
         # 3. Strict Cross-Domain RBAC Governance Check (Defense Layer 1 - Fail Closed)
         if not is_admin and user_role not in ADMIN_ROLES:
