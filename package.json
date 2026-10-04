@@ -9,6 +9,7 @@
     "dev:backend": "node scripts/run-backend.js",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "test": "vitest run",
     "db:init": "node scripts/init-db.js",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d",
@@ -35,6 +36,7 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
-    "vite": "^6.0.5"
+    "vite": "^6.0.5",
+    "vitest": "^5.0.3"
   }
 }
