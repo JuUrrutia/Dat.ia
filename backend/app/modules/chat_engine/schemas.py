@@ -155,6 +155,15 @@ class QueryResponse(BaseModel):
     nulls_detected: Optional[Dict[str, Any]] = None # Detección e intercepción proactiva de nulos para Opción 4
     traceability: TraceabilityAudit
     audit_log_id: Optional[int] = None
+    # Modulo C: por que no hay tablas que consultar. Es una clave
+    # DISCRIMINANTE, no texto que la UI tenga que parsear: `True` = no hay
+    # ninguna conexion activa (nadie encendio una base), `None` = no se pudo
+    # comprobar. Ausente en el resto de respuestas, incluido el rechazo de
+    # RBAC de `build_rbac_denied_response`, que es otro diagnostico.
+    no_active_connection: Optional[bool] = None
+    # Accion que el admin puede ejecutar desde el chat. `None` para cualquier
+    # otro perfil: el boton seria un rechazo guaranteed del backend.
+    activate_connection_action: Optional[Dict[str, Any]] = None
 
 class SuggestionsResponse(BaseModel):
     user_role: Optional[str] = None
@@ -203,6 +212,27 @@ class ChatFeedbackResponse(BaseModel):
     success: bool
     message: str
     learning_saved: bool = False
+
+class GoldenQueryOut(BaseModel):
+    """Fila de `query_learning_memories` tal como la ve el admin.
+
+    `user_role` NO es el autor: la tabla no tiene `user_id`, asi que no se puede
+    afirmar quien escribio el SQL. `execution_count` es el uso real medido ( veces
+    inyectada en el prompt de la conexion) y es el dato que justifica la pantalla.
+    """
+    id: int
+    question_pattern: str
+    successful_sql: str
+    user_role: Optional[str] = None
+    is_golden: bool = False
+    execution_count: int = 0
+    was_self_healed: bool = False
+    created_at: str
+    updated_at: str
+
+class GoldenQueryList(BaseModel):
+    items: List[GoldenQueryOut] = []
+    total: int = 0
 
 class DashboardWidgetCreate(BaseModel):
     title: str

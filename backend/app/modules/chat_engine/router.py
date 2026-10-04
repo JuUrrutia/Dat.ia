@@ -20,7 +20,8 @@ from app.modules.chat_engine.schemas import (
     ChatThreadCreate, ChatThreadSummary, ChatThreadDetail,
     ChatFeedbackRequest, ChatFeedbackResponse,
     DashboardWidgetCreate, DashboardWidgetOut,
-    GoldenQueryRequest, PredictionRequest, PredictionResponse,
+    GoldenQueryRequest, GoldenQueryList, GoldenQueryOut,
+    PredictionRequest, PredictionResponse,
     ForecastCard, RetentionReport, RetentionTier, RetentionClient
 )
 from app.modules.chat_engine import forecast_service
@@ -1010,6 +1011,81 @@ def toggle_golden_query(
     db.commit()
     msg = "Consulta marcada como Consulta Maestra (Golden Sample)." if item_in.is_golden else "Consulta desmarcada como Consulta Maestra."
     return {"success": True, "message": msg, "is_golden": item_in.is_golden}
+
+@router.get("/golden-queries", response_model=GoldenQueryList)
+def list_golden_queries(
+    connection_id: int = Query(1, description="La memoria es compartida por conexion"),
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+) -> Any:
+    """Lista lo que el motor aprende e inyecta en el prompt, con su uso real.
+
+    `QueryLearningMemory` es un recurso COMPARTIDO: `sql_executor` la usa como
+    few-shot para TODOS los usuarios de la conexion y no tiene columna `user_id`.
+    Es decir, un admin puede haber enseñado a toda la empresa un SQL equivocado y
+    no habia forma de ver que hay ni de revertirlo. Este endpoint es la salida de
+    inspeccion; el DELETE de abajo, la de deshacerlo.
+
+    El filtro por `connection_id` es el aislamiento: lo que se aprendio de una base
+    no se inyecta en otra, asi que tampoco se lista junto.
+    """
+    rows = db.query(QueryLearningMemory).filter(
+        QueryLearningMemory.connection_id == connection_id
+    ).order_by(
+        # Primero las doradas (es lo que pesa en el prompt), luego las mas usadas:
+        # el uso real es la senal que dice si esto sirve o es ruido acumulado.
+        QueryLearningMemory.is_golden.desc(),
+        QueryLearningMemory.execution_count.desc(),
+    ).all()
+
+    return GoldenQueryList(
+        items=[
+            GoldenQueryOut(
+                id=m.id,
+                question_pattern=m.question_pattern,
+                successful_sql=m.successful_sql,
+                user_role=m.user_role,
+                # Columnas con default: pueden venir en NULL si la fila se creo
+                # antes del default. `bool(None)`/`or 0` los tratan como lo que
+                # el modelo ya significa con esos valores.
+                is_golden=bool(m.is_golden),
+                execution_count=m.execution_count or 0,
+                was_self_healed=bool(m.was_self_healed),
+                created_at=m.created_at.isoformat() if m.created_at else "",
+                updated_at=m.updated_at.isoformat() if m.updated_at else "",
+            )
+            for m in rows
+        ],
+        total=len(rows),
+    )
+
+@router.delete("/golden-queries/{memory_id}")
+def delete_golden_query(
+    memory_id: int,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+) -> Any:
+    """Borra una memoria compartida de la conexion.
+
+    Admin nomas: la fila se inyecta en el prompt de todos los usuarios de la
+    conexion, asi que borrarla es una decision con efecto global.
+
+    404 si no existe, igual que `DELETE /threads/{id}`: un borrado silencioso con
+    `success: True` hacia que un DELETE reintentado (o de una fila ya borrada) se
+    leyera como "lo revirti", que es exactamente la accion que el admin queria
+    verificar.
+    """
+    mem = db.query(QueryLearningMemory).filter(
+        QueryLearningMemory.id == memory_id
+    ).first()
+    if not mem:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Memoria de aprendizaje no encontrada."
+        )
+    db.delete(mem)
+    db.commit()
+    return {"success": True, "message": "Memoria de aprendizaje eliminada correctamente"}
 
 
 # =========================================================================
