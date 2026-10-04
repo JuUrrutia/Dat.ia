@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Users, Database, BookOpen, Server, Key, FileText, ShieldCheck } from 'lucide-react';
+import { ShieldAlert, Users, Database, BookOpen, Server, Key, FileText, ShieldCheck, BrainCircuit } from 'lucide-react';
 import { CorporateConnection, connectorService, DEFAULT_CONNECTORS } from '../features/admin/services/connector_service';
 import { AdminAuditTab } from '../components/admin/AdminAuditTab';
 import { AdminCatalogTab } from '../components/admin/AdminCatalogTab';
 import { AdminConnectorsTab } from '../components/admin/AdminConnectorsTab';
 import { AdminUsersTab } from '../components/admin/AdminUsersTab';
 import { AdminPermissionsTab } from '../components/admin/AdminPermissionsTab';
+import { AdminLearnedTab } from '../components/admin/AdminLearnedTab';
 import { ConnectorModal } from '../components/admin/ConnectorModal';
 import { authService } from '../features/auth/services/auth_service';
 import { useAuth } from '../features/auth/context/AuthContext';
@@ -15,7 +16,7 @@ import { User } from '../types';
 export const AdminPage: React.FC = () => {
   const { notify } = useNotifications();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'connectors' | 'users' | 'catalog' | 'permissions' | 'audit'>('connectors');
+  const [activeTab, setActiveTab] = useState<'connectors' | 'users' | 'catalog' | 'permissions' | 'learned' | 'audit'>('connectors');
 
   // Connectors State
   const [connectors, setConnectors] = useState<CorporateConnection[]>(DEFAULT_CONNECTORS);
@@ -163,7 +164,7 @@ export const AdminPage: React.FC = () => {
         role="tablist"
         aria-label="Secciones de administración"
         onKeyDown={(e) => {
-          const order = ['connectors', 'users', 'permissions', 'catalog', 'audit'];
+          const order = ['connectors', 'users', 'permissions', 'learned', 'catalog', 'audit'];
           const i = order.indexOf(activeTab);
           const go = (next: string) => {
             setActiveTab(next as typeof activeTab);
@@ -232,6 +233,25 @@ export const AdminPage: React.FC = () => {
           </button>
         )}
 
+        {isAdmin && (
+          <button
+            role="tab"
+            id={"admin-tab-learned"}
+            aria-selected={activeTab === 'learned'}
+            tabIndex={activeTab === 'learned' ? 0 : -1}
+            type="button"
+            onClick={() => setActiveTab('learned')}
+            className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold transition-all whitespace-nowrap rounded-t-xl ${
+              activeTab === 'learned'
+                ? 'bg-brand-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-card/60'
+            }`}
+          >
+            <BrainCircuit className="w-4 h-4" />
+            <span>Aprendizaje</span>
+          </button>
+        )}
+
         <button
           role="tab"
           id={"admin-tab-catalog"}
@@ -291,7 +311,11 @@ export const AdminPage: React.FC = () => {
       {/* Tab 4: Matriz de permisos rol × tabla (solo admin, ver isAdmin) */}
       {isAdmin && activeTab === 'permissions' && <AdminPermissionsTab />}
 
-      {/* Tab 5: Audit & Compliance Logs */}
+      {/* Tab 5: Memoria de aprendizaje compartida (admin-only: GET/DELETE son
+          `get_current_admin` y la fila se inyecta en el prompt de todos) */}
+      {isAdmin && activeTab === 'learned' && <AdminLearnedTab />}
+
+      {/* Tab 6: Audit & Compliance Logs */}
       {activeTab === 'audit' && <AdminAuditTab />}
 
       {/* Modal for Creating & Editing Connection */}
