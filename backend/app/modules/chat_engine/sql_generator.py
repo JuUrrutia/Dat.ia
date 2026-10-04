@@ -3,6 +3,7 @@ from typing import Set, Dict, Any, Optional, Tuple, List
 from sqlalchemy.orm import Session
 
 from app.core.constants import ADMIN_ROLES, ROLE_ADMINISTRADOR
+from app.core.database import discard_failed_transaction
 from app.core.prompts import PromptManager
 from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
 from app.modules.chat_engine.llm_service import LLMService
@@ -44,7 +45,10 @@ class SQLGenerator:
             )
             schema_context = s_info.get("schema_prompt", "")
         except Exception:
-            pass
+            # El `except: pass` dejaba la sesion abortada y el
+            # `retrieve_few_shot_memories` siguiente moría con
+            # `InFailedSqlTransaction`. Mismo helper que en `governance_guard`.
+            discard_failed_transaction(db)
 
         few_shots = SQLExecutor.retrieve_few_shot_memories(
             db, question, connection_id, user_role=user_role
