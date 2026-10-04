@@ -1,8 +1,38 @@
 import time
 import socket
+import asyncio
 import httpx
 from typing import Dict, Any, Optional
 from app.core.config import settings
+from urllib.parse import urlsplit
+
+
+async def _port_open(url: str, timeout: float) -> bool:
+    """El puerto de `url` acepta conexiones TCP.
+
+    Distingue "nadie escucha" de "escucha pero no me Sirve". Un `httpx` con
+    timeout se come los 2 s completos contra un puerto cerrado, mientras que el
+    probe TCP falla en milisegundos. La diferencia importa cuando se prueban 30
+    combinaciones host/puerto: contra un puerto muerto pasabamos de 61 s.
+
+    `to_thread` porque `socket.create_connection` es bloqueante y esto corre
+    dentro de un `async def`.
+    """
+    try:
+        parts = urlsplit(url)
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        # Techo propio y corto: contra loopback, un puerto vivo acepta el SYN en
+        # microsegundos. Un puerto muerto se queda esperando el paquete descartado
+        # del firewall hasta el timeout, asi que 2 s por candidato son 12 s solo de
+        # dead-probing. 250 ms no le da tiempo a un servidor lento de arrancar y
+        # devuelve la respuesta en el acto.
+        probe_timeout = min(timeout, 0.25)
+        sock = await asyncio.to_thread(socket.create_connection, (parts.hostname, port), probe_timeout)
+        sock.close()
+        return True
+    except Exception:
+        return False
+
 
 class HealthService:
     """
@@ -73,6 +103,17 @@ class HealthService:
 
         for cand_provider, cand_url in candidates:
             cand_start = time.time()
+
+            # Un puerto cerrado no merece cinco intentos HTTP. En Windows el
+            # firewall descarta los paquetes en vez de rechazar el loopback, asi
+            # que cada GET a un puerto sin escuchar se come el timeout COMPLETO
+            # en vez de fallar al instante. Medido: 6 candidatos x 5 endpoints x
+            # 2 s = 61 s de chequeo con el LLM apagado, y era la causa de que 6
+            # tests de la suite tardaran 38-61 s cada uno.
+            # El probe TCP decide en una llamada y es el mismo criterio que ya
+            # aplica `check_postgres_connection` mas abajo en este archivo.
+            if not await _port_open(cand_url, timeout):
+                continue
 
             if cand_provider == "ollama" or ":11434" in cand_url or cand_provider == "auto":
                 try:
