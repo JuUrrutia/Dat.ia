@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ShieldCheck,
+  ShieldAlert,
   Database,
   RefreshCw,
   Save,
@@ -9,7 +10,11 @@ import {
   Lock,
   HardDrive,
 } from 'lucide-react';
-import { useAdminPermissions } from '../../features/admin/hooks/useAdminPermissions';
+import { useMemo, useState } from 'react';
+import {
+  useAdminPermissions,
+  useGovernanceCoverage,
+} from '../../features/admin/hooks/useAdminPermissions';
 
 /**
  * Matriz rol × tabla del permiso de acceso (default-deny).
@@ -44,6 +49,32 @@ export const AdminPermissionsTab: React.FC = () => {
     refresh,
   } = useAdminPermissions();
 
+  const { coverage, orphanedTables, isLoadingCoverage, coverageError, refreshCoverage } =
+    useGovernanceCoverage(selectedConnectionId);
+
+  // "38 de 41 tablas visibles para al menos un rol". El resumen se recalcula
+  // desde el guardarrail del servidor, asi que el numero no puede divergir de lo
+  // que el chat realmente deja ver.
+  const summaryLine = useMemo(() => {
+    if (!coverage) return null;
+    const { total_tables, assigned_tables, orphaned_tables } = coverage.summary;
+    return `${assigned_tables} de ${total_tables} tablas visibles para al menos un rol${
+      orphaned_tables === 0 ? '' : ` · ${orphaned_tables} sin ningún rol`
+    }`;
+  }, [coverage]);
+
+  // Deep-link a la matriz: enfoca la columna de esa tabla. Se hace con scroll +
+  // resaltado en vez de un parametro en la URL porque la matriz ya esta en esta
+  // misma pantalla; abrir otra vista para ver una columna seria ruido.
+  const [focusedTable, setFocusedTable] = useState<string | null>(null);
+
+  const focusTableColumn = (table: string) => {
+    setFocusedTable(table);
+    document
+      .getElementById(`perm-col-${table}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  };
+
   const needsReview = Boolean(selectedConnector?.requires_permission_review);
 
   return (
@@ -61,7 +92,12 @@ export const AdminPermissionsTab: React.FC = () => {
 
         <button
           type="button"
-          onClick={refresh}
+          // La cobertura se recalcula del guardarrail, asi que un refresco que
+          // no la consulte dejaria el resumen desfasado respecto de la matriz.
+          onClick={() => {
+            refresh();
+            refreshCoverage();
+          }}
           className="p-2 text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-dark-card/40 hover:bg-slate-200 dark:hover:bg-dark-card rounded-xl border border-slate-200 dark:border-dark-border transition-colors cursor-pointer self-start"
           title="Refrescar matriz de permisos"
         >
@@ -110,6 +146,61 @@ export const AdminPermissionsTab: React.FC = () => {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Cobertura de gobernanza: el dato que la matriz no puede dar.
+          Va ARRIBA de la matriz y no en una pestaña propia porque solo tiene
+          sentido junto a los permisos que hay que corregir. */}
+      {selectedConnectionId !== null && !isLoadingCoverage && summaryLine && (
+        <div
+          className={`p-3.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 animate-fadeIn ${
+            coverage!.summary.orphaned_tables > 0
+              ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-800 dark:text-amber-400'
+              : 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-800 dark:text-emerald-400'
+          }`}
+        >
+          <div className="flex items-start gap-2">
+            {coverage!.summary.orphaned_tables > 0 ? (
+              <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+            ) : (
+              <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
+            )}
+            <div className="space-y-1">
+              <p className="font-bold">{summaryLine}</p>
+              {coverage!.summary.orphaned_tables > 0 && (
+                <p className="text-[11px] leading-relaxed">
+                  Nadie de la empresa puede consultarlas. Concedelas en la matriz de abajo.
+                </p>
+              )}
+            </div>
+          </div>
+          {orphanedTables.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {orphanedTables.map((t) => (
+                <button
+                  key={t.table}
+                  type="button"
+                  onClick={() => focusTableColumn(t.table)}
+                  title={`Ir a la columna de ${t.table} en la matriz`}
+                  className="font-mono text-[10px] px-2 py-1 rounded-lg bg-white/70 dark:bg-dark-card/60 border border-amber-300 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 hover:bg-white dark:hover:bg-dark-card transition-colors cursor-pointer"
+                >
+                  {t.table}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {isLoadingCoverage && selectedConnectionId !== null && (
+        <p className="text-xs text-slate-500 dark:text-gray-400">Calculando cobertura de permisos...</p>
+      )}
+
+      {coverageError && (
+        <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-800 dark:text-rose-400 text-xs flex items-start gap-2 animate-fadeIn">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{coverageError}</span>
         </div>
       )}
 
@@ -185,7 +276,12 @@ export const AdminPermissionsTab: React.FC = () => {
                       {tables.map((t) => (
                         <th
                           key={t}
-                          className="px-3 py-3 text-center font-mono normal-case"
+                          id={`perm-col-${t}`}
+                          className={`px-3 py-3 text-center font-mono normal-case transition-colors ${
+                            focusedTable === t
+                              ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-900 dark:text-amber-300'
+                              : ''
+                          }`}
                           title={t}
                         >
                           <span className="block max-w-[120px] truncate">{t}</span>
@@ -269,7 +365,9 @@ export const AdminPermissionsTab: React.FC = () => {
           </span>
           <button
             type="button"
-            onClick={savePending}
+            // Tras guardar, la cobertura cambia: sin volver a pedirla, la barra de
+            // arriba seguiría diciendo "38 de 41" con la matriz ya corregida.
+            onClick={() => savePending().then(refreshCoverage)}
             disabled={isSaving || pendingCount === 0}
             className="flex items-center space-x-1.5 text-xs bg-brand-600 hover:bg-brand-500 text-white font-medium px-4 py-2 rounded-xl shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
           >

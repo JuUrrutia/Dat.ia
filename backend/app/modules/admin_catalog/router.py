@@ -1,6 +1,6 @@
 import logging
 import io
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict, Set
 from fastapi import APIRouter, Depends, status, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -12,9 +12,13 @@ from app.modules.admin_catalog.schemas import (
     DataDictionaryResponse, AutoEnrichRequest, AutoEnrichResponse,
     CorporateConnectionCreate, CorporateConnectionUpdate, CorporateConnectionOut,
     ConnectionTestRequest, ConnectionTestResult, MetadataDBTestRequest,
-    ReportExportRequest, NullsAuditResponse, ApplyNullPolicyRequest
+    ReportExportRequest, NullsAuditResponse, ApplyNullPolicyRequest,
+    GovernanceCoverageResponse, GovernanceCoverageTable, GovernanceCoverageSummary
 )
-from app.modules.admin_catalog.models import CorporateConnection
+from app.modules.admin_catalog.models import (
+    CorporateConnection, RoleTablePermission, RoleColumnPermission
+)
+from app.modules.auth.models import Role
 from app.modules.catalog.services.catalog_service import CatalogDomainService
 from app.modules.catalog.services.connector_service import ConnectorDomainService
 from app.modules.catalog.services.null_manager import NullManagerService
@@ -255,6 +259,114 @@ def set_role_table_permissions(
             for p in perms
         ],
     }
+
+@router.get("/permissions/coverage", response_model=GovernanceCoverageResponse)
+def get_governance_coverage(
+    connection_id: int = Query(..., description="ID de la conexión a auditar"),
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin)
+) -> Any:
+    """Cobertura de gobernanza: qué de esta conexión NO ve ningún rol (Admin only).
+
+    Es DERIVADO, cero estado nuevo: se recalcula en cada GET desde la misma fuente
+    que usa el chat (`GovernanceGuard` / `DynamicSchemaPruningService`), para que
+    este número no pueda decir lo contrario de lo que el guardarraí­l realmente
+    permite. No reimplementa la resolución de permisos: la pregunta.
+
+    `visible_to_roles` sale de `get_allowed_tables_for_role` por rol, o sea de las
+    tablas que el prompt del chat le mostraría a ese usuario. Un rol al que solo
+    se le denegó el acceso NO cuenta como visible; y si el guard no pudo resolver
+    (fail-closed) tampoco. Ambigüedad = huérfana, que es la postura del proyecto.
+
+    Los roles de administrador NO se cuentan como lectores: el admin es quien
+    audita, y verlo como "visible para alguien" dejaría `orphaned_tables` siempre
+    en cero, que es justo el dato que esta vista existe para dar.
+    """
+    from app.core.constants import ADMIN_ROLES
+    from app.modules.chat_engine.governance_guard import GovernanceGuard
+    from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
+
+    conn = db.query(CorporateConnection).filter(CorporateConnection.id == connection_id).first()
+    if not conn:
+        raise HTTPException(status_code=404, detail="Conexión no encontrada.")
+
+    # El universo de la conexión: lo que el admin ve de ella (introspección física
+    # más catálogo semántico). Es el mismo criterio que usa el prompt, así que no
+    # hay una lista de tablas "de verdad" paralela por mantener.
+    universe = DynamicSchemaPruningService.get_authorized_schema_prompt(
+        db=db, connection_id=connection_id, is_admin=True,
+    ).get("allowed_tables", set()) or set()
+
+    # Quién tocó cada tabla. `is_allowed` NO se mira: un DENY es una decisión del
+    # admin sobre esa tabla y por eso la cuenta como asignada, aunque no la haga
+    # legible. Lo que decide si es huérfana es `visible_to_roles`, abajo.
+    assigned_roles: Dict[str, Set[str]] = {}
+    rows = db.query(RoleTablePermission, Role.name).join(
+        Role, Role.id == RoleTablePermission.role_id
+    ).filter(RoleTablePermission.connection_id == connection_id).all()
+    for perm, role_name in rows:
+        assigned_roles.setdefault(perm.table_name, set()).add(role_name)
+
+    # Una pasada por rol No-Admin. Los tres helpers comparten el `_schema_cache`
+    # de `DynamicSchemaPruningService` con la misma key, así que en la práctica se
+    # resuelve el esquema una vez por rol, no tres.
+    visible_to: Dict[str, Set[str]] = {}
+    blocked_by_role: Dict[str, Set[str]] = {}
+    masked_by_role: Dict[str, Set[str]] = {}
+    non_admin_roles = [r for r in db.query(Role).all() if r.name not in ADMIN_ROLES]
+    for role in non_admin_roles:
+        allowed = GovernanceGuard.get_allowed_tables_for_role(
+            role.name, False, db=db, role_id=role.id, connection_id=connection_id,
+        ) or set()
+        for table in allowed:
+            visible_to.setdefault(table, set()).add(role.name)
+        blocked_by_role[role.name] = GovernanceGuard.get_blocked_columns_for_role(
+            role.name, False, db=db, role_id=role.id, connection_id=connection_id,
+        ) or set()
+        masked_by_role[role.name] = GovernanceGuard.get_masked_columns_for_role(
+            role.name, False, db=db, role_id=role.id, connection_id=connection_id,
+        ) or set()
+
+    # `GovernanceGuard` devuelve los nombres de columna SIN calificar por tabla (los
+    # usa para|prender del prompt entero). Para reportarlos por tabla hace falta
+    # saber a cuál pertenece cada uno: eso lo dice `RoleColumnPermission`, y acá
+    # se usa SOLO para atribuir, no para decidir. El sí/no de bloqueada o
+    # enmascarada sigue siendo el del guard, nunca una regla propia.
+    columns_of: Dict[str, Set[str]] = {}
+    for cp in db.query(RoleColumnPermission).filter(
+        RoleColumnPermission.connection_id == connection_id
+    ).all():
+        columns_of.setdefault(cp.table_name, set()).add(cp.column_name)
+
+    tables = []
+    for table in sorted(universe):
+        readers = visible_to.get(table, set())
+        # "Denegada a todos" = bloqueada para cada rol que la puede leer. Sin
+        # lectores la columna no está en juego: no se informa nada de ella.
+        readers_list = sorted(readers)
+        own_columns = columns_of.get(table, set())
+        blocked = sorted(own_columns & set.intersection(*(blocked_by_role[r] for r in readers_list))) if readers_list else []
+        masked = sorted(own_columns & set.intersection(*(masked_by_role[r] for r in readers_list))) if readers_list else []
+        tables.append(GovernanceCoverageTable(
+            table=table,
+            assigned_roles=sorted(assigned_roles.get(table, set())),
+            visible_to_roles=readers_list,
+            coverage="assigned" if readers else "orphaned",
+            blocked_columns=blocked,
+            masked_columns=masked,
+        ))
+
+    orphaned = sum(1 for t in tables if t.coverage == "orphaned")
+    return GovernanceCoverageResponse(
+        connection_id=connection_id,
+        connection_name=conn.name,
+        tables=tables,
+        summary=GovernanceCoverageSummary(
+            total_tables=len(tables),
+            assigned_tables=len(tables) - orphaned,
+            orphaned_tables=orphaned,
+        ),
+    )
 
 @router.post("/connectors/test", response_model=ConnectionTestResult)
 def test_connection_connectivity(

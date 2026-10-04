@@ -132,6 +132,32 @@ class NullsAuditResponse(BaseModel):
 class ApplyNullPolicyRequest(BaseModel):
     policy: str # "delete_rows" | "mode" | "nearest" | "open"
 
+# --- Cobertura de gobernanza (GET /permissions/coverage) ---
+# Derivada, no guardada: se recalcula en cada GET desde la misma fuente que usa
+# el chat, asi que este numero no puede contradecir al guardarrail.
+
+class GovernanceCoverageTable(BaseModel):
+    table: str
+    # Roles con ALGO asignado a esta tabla (allow o deny): "alguien lo toco".
+    assigned_roles: List[str] = []
+    # Roles que la pueden LEER de verdad, segun el resolutor del chat. Un rol al
+    # que solo se le denego NO cuenta.
+    visible_to_roles: List[str] = []
+    coverage: str  # "assigned" | "orphaned"
+    blocked_columns: List[str] = []
+    masked_columns: List[str] = []
+
+class GovernanceCoverageSummary(BaseModel):
+    total_tables: int
+    assigned_tables: int
+    orphaned_tables: int  # ningun rol las puede leer
+
+class GovernanceCoverageResponse(BaseModel):
+    connection_id: int
+    connection_name: str
+    tables: List[GovernanceCoverageTable] = []
+    summary: GovernanceCoverageSummary
+
 class ConnectionTestRequest(BaseModel):
     db_type: DatabaseType
     host: str
