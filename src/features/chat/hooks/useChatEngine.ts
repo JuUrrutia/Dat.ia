@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../auth/context/AuthContext';
 import { useNotifications } from '../../../context/NotificationContext';
-import { QueryResult } from '../../../types';
+import { QueryResult, PredictionResult } from '../../../types';
+import { createStreamBuffer } from '../../../shared/stream_buffer';
 import { ChatThread } from '../../../components/chat/SidebarChatHistory';
-import { queryService } from '../services/query_service';
+import { queryService, isPredictionQuestion } from '../services/query_service';
 import { connectorService, CorporateConnection } from '../../admin/services/connector_service';
 
 // El motor encadena hasta 3 llamadas al LLM en CPU (clasificar intencion ->
@@ -145,6 +146,13 @@ export function useChatEngine() {
   const [threadsError, setThreadsError] = useState<string | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
 
+  // Predicciones: estado aparte del hilo, porque NO son un `QueryResult`.
+  // `null` = todavia no se pidio ninguna; un error va en su propio campo para no
+  // confundirse con "no hay prediccion posible" ni con un panel vacio.
+  const [prediction, setPrediction] = useState<PredictionResult | null>(null);
+  const [predictionError, setPredictionError] = useState<string | null>(null);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+
   // Segundos que lleva la consulta en curso. Es lo unico que el frontend puede
   // afirmar con certeza sin SSE: que sigue corriendo y cuanto lleva. Antes se
   // mostraba una "fase" que avanzaba por tiempos fijos (1400/3200/5500 ms) y
@@ -163,47 +171,26 @@ export function useChatEngine() {
   // Tokens recibidos todavia no volcados al estado. Son refs y no mas estado a
   // proposito: entre un volcado y el siguiente no hay nada que renderizar, y
   // un `setState` por token es justo lo que se esta evitando.
-  const streamBufferRef = useRef('');
-  const streamFlushTimerRef = useRef<number | null>(null);
+  const streamBufferRef = useRef(createStreamBuffer(STREAM_FLUSH_MS, (text) => {
+    setStreamingNarrative((prev) => prev + text);
+  }));
 
-  // Unico punto que escribe texto del stream en el estado. Por construccion
-  // sigue sin tocar `threads`: la garantia de que lo parcial nunca se commitea no
-  // se relajo para ganar rendimiento, solo se agrupo. No se pierde ningun delta
-  // porque el buffer solo se vacia cuando su contenido ya esta en el estado, o
-  // cuando lo tira `discardStreamingNarrative`.
-  const flushStreamBuffer = useCallback(() => {
-    if (streamFlushTimerRef.current !== null) {
-      clearTimeout(streamFlushTimerRef.current);
-      streamFlushTimerRef.current = null;
-    }
-    const pending = streamBufferRef.current;
-    if (!pending) return;
-    streamBufferRef.current = '';
-    setStreamingNarrative((prev) => prev + pending);
-  }, []);
+  // Unico punto que escribe texto del stream en el estado: el sink del buffer, y
+  // solo cuando su contenido ya esta agrupado. Por construccion sigue sin tocar
+  // `threads`: la garantia de que lo parcial nunca se commitea no se relajo para
+  // ganar rendimiento, solo se agrupo.
 
   // Descartar lo parcial, con el mismo criterio de siempre (nunca entra al
   // hilo: lo reemplaza el resultado o se cae el intento), pero ahora hay tambien
   // un buffer que puede quedar pendiente en vuelo y hay que cancelar.
   const discardStreamingNarrative = useCallback(() => {
-    if (streamFlushTimerRef.current !== null) {
-      clearTimeout(streamFlushTimerRef.current);
-      streamFlushTimerRef.current = null;
-    }
-    streamBufferRef.current = '';
+    streamBufferRef.current.discard();
     setStreamingNarrative('');
   }, []);
 
   // Si el dashboard se desmonta con un volcado pendiente, el timer sigue vivo
   // hasta 80 ms y escribe contra un estado que ya no muestra nadie.
-  useEffect(
-    () => () => {
-      if (streamFlushTimerRef.current !== null) {
-        clearTimeout(streamFlushTimerRef.current);
-      }
-    },
-    []
-  );
+  useEffect(() => () => streamBufferRef.current.discard(), []);
 
   // El endpoint de stream es una mejora de latencia, no una capacidad. Si el
   // navegador o la red no lo bancan, la consulta va por `sendQuery` y nadie
@@ -377,6 +364,14 @@ export function useChatEngine() {
       abortControllerRef.current = null;
     }
 
+    // El buffer de stream y su temporizador de volcado son COMPARTIDOS entre
+    // intentos (`streamBufferRef`, `streamFlushTimerRef`), no de este. Si el
+    // intento anterior dejo texto parcial a medias, sin esto sigue en el buffer
+    // cuando la consulta nueva empiece a escribir en el mismo, y la narrativa
+    // cancelada aparece pegada delante de la nueva. `handleCancelPrompt` ya
+    // hacia esto; Ctrl+N es el otro camino de parada y faltaba.
+    discardStreamingNarrative();
+
     setIsGenerating(false);
     setPromptInput('');
     setPendingPrompt(null);
@@ -385,7 +380,7 @@ export function useChatEngine() {
     setTimeout(() => {
       promptTextareaRef.current?.focus();
     }, 50);
-  }, []);
+  }, [discardStreamingNarrative]);
 
   const handleDeleteThread = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -450,6 +445,47 @@ export function useChatEngine() {
     }
     const controller = new AbortController();
     abortControllerRef.current = controller;
+
+    // Ruta de PREDICCION: determinista, sin LLM.
+    //
+    // Si esto no existiera, "predice el mes que viene" caeria en el motor
+    // normal, que hace generar SQL a un modelo de 7B y despues redacta la
+    // respuesta. Ese camino no puede proyectar: terminaria inventando una cifra
+    // o diciendo que no sabe. `/chat/predict` calcula sobre la serie real y publica
+    // el error historico al lado del numero, asi que la pregunta se responde o
+    // se explica por que no se puede — nunca se disfraza.
+    //
+    // La prediccion NO entra al hilo de chat: no es un `QueryResult` y forzarla
+    // dentro de la lista de mensajes haria que el panel de trazabilidad y los
+    // exportadores leyeran campos que no existen.
+    if (isPredictionQuestion(trimmed)) {
+      setPendingPrompt(trimmed);
+      setPromptInput('');
+      setIsGenerating(true);
+      setPredictionError(null);
+      try {
+        const res = await queryService.getPrediction(
+          trimmed,
+          activeConnectionId || 1,
+          {},
+          controller.signal
+        );
+        setPrediction(res);
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return;
+        setPredictionError(err?.message || 'No se pudo calcular la prediccion.');
+      } finally {
+        // Mismo guard que el camino del LLM: si el usuario ya empezo otra
+        // consulta, este `finally` no le apagaba el estado ni le borraba la
+        // pregunta pendiente.
+        if (abortControllerRef.current !== controller) return;
+        setIsGenerating(false);
+        setPendingPrompt(null);
+      }
+      return;
+    }
+    // Cualquier otra pregunta, prediction o no, sigue por el camino del LLM.
+    setPrediction(null);
 
     const currentThreadId = activeThreadId || `thread-${Date.now()}`;
     let threadTitle = trimmed.length > 32 ? `${trimmed.substring(0, 30)}...` : trimmed;
@@ -526,12 +562,9 @@ export function useChatEngine() {
               // el usuario ya cancelo y mando otra consulta, el texto viejo no
               // se escribe en la burbuja de la nueva.
               if (abortControllerRef.current === controller) {
-                streamBufferRef.current += chunk;
-                // Un volcado cada STREAM_FLUSH_MS mientras siga llegando texto.
-                // No se pierde nada: el buffer se acumula y se vuelca entero.
-                if (streamFlushTimerRef.current === null) {
-                  streamFlushTimerRef.current = window.setTimeout(flushStreamBuffer, STREAM_FLUSH_MS);
-                }
+                // El buffer agrupa y programa su propio volcado; el guard de
+                // arriba es lo que impide que un intento ya cancelado escriba.
+                streamBufferRef.current.push(chunk);
               }
             }
           );
@@ -551,11 +584,9 @@ export function useChatEngine() {
       if (!newResult) {
         newResult = await queryService.sendQuery(
           trimmed,
-          userRole,
           activeConnectionId || undefined,
-          settings,
-          controller.signal,
-          conversationHistory.length > 0 ? conversationHistory : undefined
+          conversationHistory.length > 0 ? conversationHistory : undefined,
+          controller.signal
         );
       }
 
@@ -600,6 +631,13 @@ export function useChatEngine() {
         });
       }
     } catch (err: any) {
+      // Si este controller ya no es el vigente, hay otro intento en marcha: este
+      // ya lo cancelo el usuario (Ctrl+N o el boton Cancelar) y su error no es lo
+      // que esta mirando. Antes el `catch` decia "Cancelaste la consulta" por un
+      // Ctrl+N que no fue cancelar, y el fallo del intento viejo se reportaba
+      // encima de la consulta nueva.
+      if (abortControllerRef.current !== controller) return;
+
       // AbortError tiene dos causas y dos mensajes distintos. El timeout ya
       // notificó con su explicación, asi que no se duplica. Si fue el botón de
       // cancelar, se dice qué se canceló y qué no.
@@ -615,6 +653,18 @@ export function useChatEngine() {
       notify('error', err.message || 'Error al conectar con la base de datos o el motor LLM local.');
     } finally {
       clearTimeout(timeoutId);
+      // Mismo guard que arriba: sin esto el `finally` de un intento ya
+      // terminado apagaba `isGenerating` y vaciaba `pendingPrompt` del intento
+      // SIGUIENTE, que queda en pantalla "idle" mientras corre y con su
+      // narrativa borrada.
+      //
+      // El guard NO cubre `discardStreamingNarrative`, y es deliberado: el buffer
+      // y el temporizador de volcado son COMPARTIDOS entre intentos. Cuando este
+      // `finally` corre, ese buffer ya contiene (o va a contener) texto de la
+      // consulta vigente, no del intento que termina. Limpiarlo aqui seria el
+      // bug original al reves. Lo limpia quien PARA el intento, antes de que
+      // empiece el siguiente: `handleCancelPrompt` y `handleNewThread`.
+      if (abortControllerRef.current !== controller) return;
       setIsGenerating(false);
       setPendingPrompt(null);
       // La narrativa parcial nunca sobrevive al intento: o la reemplazo el
@@ -627,7 +677,6 @@ export function useChatEngine() {
     activeThread,
     activeThreadId,
     discardStreamingNarrative,
-    flushStreamBuffer,
     isGenerating,
     notify,
     settings,
@@ -673,6 +722,30 @@ export function useChatEngine() {
     return res;
   }, [activeConnectionId, notify]);
 
+  /**
+   * Pide el reporte de calidad de datos sobre la prediccion ya mostrada.
+   *
+   * Va aparte porque son COUNTs sobre toda la tabla: sumarlos siempre seria
+   * latencia que casi nadie pidio. Se dispara bajo demanda y el panel ya tiene
+   * el forecast en pantalla mientras tanto.
+   */
+  const requestDataQualityAudit = useCallback(async () => {
+    if (!prediction || loadingAudit) return;
+    setLoadingAudit(true);
+    try {
+      const res = await queryService.getPrediction(
+        prediction.question || 'Auditoria de calidad de datos',
+        activeConnectionId || 1,
+        { includeDataQuality: true, includeRetention: false }
+      );
+      setPrediction((prev) => (prev ? { ...prev, data_quality: res.data_quality || [] } : prev));
+    } catch (err: any) {
+      notify('error', err?.message || 'No se pudo ejecutar la auditoria de calidad.');
+    } finally {
+      setLoadingAudit(false);
+    }
+  }, [prediction, loadingAudit, activeConnectionId, notify]);
+
   // El objeto que devuelve el hook es una referencia nueva en cada render, y eso
   // invalida cualquier `React.memo` o comparacion por referencia aguas abajo
   // aunque no haya cambiado nada. Se congela mientras ninguna entrada cambie.
@@ -707,6 +780,11 @@ export function useChatEngine() {
     activeThread,
     sidebarThreads,
     pendingPrompt,
+    prediction,
+    predictionError,
+    loadingAudit,
+    requestDataQualityAudit,
+    clearPrediction: setPrediction,
     chatBottomRef,
     searchInputRef,
     promptTextareaRef,
@@ -740,6 +818,11 @@ export function useChatEngine() {
     activeThread,
     sidebarThreads,
     pendingPrompt,
+    prediction,
+    predictionError,
+    loadingAudit,
+    requestDataQualityAudit,
+    setPrediction,
     handleSelectThread,
     handleNewThread,
     handleDeleteThread,
