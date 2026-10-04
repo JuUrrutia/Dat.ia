@@ -5,6 +5,7 @@ from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.core.config import settings
+from app.core.logging import logger
 
 Base = declarative_base()
 
@@ -46,8 +47,17 @@ def ensure_schema_migrations(eng):
         from sqlalchemy import inspect, text
         is_pg = "postgresql" in str(eng.url)
 
-        inspector = inspect(eng)
-        table_names = set(inspector.get_table_names())
+        table_names = set(inspect(eng).get_table_names())
+
+        def _cols(table):
+            """Columnas ACTUALES de `table`.
+
+            Reinspecciona en cada llamada a propósito. El inspector se creó
+            antes de los ALTER, así que reutilizar sus decisiones hace que el
+            bloque de `audit_logs` (que primero añade `result_snapshot` y luego
+            reconstruye la tabla) decida sobre columnas que ya cambiaron.
+            """
+            return {c["name"] for c in inspect(eng).get_columns(table)}
 
         def _safe_alter(conn, stmts):
             """Execute ALTER stmts with a short lock timeout on PG."""
@@ -82,13 +92,13 @@ def ensure_schema_migrations(eng):
             try:
                 with eng.begin() as conn:
                     _safe_alter(conn, pending_indexes)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Migración: no se pudieron crear los índices de permisos: {e}")
 
         if "corporate_connections" in table_names:
+            pending = []
             try:
-                conn_cols = {c["name"] for c in inspector.get_columns("corporate_connections")}
-                pending = []
+                conn_cols = _cols("corporate_connections")
                 if "is_uploaded" not in conn_cols:
                     pending.append("ALTER TABLE corporate_connections ADD COLUMN is_uploaded BOOLEAN DEFAULT 0 NOT NULL")
                 if "null_policy" not in conn_cols:
@@ -96,13 +106,13 @@ def ensure_schema_migrations(eng):
                 if pending:
                     with eng.begin() as conn:
                         _safe_alter(conn, pending)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Migración: corporate_connections quedó sin migrar ({'; '.join(pending)}): {e}")
 
         if "users" in table_names:
+            pending = []
             try:
-                user_cols = {c["name"] for c in inspector.get_columns("users")}
-                pending = []
+                user_cols = _cols("users")
                 if "failed_login_attempts" not in user_cols:
                     pending.append("ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER DEFAULT 0 NOT NULL")
                 if "locked_until" not in user_cols:
@@ -112,17 +122,17 @@ def ensure_schema_migrations(eng):
                 if pending:
                     with eng.begin() as conn:
                         _safe_alter(conn, pending)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Migración: users quedó sin migrar ({'; '.join(pending)}): {e}")
 
         if "audit_logs" in table_names:
             try:
-                audit_cols = {c["name"] for c in inspector.get_columns("audit_logs")}
+                audit_cols = _cols("audit_logs")
                 if "result_snapshot" not in audit_cols:
                     with eng.begin() as conn:
                         _safe_alter(conn, ["ALTER TABLE audit_logs ADD COLUMN result_snapshot TEXT NULL"])
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Migración: audit_logs.result_snapshot no se añadió: {e}")
 
             # `validation_status` era NOT NULL. Eso no era una garantia de dato, era
             # la causa de que el router inventara "APROBADO" cuando la respuesta no
@@ -132,7 +142,7 @@ def ensure_schema_migrations(eng):
             # proyecto ya tiene el valor honesto para eso: None.
             try:
                 vs = next(
-                    (c for c in inspector.get_columns("audit_logs") if c["name"] == "validation_status"),
+                    (c for c in inspect(eng).get_columns("audit_logs") if c["name"] == "validation_status"),
                     None,
                 )
                 if vs is not None and not vs.get("nullable", True):
@@ -142,6 +152,10 @@ def ensure_schema_migrations(eng):
                                 "ALTER TABLE audit_logs ALTER COLUMN validation_status DROP NOT NULL"
                             ])
                     else:
+                        # Antes de abrir la transacción: `_cols` abre su propia
+                        # conexión y un segundo lector contra un write lock
+                        # abierto en SQLite da "database is locked".
+                        cols = ", ".join('"%s"' % c for c in _cols("audit_logs"))
                         # SQLite no tiene ALTER COLUMN. Se reconstruye la tabla
                         # desde su propio DDL en sqlite_master quitando el NOT NULL
                         # de ESA columna: no hay DDL hardcodeado que pueda quedar
@@ -161,9 +175,6 @@ def ensure_schema_migrations(eng):
                                 "SELECT sql FROM sqlite_master WHERE type='index' "
                                 "AND tbl_name='audit_logs' AND sql IS NOT NULL"
                             )).fetchall()]
-                            cols = ", ".join(
-                                '"%s"' % c["name"] for c in inspector.get_columns("audit_logs")
-                            )
                             # PRAGMA fuera de transaccion: SQLite la ignora dentro de BEGIN.
                             conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
                             conn.execute(text("ALTER TABLE audit_logs RENAME TO audit_logs__old"))
@@ -179,31 +190,33 @@ def ensure_schema_migrations(eng):
                             for sql in idx:
                                 conn.execute(text(sql))
                             conn.exec_driver_sql("PRAGMA foreign_keys=ON")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Migración: audit_logs.validation_status sigue NOT NULL: {e}")
 
         if "query_learning_memories" in table_names:
             try:
-                mem_cols = {c["name"] for c in inspector.get_columns("query_learning_memories")}
+                mem_cols = _cols("query_learning_memories")
                 if "is_golden" not in mem_cols:
                     with eng.begin() as conn:
                         _safe_alter(conn, ["ALTER TABLE query_learning_memories ADD COLUMN is_golden BOOLEAN DEFAULT FALSE NOT NULL"])
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Migración: query_learning_memories.is_golden no se añadió: {e}")
 
         if "chat_conversations" in table_names:
             try:
-                conv_cols = {c["name"] for c in inspector.get_columns("chat_conversations")}
+                conv_cols = _cols("chat_conversations")
                 if "is_shared" not in conv_cols:
                     # Los hilos existentes NO se marcan como compartidos: el valor
                     # por defecto falla cerrado, asi que un despliegue que actualice
                     # no expone historiales que antes eran privados por accidente.
                     with eng.begin() as conn:
                         _safe_alter(conn, ["ALTER TABLE chat_conversations ADD COLUMN is_shared BOOLEAN DEFAULT FALSE NOT NULL"])
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as e:
+                logger.warning(f"Migración: chat_conversations.is_shared no se añadió: {e}")
+    except Exception as e:
+        # Sin esto, una migración a medias se descubre cuando una consulta
+        # muere con UndefinedColumn, sin rastro de qué la dejó a medias.
+        logger.warning(f"Migración de esquema incompleta: {e}")
 
 ensure_schema_migrations(engine)
 

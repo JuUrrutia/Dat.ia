@@ -1,4 +1,25 @@
-"""Estado conocido para la suite: las cuentas demo no dependen del orden.
+"""Aislamiento de la suite y estado conocido: las cuentas demo no dependen del orden.
+
+Aislamiento: una base propia
+----------------------------
+La suite no debe escribir en la metadata de DESARROLLO. Lo hacia, y se notaba:
+una corrida deja usuarios `test_*`, conexiones subidas y sesiones; si la corrida
+se interrumpe (Ctrl+C, timeout), su `tearDown` no corre y la segunda pasada
+choca contra lo que dejo la primera -- no con un bug del codigo, sino con su
+propio rastro. Medido: 18 tests de `test_user_role_update.py` caian por
+`UniqueViolation` de `ix_users_username` sobre un `test_roleupd_admin` que ya
+existia.
+
+El aislamiento es por NOMBRE DE BASE, no por motor: `POSTGRES_DB` ya es un
+setting de entorno (`app/core/config.py:41`), asi que apuntar la suite a
+`democratizacion_metadatos_test` conserva la semantica de PostgreSQL -- los tests
+de tipo Postgres siguen siendo tests de Postgres, y el conector de la demo sigue
+leyendo `democratizacion_empresa` de verdad. Forzar SQLite seria mas barato de
+escribir y probaria otra cosa: `test_postgres_compatibility.py` y la migracion de
+esquema de `database.py` existen justamente para el motor que produccion usa.
+
+El override vive SOLO en este archivo. `.env` y `config.py` no se tocan, asi que
+arrancar la app como siempre no cambia de base.
 
 Por que este archivo existe
 ---------------------------
@@ -33,9 +54,90 @@ Que NO hace, a proposito
   negocio legitimo (`test_init_db_does_not_mutate_existing_users` lo verifica).
 """
 
+import os
+import re
 import warnings
 
 import pytest
+
+# --- Aislamiento: la suite usa una base propia --------------------------------
+#
+# Tiene que fijarse ANTES de que se importe `app.core.database`: ese modulo arma
+# el engine en tiempo de import (lineas 22-38) y, si despues se repunta con
+# `update_database_engine`, cada modulo que hizo `from app.core.database import
+# SessionLocal` queda con el enlace viejo. Un `os.environ` en el tope de conftest
+# alcanza: pytest importa conftest antes de cualquier test, y no hace falta un
+# hook ni un plugin.
+#
+# `DATIA_TEST_DB` existe por si alguien necesita otro nombre; el default es el
+# de la metadata de desarrollo con el sufijo `_test`.
+TEST_DB = os.environ.get("DATIA_TEST_DB") or "democratizacion_metadatos_test"
+os.environ["POSTGRES_DB"] = TEST_DB
+
+# Nombre de base interpolado en DDL (`CREATE DATABASE` no admite bind parameters),
+# asi que se valida en vez de confiar: sale del entorno.
+assert re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", TEST_DB), f"nombre de base invalido: {TEST_DB}"
+
+
+def _ensure_test_database() -> None:
+    """Crea la base de pruebas si no existe. Corre ANTES de importar el engine.
+
+    No se reusa `scripts/setup_postgres_full.create_database_if_not_exists`: importar
+    ese modulo importa `app.core.database` (su linea 19), que es justo el modulo
+    que hay que aislar. Con la base todavia inexistente, `database.py` cae al
+    fallback SQLite y cachea ese engine para toda la corrida. Son las mismas seis
+    lineas, en el unico orden que funciona.
+
+    Si PostgreSQL no esta disponible no se corta la suite: se avisa y deja que
+    `database.py` decida, que para una demo sin Postgres es el fallback que ya
+    soporta.
+    """
+    from sqlalchemy import create_engine, text
+
+    from app.core.config import settings
+
+    maintenance_url = (
+        f"postgresql+psycopg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}"
+        f"@{settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}/postgres"
+    )
+    eng = create_engine(maintenance_url, isolation_level="AUTOCOMMIT", pool_pre_ping=True)
+    try:
+        with eng.connect() as conn:
+            exists = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": TEST_DB}
+            ).scalar()
+            if not exists:
+                conn.execute(text(f'CREATE DATABASE "{TEST_DB}"'))
+                print(f"[conftest] base de pruebas creada: {TEST_DB}")
+    finally:
+        eng.dispose()
+
+
+try:
+    _ensure_test_database()
+except Exception as exc:  # pragma: no cover - depende del entorno
+    warnings.warn(
+        f"No se pudo preparar la base de pruebas {TEST_DB!r} ({exc}). "
+        "La suite va a correr contra el fallback que elija app.core.database."
+    )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def test_database_bootstrapped():
+    """La base de pruebas arranca sembrada, aunque nadie haya corrido la app.
+
+    `init_db` crea el esquema y siembra domains, roles, cuentas demo, la conexion
+    de plataforma y la matriz de permisos. Sin esto, un test que solo lee y no
+    llama a `init_db` encontraria una base vacia en vez del estado sembrado.
+    """
+    from app.core.database import SessionLocal
+    from app.db.init_db import init_db
+
+    db = SessionLocal()
+    try:
+        init_db(db)
+    finally:
+        db.close()
 
 # Las mismas del README, y las mismas que restaura `scripts/unlock_users.py`.
 # Viven en los dos lados a proposito: el script es la herramienta manual de
