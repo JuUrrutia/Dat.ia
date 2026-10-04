@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   ArrowUpDown,
@@ -107,6 +107,16 @@ interface DataGridTableProps {
 
 export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, question, auditLogId }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  // El filtro escanea TODAS las filas con `String()` por celda. Con el tope de
+  // 500 filas y 15 columnas son miles de conversiones por pulsacion. El input
+  // sigue escribiendo al instante (el control no se traba) pero la busqueda
+  // corre 250 ms despues de la ultima tecla. Mismo criterio que
+  // useAdminAudit: la ultima tecla gana.
+  const [needle, setNeedle] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => setNeedle(searchTerm.trim().toLowerCase()), 250);
+    return () => clearTimeout(id);
+  }, [searchTerm]);
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
@@ -122,10 +132,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
     return map;
   }, [columns, rows]);
 
-  // Filter rows. Memoised, and the needle is lowered once instead of once per
-  // row: this ran on every render, and every keystroke in the search box ran a
-  // full scan plus a full array copy and sort.
-  const needle = searchTerm.trim().toLowerCase();
+  // Filter rows. El needle es el debounced (ver arriba), no el del input.
   const filteredRows = useMemo(() => {
     if (!needle) return rows;
     return rows.filter((row) =>
@@ -348,7 +355,12 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
           </thead>
           <tbody className="divide-y divide-slate-200 dark:divide-dark-border text-xs text-slate-800 dark:text-gray-200 bg-white dark:bg-transparent">
             {paginatedRows.length > 0 ? (
-              paginatedRows.map((row) => {
+              paginatedRows.map((row, rowIndex) => {
+                // El fallback anterior armaba la clave con las 15 columnas de
+                // la fila, y eso corria en CADA render para cada fila. El
+                // indice de la pagina cumple el mismo trabajo (la identidad la
+                // da la posicion dentro de la pagina, y React solo necesita que
+                // sea estable entre renders de la misma fila).
                 const rowKey =
                   row.id ??
                   row.id_venta ??
@@ -360,7 +372,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
                   row.id_incidente ??
                   row.id_consumo ??
                   row.id_categoria ??
-                  columns.map((c) => String(row[c])).join('-');
+                  `row-${rowIndex}`;
                 return (
                   <tr key={rowKey} className="hover:bg-slate-50 dark:hover:bg-dark-card/50 transition-colors">
                     {columns.map((col) => {

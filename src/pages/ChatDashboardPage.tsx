@@ -23,6 +23,7 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { queryService } from '../features/chat/services/query_service';
+import { PredictionPanel } from '../features/dashboard/components/PredictionPanel';
 import { useNotifications } from '../context/NotificationContext';
 import { prefersReducedMotion } from '../features/dashboard/components/charts/theme';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -51,6 +52,11 @@ export const ChatDashboardPage: React.FC = () => {
     threadsError,
     activeThreadId,
     pendingPrompt,
+    prediction,
+    predictionError,
+    loadingAudit,
+    requestDataQualityAudit,
+    clearPrediction,
     chatBottomRef,
     searchInputRef,
     promptTextareaRef,
@@ -98,6 +104,11 @@ export const ChatDashboardPage: React.FC = () => {
   // .map callback, so they re-parsed every pinned widget's chart option and KPI
   // payload on any state change in the modal — including unpinning one, and
   // including the 1Hz elapsed-seconds tick of the page behind it.
+  // El `option` del grafico se arma ACA y no en el JSX: construirlo inline lo
+  // hacia un objeto nuevo en cada render, y ReactECharts hace setOption cuando
+  // la referencia cambia — con el modal abierto y una consulta corriendo, el
+  // tick de elapsedSeconds (1 Hz) repintaba todos los widgets cada segundo.
+  // Mismo arreglo que ChartSection.tsx.
   const parsedWidgets = useMemo(
     () =>
       widgets.map((w: any) => {
@@ -113,7 +124,24 @@ export const ChatDashboardPage: React.FC = () => {
         } catch {
           /* same */
         }
-        return { w, chartOpt, kpis };
+        return {
+          w,
+          kpis,
+          option: chartOpt
+            ? {
+                ...chartOpt,
+                animation: !prefersReducedMotion(),
+                grid: { top: 25, right: 15, bottom: 25, left: 35, containLabel: true },
+                tooltip: {
+                  show: true,
+                  trigger: 'axis',
+                  backgroundColor: '#0F172A',
+                  borderColor: '#334155',
+                  textStyle: { color: '#F8FAFC', fontSize: 11 },
+                },
+              }
+            : null,
+        };
       }),
     [widgets]
   );
@@ -383,7 +411,7 @@ export const ChatDashboardPage: React.FC = () => {
 
         {/* Scrollable Conversation Stream */}
         <div className={`flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6 scrollbar-thin scrollbar-thumb-slate-800 ${isPresentationMode ? 'max-w-6xl mx-auto w-full' : ''}`}>
-          {(!activeThread || activeThread.results.length === 0) && !pendingPrompt ? (
+          {(!activeThread || activeThread.results.length === 0) && !pendingPrompt && !prediction ? (
             <ChatEmptyState
               promptSuggestions={promptSuggestions}
               onSelectSuggestion={(sugg) => {
@@ -393,6 +421,28 @@ export const ChatDashboardPage: React.FC = () => {
             />
           ) : (
             <div className={`${isPresentationMode ? 'max-w-5xl' : 'max-w-4xl'} mx-auto space-y-8`}>
+              {/* Predicciones. Vive FUERA de la lista de mensajes a proposito: no
+                  es un `QueryResult` y meterlo en el hilo haria que el panel de
+                  trazabilidad y los exportadores leyeran campos inexistentes. */}
+              {predictionError && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-200"
+                >
+                  <p className="font-semibold">No se pudo calcular la predicción</p>
+                  <p className="mt-1">{predictionError}</p>
+                </div>
+              )}
+
+              {prediction && (
+                <PredictionPanel
+                  prediction={prediction}
+                  onClose={() => clearPrediction(null)}
+                  onAuditQuality={requestDataQualityAudit}
+                  loadingAudit={loadingAudit}
+                />
+              )}
+
               {activeThread?.results.map((res, index) => (
                 <ChatMessageItem
                   key={res.id || index}
@@ -571,12 +621,12 @@ export const ChatDashboardPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {parsedWidgets.map(({ w, chartOpt, kpis }) => {
+                  {parsedWidgets.map(({ w, option, kpis }) => {
                     const hasChartSeries = Boolean(
-                      chartOpt &&
-                      Array.isArray(chartOpt.series) &&
-                      chartOpt.series.length > 0 &&
-                      chartOpt.series.some((s: any) => s && (Array.isArray(s.data) ? s.data.length > 0 : s.data !== undefined))
+                      option &&
+                      Array.isArray((option as any).series) &&
+                      (option as any).series.length > 0 &&
+                      (option as any).series.some((s: any) => s && (Array.isArray(s.data) ? s.data.length > 0 : s.data !== undefined))
                     );
 
                     return (
@@ -616,18 +666,7 @@ export const ChatDashboardPage: React.FC = () => {
                           {hasChartSeries ? (
                             <div className="w-full h-44 rounded-xl overflow-hidden bg-dark-surface/80 border border-dark-border/60 p-1">
                               <ReactECharts
-                                option={{
-                                  ...chartOpt,
-                                  animation: !prefersReducedMotion(),
-                                  grid: { top: 25, right: 15, bottom: 25, left: 35, containLabel: true },
-                                  tooltip: {
-                                    show: true,
-                                    trigger: 'axis',
-                                    backgroundColor: '#0F172A',
-                                    borderColor: '#334155',
-                                    textStyle: { color: '#F8FAFC', fontSize: 11 },
-                                  },
-                                }}
+                                option={option}
                                 style={{ height: '100%', width: '100%' }}
                                 opts={{ renderer: 'canvas' }}
                               />
