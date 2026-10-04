@@ -1,7 +1,59 @@
 import { apiClient, parseSseEvent } from '../../../shared/api/api_client';
-import { QueryResult, AppSettings } from '../../../types';
+import { QueryResult, PredictionResult } from '../../../types';
+
+/**
+ * Una pregunta es de PREDICCION si pide el futuro de forma explicita.
+ *
+ * Deliberadamente estrecho. Se enruta a `/chat/predict` — que es determinista y
+ * no inventa nada — solo ante palabras que no admiten otra lectura. Ampliarlo a
+ * "retencion" o "clientes" arrastraria preguntas de personal o de TI a un
+ * calculo de churn comercial: el backend tiene aislamiento de dominio por rol y
+ * esta regla no debe abrir un hueco al lado de el.
+ *
+ * Cuando NO hay ruta honesta, la pregunta sigue al camino normal del LLM, que
+ * con la regla anti-proyeccion de `prompts.py` explica que la prediccion vive
+ * en el panel de Pronósticos. Perder una frase es degradado; entregar el dato
+ * equivocado es el daño que esto previene.
+ *
+ * `cuanto venderé` no entra a proposito: el grupo terminaria en `é` y el `\b`
+ * final de JS es ASCII, asi que no habria frontera y la alternativa no casaria.
+ * Las formas no acentuadas ("facturo", "vendero", "venderemos") si.
+ */
+const PREDICTION_INTENT =
+  /\b(predicci[oó]n|predice|prediga|prediga(?:r)?|predici[oó]n|proyecci[oó]n|proyect(?:a|e|es|en)|pron[oó]stico|pronostic(?:a|o|en)|estimar\s+(?:el\s+|la\s+|los\s+)?(?:mes|pr[oó]ximo|proximo|siguiente)|cu[aá]nto\s+(?:voy|vamos)\s+a\s+(?:vender|ganar|facturar|ingresar)|cu[aá]nto\s+(?:facturo|vendero|venderemos)|qu[eé]\s+va\s+a\s+pasar\s+el\s+mes)\b/i;
+
+export function isPredictionQuestion(text: string): boolean {
+  return PREDICTION_INTENT.test(text || '');
+}
 
 export const queryService = {
+  /**
+   * Predicciones: forecast del proximo periodo, retencion por entidad y — solo
+   * si se pide — el reporte de calidad de datos.
+   *
+   * `include_data_quality` viene apagado porque son COUNTs sobre la fact table:
+   * sumarlos a una consulta que solo queria el forecast es latencia que el
+   * usuario no pidio.
+   */
+  async getPrediction(
+    question: string,
+    connectionId?: number,
+    options: { includeDataQuality?: boolean; includeRetention?: boolean } = {},
+    signal?: AbortSignal
+  ): Promise<PredictionResult> {
+    const payload: any = { question, include_data_quality: !!options.includeDataQuality };
+    if (connectionId) {
+      payload.connection_id = connectionId;
+    }
+    if (options.includeRetention === false) {
+      payload.include_retention = false;
+    }
+    // Sin catch: un fallo de API tiene que distinguirse de "no hay prediccion
+    // posible". Devolver un objeto vacio haria que el panel pintara un cero.
+    const res = await apiClient.post('/chat/predict', payload, signal ? { signal } : undefined);
+    return res.data;
+  },
+
   async getSuggestions(connectionId?: number): Promise<string[]> {
     try {
       const params: Record<string, any> = {};
@@ -21,16 +73,21 @@ export const queryService = {
     }
   },
 
-  async executeQuery(
+  /**
+   * Consulta simple (sin stream) a `/chat/query`.
+   *
+   * `userRole` y `settings` se eliminaron: ninguno llegaba al payload. El rol lo
+   * resuelve el backend desde el JWT (`current_user.role.name`, router.py), y
+   * `QueryRequest` (schemas.py) no tiene ningun campo de ajustes — mandarlos era
+   * escribir en el vacio. El parametro `settingsOrSignal` era el que hacia la
+   * llamada ilegible: cuatro posicionales de dos tipos, y el que nadie leia.
+   */
+  async sendQuery(
     question: string,
-    userRole: string = 'Economista',
-    connectionIdOrSettings?: number | AppSettings,
-    settingsOrSignal?: AppSettings | AbortSignal,
-    signal?: AbortSignal,
-    conversationHistory?: Array<{ question: string; sql?: string }>
+    connectionId?: number,
+    conversationHistory?: Array<{ question: string; sql?: string }>,
+    signal?: AbortSignal
   ): Promise<QueryResult> {
-    const connectionId = typeof connectionIdOrSettings === 'number' ? connectionIdOrSettings : undefined;
-
     const payload: any = { question };
     if (connectionId) {
       payload.connection_id = connectionId;
@@ -58,17 +115,6 @@ export const queryService = {
         || err?.message;
       throw new Error(detail || 'No se pudo completar la consulta.');
     }
-  },
-
-  async sendQuery(
-    question: string,
-    userRole: string = 'Economista',
-    connectionIdOrSettings?: number | AppSettings,
-    settingsOrSignal?: AppSettings | AbortSignal,
-    signal?: AbortSignal,
-    conversationHistory?: Array<{ question: string; sql?: string }>
-  ): Promise<QueryResult> {
-    return this.executeQuery(question, userRole, connectionIdOrSettings, settingsOrSignal, signal, conversationHistory);
   },
 
   /**
