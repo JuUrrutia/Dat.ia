@@ -6,6 +6,7 @@ import {
 import {
   RoleTablePermission,
   ConfirmedPermission,
+  GovernanceCoverage,
   permissionService,
 } from '../services/permission_service';
 import { authService } from '../../auth/services/auth_service';
@@ -18,6 +19,51 @@ export interface AdminRole {
 
 /** Clave del borrador: un par (rol, tabla). */
 export const permissionKey = (roleId: number, tableName: string): string => `${roleId}:${tableName}`;
+
+/**
+ * Cobertura de gobernanza de la conexion seleccionada: que tablas ve al menos un
+ * rol y cuales no ve NINGUNO.
+ *
+ * Va aparte de `useAdminPermissions` a proposito — es un dato DERIVADO del
+ * guardarrail, no de la matriz, y no tiene nada que ver con el borrador de
+ * cambios: tocar una casilla no cambia la cobertura hasta que se guarda.
+ */
+export function useGovernanceCoverage(connectionId: number | null) {
+  const [coverage, setCoverage] = useState<GovernanceCoverage | null>(null);
+  const [isLoadingCoverage, setIsLoadingCoverage] = useState(false);
+  const [coverageError, setCoverageError] = useState<string | null>(null);
+
+  const fetchCoverage = useCallback(async () => {
+    if (connectionId === null) {
+      setCoverage(null);
+      return;
+    }
+    setIsLoadingCoverage(true);
+    setCoverageError(null);
+    try {
+      setCoverage(await permissionService.getCoverage(connectionId));
+    } catch (err: any) {
+      // No se degrada a un resumen vacio: "no se pudo calcular" y "no ve nadie
+      // ninguna tabla" se verian igual en pantalla, y es exactamente el dato que
+      // el admin viene a leer.
+      setCoverage(null);
+      setCoverageError(
+        err?.response?.data?.detail ||
+          'No se pudo calcular la cobertura de permisos de esta fuente.'
+      );
+    } finally {
+      setIsLoadingCoverage(false);
+    }
+  }, [connectionId]);
+
+  useEffect(() => {
+    fetchCoverage();
+  }, [fetchCoverage]);
+
+  const orphanedTables = (coverage?.tables || []).filter((t) => t.coverage === 'orphaned');
+
+  return { coverage, orphanedTables, isLoadingCoverage, coverageError, refreshCoverage: fetchCoverage };
+}
 
 export function useAdminPermissions() {
   const [connectors, setConnectors] = useState<CorporateConnection[]>([]);
