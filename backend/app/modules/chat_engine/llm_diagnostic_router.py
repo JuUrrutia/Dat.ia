@@ -10,6 +10,18 @@ from app.modules.auth.models import User
 from app.modules.system.health_service import HealthService
 from app.core.config import settings
 from app.core.prompts import PromptManager
+from app.modules.chat_engine.llm_service import LLMService
+
+# Timeout de la prueba de inferencia. Antes eran 15 s hardcodeados en cada uno de
+# los tres `AsyncClient`, y eso reportaba FALLO en un LLM local de CPU que antes
+# si respondia: una inferencia de 27B cuantizado se pasa de 15 s sin estar
+# colgada. El motor real ya tiene su timeout declarado (`LLMService.LLM_TIMEOUT`),
+# asi que se reusa en vez de mantener un segundo numero que nadie actualiza.
+#
+# `timeout=3.0` en `test-connection` NO se toca: ahi lo que se mide es si el
+# puerto esta vivo, no si el modelo piensa, y esperar 300 s para descubrir que no
+# hay nadie escuchando es lo que hace inservible el boton "Probar".
+_INFERENCE_TIMEOUT = LLMService.LLM_TIMEOUT
 
 llm_diagnostic_router = APIRouter()
 
@@ -92,7 +104,13 @@ async def test_llm_connection(
     return LLMTestResponse(
         success=result["success"],
         message=result["message"],
-        available_models=result.get("available_models", [req.model_name or settings.OLLAMA_MODEL]),
+        # Lista vacia cuando el servidor no reporta modelos. Earlier esto devolvia
+        # `[req.model_name]` como fallback: el admin guardaba un modelo que el
+        # servidor nunca dijo tener, y la consulta fallaba despues. Un endpoint
+        # que responde `/health` no conoce sus modelos, y announcear uno seria
+        # inventarlo. El frontend ya lo tenia corregido; el bypass permitia que
+        # esta mentira volviera.
+        available_models=result.get("available_models", []),
         latency_ms=result.get("latency_ms", 0)
     )
 
@@ -121,7 +139,7 @@ async def test_llm_completion(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=_INFERENCE_TIMEOUT) as client:
             res = await client.post(chat_url, json=payload_chat)
             latency = int((time.time() - start_time) * 1000)
             if res.status_code == 200:
@@ -143,7 +161,7 @@ async def test_llm_completion(
         "n_predict": 256
     }
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=_INFERENCE_TIMEOUT) as client:
             res = await client.post(native_url, json=payload_native)
             latency = int((time.time() - start_time) * 1000)
             if res.status_code == 200:
@@ -166,7 +184,7 @@ async def test_llm_completion(
         "options": {"temperature": 0.1}
     }
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=_INFERENCE_TIMEOUT) as client:
             res = await client.post(ollama_url, json=payload_ollama)
             latency = int((time.time() - start_time) * 1000)
             if res.status_code == 200:
