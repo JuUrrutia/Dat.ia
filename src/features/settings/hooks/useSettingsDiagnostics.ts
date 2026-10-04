@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { AppSettings } from '../../../types';
 import { llmClientService, LLMConnectionTestResult, LLMCompletionTestResult } from '../../chat/services/llm_service';
 import { apiClient } from '../../../shared/api/api_client';
-import { DEFAULT_OLLAMA_URL, DEFAULT_LLM_MODEL, DEFAULT_LLM_PROVIDER } from '../../../constants';
+import { DEFAULT_OLLAMA_URL, DEFAULT_LLM_MODEL, DEFAULT_LLM_PROVIDER, LLM_PROVIDER_DEFAULTS } from '../../../constants';
 
 type LLMProvider = AppSettings['llm_provider'];
 
@@ -65,12 +65,6 @@ export function useSettingsDiagnostics(settings: AppSettings, updateSettings: (n
   // endpoint and the model with no warning, then saved localhost.
   const perProviderRef = useRef<Record<string, { url: string; model: string }>>({});
 
-  const PROVIDER_DEFAULTS: Record<string, { url: string; model: string }> = {
-    llama_cpp: { url: 'http://127.0.0.1:8080', model: 'Qwen3.8-27B' },
-    ollama: { url: 'http://localhost:11434', model: 'qwen2.5-coder:7b' },
-    openai_compatible: { url: 'http://localhost:1234', model: 'local-model' },
-  };
-
   const handleProviderChange = (newProvider: LLMProvider) => {
     perProviderRef.current[String(provider)] = { url: ollamaUrl, model: modelName };
     setProvider(newProvider);
@@ -81,7 +75,7 @@ export function useSettingsDiagnostics(settings: AppSettings, updateSettings: (n
       setModelName(remembered.model);
       return;
     }
-    const fallback = PROVIDER_DEFAULTS[String(newProvider)];
+    const fallback = LLM_PROVIDER_DEFAULTS[String(newProvider)];
     if (fallback) {
       setOllamaUrl(fallback.url);
       setModelName(fallback.model);
@@ -96,18 +90,15 @@ export function useSettingsDiagnostics(settings: AppSettings, updateSettings: (n
     setDetectedEndpoint(null);
 
     try {
+      // El backend ya sondea 8080/11434/1234 por su cuenta; este bucle existe
+      // para saber QUE endpoint respondio (la respuesta no trae `active_url`) y
+      // no pintar exito sobre un host configurado que esta caido. Las URLs
+      // salen de la tabla unica en `constants`.
       const endpointsToTry: { url: string; prov: LLMProvider }[] = [
         { url: ollamaUrl, prov: provider },
       ];
-
-      if (ollamaUrl !== 'http://127.0.0.1:8080') {
-        endpointsToTry.push({ url: 'http://127.0.0.1:8080', prov: 'llama_cpp' });
-      }
-      if (ollamaUrl !== 'http://localhost:11434') {
-        endpointsToTry.push({ url: 'http://localhost:11434', prov: 'ollama' });
-      }
-      if (ollamaUrl !== 'http://localhost:1234') {
-        endpointsToTry.push({ url: 'http://localhost:1234', prov: 'openai_compatible' });
+      for (const [prov, def] of Object.entries(LLM_PROVIDER_DEFAULTS)) {
+        if (def.url !== ollamaUrl) endpointsToTry.push({ url: def.url, prov: prov as LLMProvider });
       }
 
       for (const ep of endpointsToTry) {
