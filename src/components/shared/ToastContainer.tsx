@@ -1,6 +1,6 @@
 import React from 'react';
 import { CheckCircle2, AlertTriangle, AlertOctagon, Info, X } from 'lucide-react';
-import { useNotifications } from '../../context/NotificationContext';
+import { useToastList } from '../../context/NotificationContext';
 import { ToastNotification, ToastType } from '../../types';
 
 const getToastStyle = (type: ToastType) => {
@@ -57,7 +57,7 @@ const ToastItem: React.FC<{ toast: ToastNotification; onDismiss: (id: string) =>
 };
 
 export const ToastContainer: React.FC = () => {
-  const { toasts, dismiss } = useNotifications();
+  const { toasts, dismiss } = useToastList();
 
   if (toasts.length === 0) return null;
 

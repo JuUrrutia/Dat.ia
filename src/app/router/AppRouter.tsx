@@ -1,13 +1,27 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../features/auth/context/AuthContext';
 import { Header } from '../../shared/layout/Header';
 import { ToastContainer } from '../../components/shared/ToastContainer';
 import { MandatoryPasswordChangeModal } from '../../components/auth/MandatoryPasswordChangeModal';
 import { LoginPage } from '../../pages/LoginPage';
-import { ChatDashboardPage } from '../../pages/ChatDashboardPage';
-import { SettingsPage } from '../../pages/SettingsPage';
-import { AdminPage } from '../../pages/AdminPage';
+
+// Antes las cuatro paginas eran imports estaticos: entrar a /login descargaba
+// Admin, Settings y todo ECharts (~1 MB) sin que el usuario los fuera a pedir.
+// `lazy` los parte en chunks por ruta; el fallback es el mismo spinner que
+// usa el guard de sesion, asi que no hay un estado visual nuevo que mantener.
+const ChatDashboardPage = lazy(() => import('../../pages/ChatDashboardPage').then((m) => ({ default: m.ChatDashboardPage })));
+const SettingsPage = lazy(() => import('../../pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const AdminPage = lazy(() => import('../../pages/AdminPage').then((m) => ({ default: m.AdminPage })));
+
+const RouteFallback: React.FC = () => (
+  <div className="flex items-center justify-center h-full min-h-[50vh] text-[var(--app-text)]">
+    <div className="flex flex-col items-center gap-3">
+      <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+      <span className="text-sm">Cargando pantalla...</span>
+    </div>
+  </div>
+);
 
 const ProtectedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading } = useAuth();
@@ -119,7 +133,9 @@ export const AppRouter: React.FC = () => {
           path="/chat"
           element={
             <ProtectedLayout>
-              <ChatDashboardPage />
+              <Suspense fallback={<RouteFallback />}>
+                <ChatDashboardPage />
+              </Suspense>
             </ProtectedLayout>
           }
         />
@@ -127,7 +143,9 @@ export const AppRouter: React.FC = () => {
           path="/settings"
           element={
             <ProtectedLayout>
-              <SettingsPage />
+              <Suspense fallback={<RouteFallback />}>
+                <SettingsPage />
+              </Suspense>
             </ProtectedLayout>
           }
         />
@@ -135,7 +153,9 @@ export const AppRouter: React.FC = () => {
           path="/admin"
           element={
             <ProtectedLayout>
-              <AdminPage />
+              <Suspense fallback={<RouteFallback />}>
+                <AdminPage />
+              </Suspense>
             </ProtectedLayout>
           }
         />
