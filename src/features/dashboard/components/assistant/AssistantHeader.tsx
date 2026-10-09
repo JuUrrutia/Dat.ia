@@ -29,7 +29,7 @@ export const AssistantHeader: React.FC<AssistantHeaderProps> = ({
       <div className="flex items-center space-x-2 text-xs">
         <span className="inline-flex items-center gap-1.5 font-semibold text-cyan-700 dark:text-cyan-400 bg-cyan-500/15 dark:bg-cyan-500/10 px-2.5 py-0.5 rounded-full border border-cyan-500/30 text-[11px]">
           <Sparkles className="w-3 h-3 text-cyan-600 dark:text-cyan-400" />
-          <span>Respuesta DATIA</span>
+          <span>Respuesta de Dat.ia</span>
         </span>
       </div>
 

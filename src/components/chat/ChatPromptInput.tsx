@@ -178,7 +178,7 @@ export const ChatPromptInput: React.FC<ChatPromptInputProps> = ({
                 type="button"
                 onClick={handleExecuteBuilder}
                 className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold transition-colors shadow-xs cursor-pointer"
-                title="Ejecutar consulta directamente en DATIA"
+                title="Ejecutar consulta directamente en Dat.ia"
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>Consultar Ahora ↵</span>
@@ -246,7 +246,7 @@ export const ChatPromptInput: React.FC<ChatPromptInputProps> = ({
               }
             }}
             disabled={!promptInput.trim() || isGenerating}
-            aria-label="Enviar consulta a DATIA"
+            aria-label="Enviar consulta a Dat.ia"
             title="Enviar consulta"
             className="p-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 active:scale-[0.98] text-white disabled:opacity-30 disabled:pointer-events-none transition-all shadow-sm cursor-pointer"
           >

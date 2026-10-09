@@ -73,7 +73,7 @@ export const Header: React.FC = () => {
       <div className="flex items-center space-x-3 sm:space-x-4">
         <button
           type="button"
-          aria-label="Ir a Dashboard de DATIA"
+          aria-label="Ir a Dashboard de Dat.ia"
           className="flex items-center space-x-2.5 sm:space-x-3 text-left group rounded-xl p-1 transition-all focus-visible:ring-2 focus-visible:ring-brand-500"
           onClick={() => {
             navigate('/chat');
@@ -91,7 +91,7 @@ export const Header: React.FC = () => {
           />
           <div className="truncate">
             <h1 className="text-xs sm:text-base font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-1.5 sm:gap-2">
-              <span>DATIA</span>
+              <span>Dat.ia</span>
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand-500/15 text-brand-700 dark:text-brand-300 border border-brand-500/30">
                 IA Local
               </span>

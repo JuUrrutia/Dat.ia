@@ -1,4 +1,4 @@
-# 🌌 Datia - Democratización de Datos Corporativos con IA Local 100% Offline
+# 🌌 Dat.ia - Democratización de Datos Corporativos con IA Local 100% Offline
 
 Plataforma empresarial de analítica conversacional y **Executive Analytics Studio** que permite a usuarios no técnicos (Economistas, Directivos, Analistas) y equipos de TI realizar consultas complejas sobre bases de datos corporativas en **lenguaje natural**, garantizando privacidad absoluta mediante **IA Local (Qwen2.5-Coder / llama.cpp)** y gobernanza con **AST Guardrails & Column-Level Security (CLS)**.
 

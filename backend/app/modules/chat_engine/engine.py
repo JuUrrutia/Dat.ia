@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 class QueryEngine:
     """
-    Unified Orchestrator for DATIA conversational analytics and data democratization.
+    Unified Orchestrator for Dat.ia conversational analytics and data democratization.
     Delegates domain governance, intent classification, SQL generation, execution,
     null remediation, and visualization to specialized modules.
     """
@@ -348,7 +348,7 @@ class QueryEngine:
         except Exception as ex:
             # Fallar cerrado: sin ruta resuelta no se sabe a que base del cliente
             # apuntan los permisos ya calculados, y seguir con `exec_target` caeria
-            # en la BD demo interna de Datia.
+            # en la BD demo interna de Dat.ia.
             return ResponseBuilder.build_execution_error_response(
                 effective_question, str(ex), int((time.time() - start_time) * 1000)
             )

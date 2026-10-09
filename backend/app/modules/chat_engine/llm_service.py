@@ -20,7 +20,7 @@ from app.core.prompts import PromptManager
 #     por defecto, con `extra_hosts: host.docker.internal:host-gateway`
 #     (docker-compose.yml:63). Un backend en contenedor llega al LLM del host por
 #     ese nombre, NO por loopback: allowlist de solo loopback = panel de salud
-#     roto en Docker, que es donde corre Datia.
+#     roto en Docker, que es donde corre Dat.ia.
 #   - un servidor LLM en otra máquina de la LAN (http://192.168.1.50:11434) es
 #     un montaje válido de un proyecto local-first.
 #
@@ -214,7 +214,7 @@ class LLMService:
         `OPENAI_COMPATIBLE_URL` ships as "http://localhost:8000/v1". Composing
         "/v1/chat/completions" onto that produced ".../v1/v1/chat/completions",
         i.e. every inference POSTed the system prompt and the user question to
-        Datia's own API (port 8000) and got a 404. Strip the version segment so
+        Dat.ia's own API (port 8000) and got a 404. Strip the version segment so
         the path is composed exactly once.
         """
         base = (url or "").strip().rstrip('/')
@@ -248,7 +248,7 @@ class LLMService:
         1. Si el configurado esta entre los que reporta el servidor, se usa: es
            la eleccion explicita del admin y gana.
         2. Si el servidor reporta **exactamente uno** (LM Studio y llama.cpp
-           con un solo modelo cargado, que es el caso de Datia), se usa ese.
+           con un solo modelo cargado, que es el caso de Dat.ia), se usa ese.
         3. Si no, o si el servidor no responde, se devuelve el configurado. No
            se adivina entre varios: un `ids[0]` sobre un servidor con cinco
            modelos seria agregar un 404 mas, no quitar uno.

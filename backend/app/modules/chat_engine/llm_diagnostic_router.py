@@ -25,7 +25,7 @@ _INFERENCE_TIMEOUT = LLMService.LLM_TIMEOUT
 
 llm_diagnostic_router = APIRouter()
 
-# Datia es local-first: el servidor LLM solo puede estar en el loopback de la
+# Dat.ia es local-first: el servidor LLM solo puede estar en el loopback de la
 # maquina que corre el backend. Antes `base_url` venia del body sin validar y
 # estas rutas hacian POST a donde el usuario dijera, con respuesta cruda de vuelta:
 # un SSRF autenticado (cualquier usuario, cualquier rol) que con

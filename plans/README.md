@@ -1,4 +1,4 @@
-# 📋 Planes de Implementación - Proyecto Datia
+# 📋 Planes de Implementación - Proyecto Dat.ia
 
 **Origen:** auditoría del commit `c5f1af4` (25 de Septiembre de 2026)  
 **Estado revisado:** contra el árbol actual, no contra `c5f1af4`.

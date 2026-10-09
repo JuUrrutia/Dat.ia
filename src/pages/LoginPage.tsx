@@ -121,8 +121,8 @@ export const LoginPage: React.FC = () => {
         {/* Brand Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-dark-card/60 shadow-md mb-2 overflow-hidden border border-white/10">
-            <img src={logoDatiaLight} alt="Logo Datia" className="block dark:hidden w-full h-full object-contain p-1" />
-            <img src={logoDatiaDark} alt="Logo Datia" className="hidden dark:block w-full h-full object-contain p-1" />
+            <img src={logoDatiaLight} alt="Logo de Dat.ia" className="block dark:hidden w-full h-full object-contain p-1" />
+            <img src={logoDatiaDark} alt="Logo de Dat.ia" className="hidden dark:block w-full h-full object-contain p-1" />
           </div>
           <h1 className="text-2xl font-extrabold text-app-text tracking-tight">Dat.ia</h1>
           <p className="text-xs text-gray-400">Transformando datos en decisiones</p>

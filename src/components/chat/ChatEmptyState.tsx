@@ -21,7 +21,7 @@ export const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
 }) => {
   return (
     <div className="h-full flex flex-col items-center justify-center max-w-3xl mx-auto text-center space-y-6 sm:space-y-8 p-4 font-sans relative">
-      {/* Datia Brand Avatar */}
+      {/* Dat.ia brand avatar */}
       <div className="relative flex items-center justify-center">
         <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-dark-card/70 flex items-center justify-center shadow-lg border border-white/10 overflow-hidden p-2">
           <img src={logoDatiaLight} alt="Logo de Dat.ia" className="block dark:hidden w-full h-full object-contain" />
@@ -33,7 +33,7 @@ export const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
       <div className="space-y-2.5 max-w-lg">
         <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-300 text-xs font-semibold">
           <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-          <span>DATIA Text-to-SQL Assistant</span>
+          <span>Dat.ia Text-to-SQL Assistant</span>
         </div>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-app-text tracking-tight leading-tight">
           ¿Qué datos deseas analizar hoy?

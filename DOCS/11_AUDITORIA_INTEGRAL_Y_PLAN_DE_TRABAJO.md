@@ -1,4 +1,4 @@
-# 🌌 Auditoría Integral y Plan Estratégico de Mejora: Proyecto Datia
+# 🌌 Auditoría Integral y Plan Estratégico de Mejora: Proyecto Dat.ia
 
 **Fecha:** 25 de Septiembre de 2026  
 **Rama:** `Avances-Felipe` (Commit: `c5f1af4`)  
@@ -11,7 +11,7 @@
 
 ## 1. Resumen Ejecutivo de la Auditoría
 
-El proyecto **Datia** presenta una base funcional y conceptual de alto valor en analítica conversacional con IA local offline, control de acceso por roles (RBAC) y validación de árboles de sintaxis abstracta (AST Guardrail). Ha alcanzado hitos significativos en visualización adaptativa (Apache ECharts) y soporte dual SQLite / PostgreSQL.
+El proyecto **Dat.ia** presenta una base funcional y conceptual de alto valor en analítica conversacional con IA local offline, control de acceso por roles (RBAC) y validación de árboles de sintaxis abstracta (AST Guardrail). Ha alcanzado hitos significativos en visualización adaptativa (Apache ECharts) y soporte dual SQLite / PostgreSQL.
 
 Sin embargo, la auditoría profunda identificó **fallas latentes que comprometen la estabilidad en producción**, incluyendo:
 1. **Un error crítico de desempaquetado de tuplas (Unpack Crash)** que causa excepciones no controladas cuando una consulta devuelve cero registros.
@@ -257,7 +257,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 
 #### H-17: Falta de Empaquetado Standalone con Electron 33
 - **Evidencia concreta:** [`package.json`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/package.json), [`DOCS/02_ARQUITECTURA_TECNICA.md#L30`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/DOCS/02_ARQUITECTURA_TECNICA.md#L30) y [`README.md#L26`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/README.md#L26).
-- **Problema:** Toda la documentación oficial del repositorio describe Datia como una "Aplicación de Escritorio Standalone 100% Offline basada en Electron 33". Sin embargo, en el repositorio no existe archivo principal de Electron (`electron/main.ts` o `public/electron.js`), ni configuración de `electron-builder.json`, ni scripts en `package.json` (`electron:dev`, `electron:build`).
+- **Problema:** Toda la documentación oficial del repositorio describe Dat.ia como una "Aplicación de Escritorio Standalone 100% Offline basada en Electron 33". Sin embargo, en el repositorio no existe archivo principal de Electron (`electron/main.ts` o `public/electron.js`), ni configuración de `electron-builder.json`, ni scripts en `package.json` (`electron:dev`, `electron:build`).
 - **Consecuencias:** El proyecto actualmente solo puede ejecutarse como una aplicación web tradicional en el navegador, incumpliendo el formato de distribución comprometido para despliegues corporativos aislados.
 - **Solución propuesta:** Crear la configuración de entrada de Electron (`electron/main.ts`), enlazar el empaquetado con Vite (`vite-plugin-electron`) y configurar los scripts de lanzamiento y generación de instaladores ejecutables (`.exe` para Windows).
 - **Impacto:** ALTO | **Esfuerzo:** L | **Riesgo:** MEDIO.
@@ -463,7 +463,7 @@ flowchart TD
 #### Tarea 4.1: Configuración e implementación de Electron 33 Standalone
 - **Archivos:** `electron/main.ts`, `electron/preload.ts`, `vite.config.ts`, `package.json`.
 - **Acción:** Instalar dependencias de desarrollo de Electron, configurar el ciclo de vida del subproceso backend Python y habilitar scripts `npm run electron:dev` y `npm run electron:build`.
-- **Criterio de Aceptación:** Ejecutar `npm run electron:dev` abre la ventana nativa de escritorio cargando la interfaz de Datia y comunicándose exitosamente con el backend local sin requerir un navegador web externo.
+- **Criterio de Aceptación:** Ejecutar `npm run electron:dev` abre la ventana nativa de escritorio cargando la interfaz de Dat.ia y comunicándose exitosamente con el backend local sin requerir un navegador web externo.
 
 #### Tarea 4.2: Streaming de respuestas en tiempo real (Server-Sent Events)
 - **Archivos:** `backend/app/modules/chat_engine/router.py`, `src/features/chat/services/query_service.ts`.

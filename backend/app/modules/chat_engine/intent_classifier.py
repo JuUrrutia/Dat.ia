@@ -278,7 +278,7 @@ class IntentClassifier:
             temp = 0.2
             prompt = f"Pregunta del usuario ({user_role}): \"{question}\"\n"
             if data_context:
-                prompt += f"\nResultados obtenidos por DATIA desde la base de datos corporativa ({len(data_context)} registros encontrados):\n{json.dumps(data_context[:25], ensure_ascii=False, indent=2, default=str)}\n\nExplica estos datos obtenidos de la BD al usuario en respuesta a su pregunta."
+                prompt += f"\nResultados obtenidos por Dat.ia desde la base de datos corporativa ({len(data_context)} registros encontrados):\n{json.dumps(data_context[:25], ensure_ascii=False, indent=2, default=str)}\n\nExplica estos datos obtenidos de la BD al usuario en respuesta a su pregunta."
             else:
                 prompt += "\nLa base de datos fue consultada pero no se encontraron registros coincidentes. Explica cordialmente la situación al usuario."
         elif response_type == "greeting":

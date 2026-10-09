@@ -108,7 +108,7 @@ class ReportGeneratorService:
             )
             db.add(export_audit)
             db.commit()
-            filename = f"informe_ejecutivo_datia_{datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+            filename = f"informe_ejecutivo_dat.ia_{datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
             return pdf_bytes, filename
 
         # fail-closed: sin audit_log_id no hay documento. Antes caia en
@@ -171,7 +171,7 @@ class ReportGeneratorService:
             )
             db.add(export_audit)
             db.commit()
-            filename = f"datos_datia_{datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            filename = f"datos_dat.ia_{datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
             return excel_bytes, filename
 
         raise HTTPException(

@@ -93,7 +93,7 @@ async def get_system_health(
         discard_failed_transaction(db)
 
     meta_comp = ComponentHealth(
-        name="Metadata Store (Datia DB)",
+        name="Metadata Store (Dat.ia DB)",
         type="metadata_db",
         status=SYSTEM_STATUS_OPERATIONAL if meta_ok else SYSTEM_STATUS_DEGRADED,
         latency_ms=meta_latency,
@@ -361,4 +361,3 @@ async def get_system_anomalies(
         "anomalies": anomalies,
         "has_critical": any(a["severity"] == "critical" for a in anomalies)
     }
-

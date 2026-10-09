@@ -234,7 +234,7 @@ const ChatMessageItemBase: React.FC<ChatMessageItemProps> = ({
           {/* Clean Message Info Bar */}
           <div className="flex items-center justify-between text-[11px] text-slate-400 dark:text-zinc-500 px-1">
             <div className="flex items-center space-x-2">
-              <span className="font-semibold text-slate-700 dark:text-zinc-300">DATIA</span>
+              <span className="font-semibold text-slate-700 dark:text-zinc-300">Dat.ia</span>
               <span>•</span>
               <span className="font-mono text-[10px] tabular-nums">{result.timestamp}</span>
               {/* Provenance: whether this answer came from the backend, straight
@@ -422,4 +422,3 @@ const MemoChatMessageItem = React.memo(ChatMessageItemBase);
 MemoChatMessageItem.displayName = 'ChatMessageItem';
 
 export const ChatMessageItem = MemoChatMessageItem;
-

@@ -29,7 +29,7 @@ class TestGreetingBeforeDataRequest(unittest.IsolatedAsyncioTestCase):
                 )
 
     async def test_plain_greetings_still_greeting(self):
-        for q in ["Hola", "Hola DATIA, buenos días", "Gracias!", "qué puedes hacer"]:
+        for q in ["Hola", "Hola Dat.ia, buenos días", "Gracias!", "qué puedes hacer"]:
             with self.subTest(q=q):
                 self.assertEqual(
                     await IntentClassifier.classify_intent(q), "greeting"

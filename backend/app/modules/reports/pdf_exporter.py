@@ -102,7 +102,7 @@ class PDFExporter:
         header_table = Table(
             [
                 [
-                    Paragraph("<b>DATIA</b> | Executive Analytics", title_style),
+                    Paragraph("<b>Dat.ia</b> | Executive Analytics", title_style),
                     Paragraph(f"<b>Fecha:</b> {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}<br/><b>BD:</b> {escape(ReportDataCompiler.compile_db_name(data))}", subtitle_style)
                 ]
             ],
