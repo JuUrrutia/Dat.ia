@@ -1,19 +1,33 @@
-__pycache__
-*.pyc
-*.pyo
-*.pyd
+# Contexto de build = ./backend (docker-compose.yml:32). El `COPY . .` del
+# Dockerfile arrastra TODO lo que haya aqui, asi que lo que no se lista entra
+# en la imagen.
+
+# Bytecode y caches de Python
+**/__pycache__/
+*.py[cod]
 .Python
-env/
-venv/
-.venv/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Entornos virtuales
+env/
+venv/
+.venv/
+
+# Bases de datos locales: son datos del cliente, no codigo, y la imagen no
+# debe llevar copias (ni subirlas al registry).
+*.db
 *.sqlite
 *.sqlite3
-*.db
-datia_metadata.db
 data_sources/
+
+# Secrets: 'COPY . .' hornearia el .env del desarrollador en la capa.
+# .env.example se queda: contiene placeholders, no credenciales.
+.env
+.env.*
+!.env.example
+
 .git
 .gitignore
 .vscode

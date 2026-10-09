@@ -3,11 +3,12 @@ import app.modules.admin_catalog.models
 import app.modules.telemetry_audit.models
 import app.modules.chat_engine.models
 from sqlalchemy.orm import Session
-from app.core.database import Base, engine
+from app.core.database import Base, engine, ensure_schema_migrations
 from app.core.security import get_password_hash
 from app.modules.auth.models import User, Role, Domain
 from app.modules.admin_catalog.models import (
-    CorporateConnection, DatabaseType, SemanticCatalog, RoleTablePermission
+    CorporateConnection, DatabaseType, SemanticCatalog, RoleTablePermission,
+    RoleColumnPermission, ColumnPermissionType
 )
 
 def init_db(db: Session):
@@ -15,11 +16,14 @@ def init_db(db: Session):
     Creates all database tables in PostgreSQL/SQLite and seeds initial default roles and admin.
     """
     Base.metadata.create_all(bind=engine)
+    ensure_schema_migrations(engine)
 
     try:
         from sqlalchemy import inspect, text
         inspector = inspect(engine)
-        if "users" in inspector.get_table_names():
+        table_names = set(inspector.get_table_names())
+
+        if "users" in table_names:
             user_cols = {c["name"] for c in inspector.get_columns("users")}
             with engine.begin() as conn:
                 if "failed_login_attempts" not in user_cols:
@@ -29,23 +33,42 @@ def init_db(db: Session):
                 if "must_change_password" not in user_cols:
                     conn.execute(text("ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT 0 NOT NULL"))
 
-        if "corporate_connections" in inspector.get_table_names():
+        if "corporate_connections" in table_names:
             conn_cols = {c["name"] for c in inspector.get_columns("corporate_connections")}
             with engine.begin() as conn:
                 if "is_uploaded" not in conn_cols:
                     conn.execute(text("ALTER TABLE corporate_connections ADD COLUMN is_uploaded BOOLEAN DEFAULT 0 NOT NULL"))
+                if "null_policy" not in conn_cols:
+                    conn.execute(text("ALTER TABLE corporate_connections ADD COLUMN null_policy VARCHAR(50) DEFAULT 'open'"))
 
-        if "audit_logs" in inspector.get_table_names():
+        if "audit_logs" in table_names:
             audit_cols = {c["name"] for c in inspector.get_columns("audit_logs")}
             with engine.begin() as conn:
                 if "result_snapshot" not in audit_cols:
                     conn.execute(text("ALTER TABLE audit_logs ADD COLUMN result_snapshot TEXT NULL"))
 
-        if "query_learning_memories" in inspector.get_table_names():
+        if "query_learning_memories" in table_names:
             mem_cols = {c["name"] for c in inspector.get_columns("query_learning_memories")}
             with engine.begin() as conn:
                 if "is_golden" not in mem_cols:
                     conn.execute(text("ALTER TABLE query_learning_memories ADD COLUMN is_golden BOOLEAN DEFAULT FALSE NOT NULL"))
+
+        # Procedencia del permiso de tabla. Mismo mecanismo que `is_shared`: se
+        # agrega la columna con el default que falla cerrado. Las filas existentes
+        # quedan en False (o sea "nadie lo concedio a proposito"), que es
+        # justamente lo que la migracion de default-deny de mas abajo revoca.
+        if "role_table_permissions" in table_names:
+            perm_cols = {c["name"] for c in inspector.get_columns("role_table_permissions")}
+            with engine.begin() as conn:
+                if "granted_by_admin" not in perm_cols:
+                    conn.execute(text("ALTER TABLE role_table_permissions ADD COLUMN granted_by_admin BOOLEAN DEFAULT FALSE NOT NULL"))
+                    # No se marca nada como concedido: el default FALSE deja a todas
+                    # las filas existentes sin procedencia demostrable, que es
+                    # exactamente lo que la migracion de default-deny de mas abajo
+                    # revoca en los datasets subidos. La matriz de la demo no pasa
+                    # por aca: vive en las conexiones de plataforma (is_uploaded
+                    # == False), que la migracion no toca, y el seeder declarativo
+                    # la (re)marca como concedida fila por fila.
     except Exception:
         pass
 
@@ -96,8 +119,6 @@ def init_db(db: Session):
         {"username": "juan_ti", "email": "juan@empresa.com", "pwd": "ti123", "is_admin": False, "role": ti_role},
     ]
 
-    from app.core.security import verify_password
-
     for u_info in demo_users:
         existing_user = db.query(User).filter(User.username == u_info["username"]).first()
         if not existing_user:
@@ -111,15 +132,13 @@ def init_db(db: Session):
                 role_id=u_info["role"].id if u_info["role"] else None
             )
             db.add(new_user)
-        else:
-            # Ensure demo accounts always have functional passwords and valid roles
-            if not verify_password(u_info["pwd"], existing_user.hashed_password):
-                existing_user.hashed_password = get_password_hash(u_info["pwd"])
-            if u_info["role"] and existing_user.role_id is None:
-                existing_user.role_id = u_info["role"].id
-            existing_user.is_active = True
-            existing_user.failed_login_attempts = 0
-            existing_user.locked_until = None
+        elif u_info["role"] and existing_user.role_id is None:
+            # Solo backfill de rol. Una cuenta existente NO se toca mas: revertir
+            # su contrasena en cada arranque deshacia los cambios del admin,
+            # reactivaba cuentas desactivadas y ponia el lockout en cero, con lo
+            # que un reinicio de Docker hacia la fuerza bruta infinitamente
+            # reutilizable.
+            existing_user.role_id = u_info["role"].id
     db.commit()
 
     import os
@@ -139,11 +158,11 @@ def init_db(db: Session):
             except Exception:
                 pass
 
-    existing_conn = db.query(CorporateConnection).first()
-    if not existing_conn:
+    std_conn = db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == False).first()
+    if not std_conn:
         if engine.dialect.name == "postgresql":
-            default_conn = CorporateConnection(
-                name="Base de Datos Corporativa PostgreSQL",
+            std_conn = CorporateConnection(
+                name="Base de Datos Corporativa (Demo)",
                 db_type=DatabaseType.POSTGRESQL,
                 host=settings.POSTGRES_SERVER,
                 port=settings.POSTGRES_PORT,
@@ -156,7 +175,7 @@ def init_db(db: Session):
         else:
             db_path = settings.SQLITE_DB_PATH
             db_name = os.path.basename(db_path)
-            default_conn = CorporateConnection(
+            std_conn = CorporateConnection(
                 name="BD Corporativa Local",
                 db_type=DatabaseType.SQLITE,
                 host=db_path,
@@ -167,26 +186,8 @@ def init_db(db: Session):
                 is_active=True,
                 is_uploaded=False
             )
-        db.add(default_conn)
+        db.add(std_conn)
         db.commit()
-    elif engine.dialect.name == "postgresql":
-        pg_conn = db.query(CorporateConnection).filter(
-            CorporateConnection.db_type == DatabaseType.POSTGRESQL
-        ).first()
-        if not pg_conn:
-            default_conn = CorporateConnection(
-                name="Base de Datos Corporativa PostgreSQL",
-                db_type=DatabaseType.POSTGRESQL,
-                host=settings.POSTGRES_SERVER,
-                port=settings.POSTGRES_PORT,
-                database_name="democratizacion_empresa",
-                username=settings.POSTGRES_USER,
-                encrypted_password=encrypt_credential(settings.POSTGRES_PASSWORD),
-                is_active=True,
-                is_uploaded=False
-            )
-            db.add(default_conn)
-            db.commit()
 
     all_business_tables = [
         "dim_categorias", "dim_productos", "dim_clientes",
@@ -223,13 +224,21 @@ def init_db(db: Session):
                         RoleTablePermission.connection_id == s_conn.id,
                         RoleTablePermission.table_name == tbl
                     ).first()
-                    if not existing_perm:
+                    if existing_perm:
+                        existing_perm.granted_by_admin = True
+                    else:
+                        # Esta matriz SI es una decision explicita de la demo (los
+                        # 12 roles y las tablas SAP declaradas arriba), asi que las
+                        # filas se marcan como concedidas por un admin: es lo que
+                        # las distingue del auto-grant y las protege de la
+                        # migracion de default-deny.
                         db.add(RoleTablePermission(
                             role_id=r_obj.id,
                             connection_id=s_conn.id,
                             schema_name=s_schema,
                             table_name=tbl,
-                            is_allowed=True
+                            is_allowed=True,
+                            granted_by_admin=True
                         ))
 
     # Ensure financial roles strictly do NOT have access to tech/server infrastructure tables
@@ -250,45 +259,122 @@ def init_db(db: Session):
             ])
         ).delete(synchronize_session=False)
 
-    # Seed permissions for uploaded user datasets (is_uploaded == True)
-    from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
-    uploaded_connections = db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == True).all()
-    operational_roles = db.query(Role).filter(~Role.name.in_(["Usuario", "Usuario Consultor"])).all()
+    # Seed column-level security permissions (CLS) for standard connections
+    for s_conn in standard_connections:
+        s_schema = "public" if (s_conn.db_type == DatabaseType.POSTGRESQL or str(s_conn.db_type).lower() == "postgresql") else "main"
+        non_admin_roles = db.query(Role).filter(~Role.name.in_(["Administrador de Plataforma", "Administrador", "Director Ejecutivo (C-Level)"])).all()
+        for r_obj in non_admin_roles:
+            # 1. Mask customer national ID / RUT
+            existing_rut = db.query(RoleColumnPermission).filter(
+                RoleColumnPermission.role_id == r_obj.id,
+                RoleColumnPermission.connection_id == s_conn.id,
+                RoleColumnPermission.table_name == "dim_clientes",
+                RoleColumnPermission.column_name == "rut_dni_cliente"
+            ).first()
+            if not existing_rut:
+                db.add(RoleColumnPermission(
+                    role_id=r_obj.id,
+                    connection_id=s_conn.id,
+                    schema_name=s_schema,
+                    table_name="dim_clientes",
+                    column_name="rut_dni_cliente",
+                    permission_type=ColumnPermissionType.MASKED
+                ))
 
-    for o_conn in uploaded_connections:
-        db_path = o_conn.host if (o_conn.host and os.path.exists(o_conn.host)) else (
-            o_conn.database_name if (o_conn.database_name and os.path.exists(o_conn.database_name)) else None
+            # 2. Block credit card token
+            existing_cc = db.query(RoleColumnPermission).filter(
+                RoleColumnPermission.role_id == r_obj.id,
+                RoleColumnPermission.connection_id == s_conn.id,
+                RoleColumnPermission.table_name == "dim_clientes",
+                RoleColumnPermission.column_name == "tarjeta_credito_token"
+            ).first()
+            if not existing_cc:
+                db.add(RoleColumnPermission(
+                    role_id=r_obj.id,
+                    connection_id=s_conn.id,
+                    schema_name=s_schema,
+                    table_name="dim_clientes",
+                    column_name="tarjeta_credito_token",
+                    permission_type=ColumnPermissionType.BLOCKED
+                ))
+
+            # 3. Block salary and compensation for non-HR roles
+            is_hr_role = "talento" in r_obj.name.lower() or "rrhh" in r_obj.name.lower()
+            if not is_hr_role:
+                for col in ["sueldo_mensual", "salario"]:
+                    existing_sal = db.query(RoleColumnPermission).filter(
+                        RoleColumnPermission.role_id == r_obj.id,
+                        RoleColumnPermission.connection_id == s_conn.id,
+                        RoleColumnPermission.table_name == "dim_empleados",
+                        RoleColumnPermission.column_name == col
+                    ).first()
+                    if not existing_sal:
+                        db.add(RoleColumnPermission(
+                            role_id=r_obj.id,
+                            connection_id=s_conn.id,
+                            schema_name=s_schema,
+                            table_name="dim_empleados",
+                            column_name=col,
+                            permission_type=ColumnPermissionType.BLOCKED
+                        ))
+
+    # MIGRACION default-deny: los datasets ya cargados.
+    #
+    # Antes, el bloque que vivia aqui (y `upload_database_file`) creaba un
+    # RoleTablePermission(is_allowed=True) por cada (rol, tabla) de cada conexion
+    # subida, saltandose solo unas tablas de la demo SAP por substring sobre el
+    # nombre del rol. En cualquier dataset real la exclusion no excluye nada y
+    # queda over-grant para casi todos los roles.
+    #
+    # Que decide esta migracion: revocar, nunca conceder. Las filas que no son
+    # decision de un admin (granted_by_admin = False, que es el default y por eso
+    # cubre tanto las del auto-grant viejo como cualquier fila sin procedencia
+    # demostrable) se borran de las conexiones SUBIDAS. Las conexiones de
+    # plataforma (is_uploaded == False) NO se tocan: ahi esta la matriz de la demo
+    # declarada arriba, y borrarla dejaria el producto sin acceso.
+    #
+    # Consecuencia asumida: un dataset preexistente queda sin acceso hasta que el
+    # admin re-asigne con PUT /api/v1/permissions. Es el trade correcto:
+    # revocar de mas es recuperable en un click; dejar el over-grant no lo es.
+    #
+    # Idempotente: corre en cada arranque, y la segunda vez no hay nada que borrar.
+    uploaded_ids = [
+        c[0] for c in db.query(CorporateConnection.id)
+        .filter(CorporateConnection.is_uploaded == True).all()
+    ]
+    if uploaded_ids:
+        revoked = db.query(RoleTablePermission).filter(
+            RoleTablePermission.connection_id.in_(uploaded_ids),
+            RoleTablePermission.granted_by_admin == False,
+        ).delete(synchronize_session=False)
+        db.commit()
+        if revoked:
+            print(f"[migracion default-deny] {revoked} permisos de tabla no decisions por un admin fueron revocados de {len(uploaded_ids)} dataset(s) subido(s). Re-asignalos desde el panel de permisos.")
+
+    # MIGRACION conector unico: `is_active` se leia como un singleton (los
+    # lectores hacen `ORDER BY id DESC LIMIT 1`) pero las escrituras no lo
+    # trataban como tal, asi que se acumularon varias conexiones activas. Con la
+    # demo de plataforma y un dataset subido los dos marcados, el motor respondia
+    # contra el dataset (id mas alto), que por default-deny no tiene permisos:
+    # todos los no-admin se quedaban sin datos en todo el producto.
+    #
+    # Gana la de id mas alto, que es exactamente lo que el motor ya elegia: la
+    # migracion quita el estado incoherente sin cambiar cual es la fuente que
+    # estaba en uso. Idempotente: la segunda vez no hay nada que apagar.
+    active_ids = [
+        c[0] for c in db.query(CorporateConnection.id)
+        .filter(CorporateConnection.is_active == True)
+        .order_by(CorporateConnection.id.desc()).all()
+    ]
+    if len(active_ids) > 1:
+        db.query(CorporateConnection).filter(
+            CorporateConnection.id.in_(active_ids[1:])
+        ).update({CorporateConnection.is_active: False}, synchronize_session=False)
+        db.commit()
+        print(
+            f"[migracion conector unico] {len(active_ids) - 1} conexion(es) "
+            f"activa(s) extra(s) apagadas. Queda activa la {active_ids[0]}."
         )
-        phys_tables = DynamicSchemaPruningService.get_physical_db_tables(db_path) if db_path else set()
-        if not phys_tables:
-            cat_entries = db.query(SemanticCatalog).filter(SemanticCatalog.connection_id == o_conn.id).all()
-            phys_tables = {e.table_name for e in cat_entries if e.table_name}
-        for r_obj in operational_roles:
-            is_r_ti = any(k in r_obj.name.lower() for k in ["ti", "infraestructura"])
-            is_r_fin = any(k in r_obj.name.lower() for k in ["economista", "financiero"])
-            for tbl in phys_tables:
-                t_lower = tbl.lower()
-                if is_r_ti and t_lower in [
-                    "fact_ventas", "fact_ingresos_costos", "dim_clientes",
-                    "dim_productos", "dim_categorias", "vbak_cabpedidoventa",
-                    "vbap_pospedidoventa", "ekko_cabpedidocompra", "ekpo_pospedidocompra", "kna1_clientes"
-                ]:
-                    continue
-                if is_r_fin and t_lower in ["dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos"]:
-                    continue
-                existing_perm = db.query(RoleTablePermission).filter(
-                    RoleTablePermission.role_id == r_obj.id,
-                    RoleTablePermission.connection_id == o_conn.id,
-                    RoleTablePermission.table_name.ilike(tbl)
-                ).first()
-                if not existing_perm:
-                    db.add(RoleTablePermission(
-                        role_id=r_obj.id,
-                        connection_id=o_conn.id,
-                        schema_name="main",
-                        table_name=tbl,
-                        is_allowed=True
-                    ))
 
     db.commit()
 

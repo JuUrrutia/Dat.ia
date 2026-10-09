@@ -55,10 +55,19 @@ jobs:
           node-version: 20
           cache: 'npm'
 
+      # `npm ci` y no `npm ci || npm install`: el fallback silencia un
+      # package-lock.json desincronizado de package.json, que es justo lo que
+      # CI debería rechazar en vez de tapar.
       - name: Install frontend dependencies
         run: |
-          npm ci || npm install
+          npm ci --no-audit --prefer-offline
 
       - name: Run TypeScript typecheck (tsc --noEmit)
         run: |
           npx tsc --noEmit
+
+      # `npm run build` ya ejecuta `tsc`, pero además genera el bundle: una app
+      # que no compila no debe pasar CI aunque los tipos cuadren.
+      - name: Build frontend (vite build)
+        run: |
+          npm run build

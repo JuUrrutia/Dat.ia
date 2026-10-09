@@ -35,7 +35,7 @@ export const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
           <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
           <span>DATIA Text-to-SQL Assistant</span>
         </div>
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-tight">
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-app-text tracking-tight leading-tight">
           ¿Qué datos deseas analizar hoy?
         </h2>
         <p className="text-xs sm:text-sm text-gray-400 leading-relaxed max-w-md mx-auto">
@@ -56,7 +56,7 @@ export const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
                 key={suggestion}
                 type="button"
                 onClick={() => onSelectSuggestion(suggestion)}
-                className="glass-card-interactive p-3.5 rounded-2xl border border-white/10 flex items-center justify-between group text-xs text-gray-300 hover:text-white transition-all shadow-md"
+                className="glass-card-interactive p-3.5 rounded-2xl border border-white/10 flex items-center justify-between group text-xs text-gray-300 hover:text-app-text transition-all shadow-md"
               >
                 <div className="flex items-center space-x-3 truncate">
                   <div className="p-2 rounded-xl bg-dark-base border border-dark-border group-hover:border-brand-500/40 transition-colors">

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Database, RefreshCw, CheckCircle2, AlertCircle, ShieldCheck } from 'lucide-react';
 
 interface SettingsPostgresSectionProps {
@@ -24,6 +24,12 @@ export const SettingsPostgresSection: React.FC<SettingsPostgresSectionProps> = (
   onPgDbChange,
   onTestPG,
 }) => {
+  // The persisted port is a number, but a number cannot represent "the admin
+  // is mid-edit": with type="number" an emptied field yields valueAsNumber
+  // NaN, and pushing the 5432 fallback upward snapped the input back mid-typing
+  // (select-all + retype could never work). The draft is a string; only a
+  // valid in-range value is committed upward, and blur restores it if empty.
+  const [portDraft, setPortDraft] = useState(String(pgPort));
   return (
     <div className="glass-panel rounded-2xl p-5 border border-white/10 space-y-4 shadow-xl font-sans">
       {/* Header */}
@@ -76,11 +82,18 @@ export const SettingsPostgresSection: React.FC<SettingsPostgresSectionProps> = (
           </label>
           <input
             id="pg-port-input"
-            type="number"
-            value={pgPort}
+            type="text"
+            inputMode="numeric"
+            value={portDraft}
             onChange={(e) => {
-              const val = e.currentTarget.valueAsNumber;
-              onPgPortChange(Number.isFinite(val) ? val : 5432);
+              const raw = e.target.value.replace(/[^\d]/g, '');
+              setPortDraft(raw);
+              const n = Number.parseInt(raw, 10);
+              // Reject out-of-range instead of sending -1 to the backend.
+              if (Number.isFinite(n) && n >= 1 && n <= 65535) onPgPortChange(n);
+            }}
+            onBlur={() => {
+              if (portDraft.trim() === '') setPortDraft(String(pgPort));
             }}
             aria-label="Puerto de la base de datos"
             className="w-full bg-white dark:bg-dark-base/90 border border-slate-300 dark:border-dark-border rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-brand-300 font-mono focus:outline-none focus:border-blue-500 transition-colors shadow-xs"
@@ -105,7 +118,11 @@ export const SettingsPostgresSection: React.FC<SettingsPostgresSectionProps> = (
       {/* Security note */}
       <div className="flex items-center space-x-2 text-[10px] text-gray-600 dark:text-gray-400 bg-slate-50 dark:bg-dark-base/40 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-dark-border/60">
         <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-        <span>Conexión segura cifrada con TLS y roles aislados de sólo lectura para auditorías.</span>
+        <span>
+          {pgStatus?.success
+            ? 'Conexión segura cifrada con TLS y roles aislados de sólo lectura para auditorías.'
+            : 'Se envían sólo host, puerto y nombre de BD; no se almacenan credenciales en el navegador.'}
+        </span>
       </div>
 
       {pgStatus && (

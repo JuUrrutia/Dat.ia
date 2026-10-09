@@ -8,11 +8,12 @@ import {
   AlertTriangle,
   AlertOctagon,
   WifiOff,
+  HelpCircle,
 } from 'lucide-react';
 import { SystemHealthResponse, ComponentHealth } from '../../types';
 
 interface SystemHealthPopoverProps {
-  status: 'OPERATIVO' | 'DEGRADADO' | 'CRITICO';
+  status: 'OPERATIVO' | 'DEGRADADO' | 'CRITICO' | 'DESCONOCIDO';
   details: SystemHealthResponse | null;
   lastChecked: Date | null;
   isLoading: boolean;
@@ -62,8 +63,7 @@ export const SystemHealthPopover: React.FC<SystemHealthPopoverProps> = ({
           icon: <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />,
           label: 'Sistema Degradado',
         };
-      case 'OPERATIVO':
-      default: {
+      case 'OPERATIVO': {
         const prov = details?.llm_engine?.details?.provider;
         const provLabel = prov === 'llama_cpp' ? 'llama.cpp' : prov === 'ollama' ? 'Ollama' : 'IA Local';
         return {
@@ -72,6 +72,14 @@ export const SystemHealthPopover: React.FC<SystemHealthPopoverProps> = ({
           label: `IA Local Activa (${provLabel})`,
         };
       }
+      // Sin dato del backend: no se afirma que esté bien ni mal.
+      case 'DESCONOCIDO':
+      default:
+        return {
+          bg: 'bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30 hover:bg-slate-500/25',
+          icon: <HelpCircle className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />,
+          label: 'Estado del Sistema Desconocido',
+        };
     }
   };
 
@@ -147,7 +155,7 @@ export const SystemHealthPopover: React.FC<SystemHealthPopoverProps> = ({
                     : 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30'
                 }`}
               >
-                {details?.llm_engine.status || 'OPERATIVO'}
+                {details?.llm_engine.status || 'DESCONOCIDO'}
               </span>
             </div>
 
@@ -171,7 +179,7 @@ export const SystemHealthPopover: React.FC<SystemHealthPopoverProps> = ({
                     : 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30'
                 }`}
               >
-                {details?.metadata_db.status || 'OPERATIVO'}
+                {details?.metadata_db.status || 'DESCONOCIDO'}
               </span>
             </div>
 

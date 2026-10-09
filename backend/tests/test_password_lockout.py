@@ -22,12 +22,36 @@ class TestPasswordLockout(unittest.TestCase):
         self.test_username = "ti"
         user = self.db.query(User).filter(User.username == self.test_username).first()
         if user:
+            self._lock_state = (
+                user.failed_login_attempts,
+                user.locked_until,
+                user.must_change_password,
+                user.hashed_password,
+            )
             user.failed_login_attempts = 0
             user.locked_until = None
             user.must_change_password = False
             self.db.commit()
+        else:
+            self._lock_state = None
 
     def tearDown(self):
+        # Restore the account to the state it had before this test.
+        #
+        # These tests deliberately (a) lock a shared demo account and (b) replace
+        # its password through the admin reset endpoint. Without restoring both,
+        # every later test that logs in as "ti" fails with 401. That damage used to
+        # be silently repaired by init_db on the next start; init_db no longer
+        # rewrites existing accounts (that was the bug), so the pollution became
+        # permanent and order-dependent.
+        if self._lock_state:
+            user = self.db.query(User).filter(User.username == self.test_username).first()
+            if user:
+                (user.failed_login_attempts,
+                 user.locked_until,
+                 user.must_change_password,
+                 user.hashed_password) = self._lock_state
+                self.db.commit()
         self.db.close()
 
     def test_five_failed_attempts_locks_account(self):

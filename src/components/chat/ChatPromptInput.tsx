@@ -140,7 +140,7 @@ export const ChatPromptInput: React.FC<ChatPromptInputProps> = ({
               <span className="text-gray-700 dark:text-zinc-400 text-[11px] font-semibold mr-2">3. Período:</span>
               <div className="inline-flex flex-wrap gap-1.5 mt-1">
                 {[
-                  { label: 'Este Año (2024)', val: 'el año 2024' },
+                  { label: `Este Año (${new Date().getFullYear()})`, val: `el año ${new Date().getFullYear()}` },
                   { label: 'Últimos 90 Días', val: 'los últimos 90 días' },
                   { label: 'Todo el Histórico', val: 'todo el histórico' },
                 ].map((item) => (

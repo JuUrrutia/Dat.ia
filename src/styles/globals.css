@@ -82,6 +82,12 @@ html.light .text-gray-400 {
   color: #334155;
 }
 
+/* Light mode: unrescued neutral. No text-gray-300 sits on a saturated brand
+   background anywhere, so this one is safe to remap globally. */
+html.light .text-gray-300 {
+  color: #334155;
+}
+
 /* Light mode high-contrast mapping for pastel badges and highlights (WCAG AA) */
 html.light .text-brand-300,
 html.light .text-brand-400 {

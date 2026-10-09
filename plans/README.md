@@ -1,39 +1,42 @@
 # 📋 Planes de Implementación - Proyecto Datia
 
-**Generado contra commit:** `c5f1af4`  
-**Fecha:** 25 de Septiembre de 2026  
-**Línea base de verificación:**
-- Frontend: `npx tsc --noEmit` (0 errores)
-- Backend: `py -m pytest` (103 passed, 1 failed, 253 warnings)
+**Origen:** auditoría del commit `c5f1af4` (25 de Septiembre de 2026)  
+**Estado revisado:** contra el árbol actual, no contra `c5f1af4`.
+
+> Las cifras de línea base del documento de auditoría (`103 passed, 1 failed`)
+> quedaron desactualizadas: la suite de `backend/tests/` tiene hoy del orden de
+> 500 tests en 65 archivos. Verificar con `cd backend && pytest` antes de
+> fiarse de cualquier plan.
 
 ---
 
-## 🗺️ Grafo de Dependencias de Ejecución
+## 📊 Estado de cada plan
 
-```
-[001-fix-unpack-crash-and-remediation-banner]
-                     │
-                     ▼
-[002-enforce-read-only-in-memory-null-remediation]
-                     │
-                     ▼
-[003-connection-engine-lifecycle-and-dispose]
-```
+| ID | Plan | Estado | Qué dice el código hoy |
+|---|---|---|---|
+| **001** | [`001-fix-unpack-crash-and-remediation-banner.md`](001-fix-unpack-crash-and-remediation-banner.md) | ✅ **Implementado** | `build_dynamic_visualization` devuelve 5 elementos también con `rows`/`columns` vacíos (`kpi_calculator.py:155-168`); `engine.py:25` importa `logger`; el banner se antepone con `if is_remediation:` y no depende de que `conversational` sea truthy (`engine.py:530-532`). |
+| **002** | [`002-enforce-read-only-in-memory-null-remediation.md`](002-enforce-read-only-in-memory-null-remediation.md) | ⛔ **NO implementado** | `engine.py:230` sigue llamando `NullManagerService.apply_null_policy(...)`, que ejecuta `DELETE`/`UPDATE` contra la base corporativa y hace `commit` (`null_manager.py:218-333`). La vía en memoria (`apply_in_memory_remediation`) existe y se usa, pero convive con la mutación física: el pilar de solo lectura sigue roto. |
+| **003** | [`003-connection-engine-lifecycle-and-dispose.md`](003-connection-engine-lifecycle-and-dispose.md) | ✅ **Implementado con otro diseño** | El plan pedía un `ConnectorEngineRegistry` con caché. Lo que hay es `connector_engine()` (`core/database.py:276-292`), un contextmanager que hace `dispose()` al salir, y `sql_executor.py:39-41` lo usa con `with`. Sin caché, a propósito (ver el docstring). El fallo que motiva el plan —pools huérfanos— está resuelto. |
 
 ---
 
-## 📊 Tabla de Estado y Prioridad
+## 📌 Único plan pendiente
 
-| ID | Plan | Impacto | Esfuerzo | Riesgo | Estado | Archivos Principales |
-|---|---|---|---|---|---|---|
-| **001** | [`001-fix-unpack-crash-and-remediation-banner.md`](001-fix-unpack-crash-and-remediation-banner.md) | ALTO | S | BAJO | `TODO` | `backend/app/modules/chat_engine/kpi_calculator.py`, `backend/app/modules/chat_engine/engine.py` |
-| **002** | [`002-enforce-read-only-in-memory-null-remediation.md`](002-enforce-read-only-in-memory-null-remediation.md) | CRÍTICO | M | MEDIO | `TODO` | `backend/app/modules/chat_engine/engine.py`, `backend/app/modules/catalog/services/null_manager.py` |
-| **003** | [`003-connection-engine-lifecycle-and-dispose.md`](003-connection-engine-lifecycle-and-dispose.md) | ALTO | M | MEDIO | `TODO` | `backend/app/modules/chat_engine/sql_executor.py`, `backend/app/core/database.py` |
+**002** es el que queda. Antes de tocarlo, tener en cuenta:
+
+- Es el único hallazgo de la auditoría que sigue siendo un problema de
+  **seguridad de datos**, no de estabilidad ni de rendimiento.
+- `apply_null_policy` tiene ya un contrato de resultado (`status`,
+  `rows_affected`, `message`) y revierte la política si falla; el trabajo es
+  quitar la rama que escribe en la base de origen, no reescribir el servicio.
+- Las pruebas que lo cubren están en
+  `backend/tests/test_null_policy_and_visualizations.py`.
 
 ---
 
 ## 📖 Instrucciones para el Ejecutor
-Cada plan es completamente autocontenido. Antes de implementar:
+
 1. Comprueba `git rev-parse --short HEAD` para detectar posible deriva (`drift`).
-2. Ejecuta los comandos de verificación de línea base (`py -m pytest`).
-3. Sigue estrictamente los límites de alcance y los criterios de aceptación especificados en cada documento.
+2. Ejecuta `cd backend && pytest` para tener la línea base real.
+3. Sigue estrictamente los límites de alcance y los criterios de aceptación
+   especificados en el documento del plan.

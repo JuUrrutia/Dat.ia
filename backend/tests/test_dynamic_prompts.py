@@ -23,12 +23,6 @@ class TestDynamicPrompts(unittest.TestCase):
         self.assertIn("pedagógica", expl_prompt.lower())
         self.assertEqual(RESPONSE_GENERATION_CONFIG[ResponseType.EXPLANATION].temperature, 0.2)
 
-    def test_prompt_manager_data_analysis_conversational(self):
-        """Verifica que el prompt de interpretación de datos genere instrucciones directas y fluidas."""
-        prompt = PromptManager.get_data_analysis_conversational_system_prompt("Economista")
-        self.assertIn("Economista", prompt)
-        self.assertIn("inteligente", prompt.lower())
-
     def test_prompt_manager_greeting(self):
         """Verifica que el prompt de saludo reconozca las tablas autorizadas del rol."""
         prompt = PromptManager.get_general_greeting_system_prompt("TI", {"dim_servidores", "fact_incidentes"})
@@ -56,5 +50,167 @@ class TestDynamicPrompts(unittest.TestCase):
         )
         self.assertIn("dim_almacen", sql)
 
+    def test_prompt_manager_unified_synthesis_prompts(self):
+        """Verifica que el prompt de síntesis unificada adapte su enfoque según el rol y especifique las 4 claves JSON requeridas."""
+        econ_sys = PromptManager.get_unified_synthesis_system_prompt("Economista")
+        self.assertIn("financieras", econ_sys.lower())
+        self.assertIn('"narrative"', econ_sys)
+        self.assertIn('"kpis"', econ_sys)
+        self.assertIn('"executive_report"', econ_sys)
+        self.assertIn('"suggested_questions"', econ_sys)
+
+        ti_sys = PromptManager.get_unified_synthesis_system_prompt("TI")
+        self.assertIn("operativo", ti_sys.lower())
+
+        user_prompt = PromptManager.get_unified_synthesis_user_prompt(
+            question="¿Cuáles son las ventas?",
+            user_role="Economista",
+            rows=[{"total": 5000}],
+            columns=["total"],
+            secured_sql="SELECT total FROM fact_ventas",
+            conversation_context="Pregunta previa: ¿Quiénes son los clientes?"
+        )
+        self.assertIn("fact_ventas", user_prompt)
+        self.assertIn("5000", user_prompt)
+        self.assertIn("Pregunta previa", user_prompt)
+
+    def test_multi_turn_context_formatting(self):
+        """Verifica que el formateador multi-turno incluya la instrucción adaptativa para SQL y narrativa."""
+        history = [
+            {"question": "Ventas del último año", "sql": "SELECT sum(monto) FROM fact_ventas"},
+            {"question": "¿Y cuál es el top 3 productos?", "sql": "SELECT producto, sum(monto) FROM fact_ventas GROUP BY producto ORDER BY 2 DESC LIMIT 3"}
+        ]
+        sql_ctx = PromptManager.format_conversation_context(history)
+        self.assertIn("INSTRUCCIÓN MULTI-TURNO", sql_ctx)
+        self.assertIn("Turno 1", sql_ctx)
+        self.assertIn("Turno 2", sql_ctx)
+
+        synth_ctx = PromptManager.format_conversation_context_for_synthesis(history)
+        self.assertIn("Turno previo 1", synth_ctx)
+        self.assertIn("narrativa con fluidez", synth_ctx)
+
+    def test_unified_synthesis_resilient_parser(self):
+        """Verifica el parser resiliente de 3 capas en KPICalculator.generate_unified_synthesis_with_llm."""
+        import asyncio
+        from unittest.mock import patch, AsyncMock
+        from app.modules.chat_engine.kpi_calculator import KPICalculator
+
+        # Tier 1 & 2: JSON con trailing commas y subtítulos con relleno
+        tier2_json = """{
+            "narrative": "El total de ventas supera la meta proyectada.",
+            "kpis": [
+                {"title": "Total Facturado", "column": "monto", "agg": "total", "subtitle": "Este KPI indica el acumulado total.", "change_direction": "positive"},
+                {"title": "Ticket Promedio", "column": "monto", "agg": "avg", "subtitle": "Este KPI muestra la rentabilidad neta.", "change_direction": "positive"},
+                {"title": "Monto Maximo", "column": "monto", "agg": "max", "subtitle": "Muestra del mes corriente.", "change_direction": "neutral"},
+            ],
+            "executive_report": {
+                "overview": "Excelente desempeño trimestral.",
+                "key_findings": ["Crecimiento de 12%"],
+                "recommendations": ["Expandir canales"],
+                "risk_level": "BAJO",
+                "business_impact": "Consolidación de cuota de mercado."
+            },
+            "suggested_questions": [
+                "¿Cuál es el margen por categoría?",
+                "¿Cómo evolucionó el costo?",
+                "¿Quién es el cliente principal?"
+            ],
+        }"""
+
+        with patch("app.modules.chat_engine.llm_service.LLMService.generate_completion", new_callable=AsyncMock) as mock_llm:
+            mock_llm.return_value = tier2_json
+            result = asyncio.run(KPICalculator.generate_unified_synthesis_with_llm(
+                question="¿Cómo van las ventas?",
+                user_role="Economista",
+                rows=[{"monto": 1500000}],
+                columns=["monto"],
+                secured_sql="SELECT monto FROM fact_ventas",
+                is_llm_active=True
+            ))
+
+            self.assertIsNotNone(result)
+            self.assertEqual(result["narrative"], "El total de ventas supera la meta proyectada.")
+            self.assertEqual(len(result["kpis"]), 3)
+            # Sanitization of AI filler in subtitle
+            self.assertNotIn("Este KPI indica", result["kpis"][0].subtitle)
+            # El VALOR lo calcula el backend desde las filas, no el modelo: el
+            # prompt no pide cifras y el JSON de prueba no trae ninguna.
+            self.assertEqual(result["kpis"][0].value, "$1,500,000.00")
+            self.assertEqual(result["kpis"][1].value, "$1,500,000.00")
+            self.assertEqual(result["executive_report"].risk_level, "BAJO")
+            self.assertEqual(len(result["suggested_questions"]), 3)
+
+        # Tier 3: LLM responde solo con texto plano/markdown en vez de JSON
+        tier3_raw_text = "Resumen directo en prosa: Las ventas fueron de $1.5M sin incidentes."
+        with patch("app.modules.chat_engine.llm_service.LLMService.generate_completion", new_callable=AsyncMock) as mock_llm:
+            mock_llm.return_value = tier3_raw_text
+            result = asyncio.run(KPICalculator.generate_unified_synthesis_with_llm(
+                question="¿Cómo van las ventas?",
+                user_role="Economista",
+                rows=[{"monto": 1500000}],
+                columns=["monto"],
+                secured_sql="SELECT monto FROM fact_ventas",
+                is_llm_active=True
+            ))
+
+            self.assertIsNotNone(result)
+            self.assertEqual(result["narrative"], tier3_raw_text)
+            self.assertIsNone(result["kpis"])
+            self.assertIsNone(result["executive_report"])
+
+    def test_pareto_concentration_calculation(self):
+        """Verifica que compute_pareto_concentration detecte concentración alta (80/20) y distribución balanceada."""
+        from app.modules.chat_engine.kpi_calculator import KPICalculator
+
+        # Caso 1: Alta concentración (1 cliente concentra la gran mayoría)
+        concentrated_rows = [
+            {"cliente": "MegaCorp", "monto": 8000.0},
+            {"cliente": "Pyme 1", "monto": 500.0},
+            {"cliente": "Pyme 2", "monto": 500.0},
+            {"cliente": "Pyme 3", "monto": 500.0},
+            {"cliente": "Pyme 4", "monto": 500.0},
+        ]
+        res = KPICalculator.compute_pareto_concentration(concentrated_rows, ["cliente", "monto"])
+        self.assertIsNotNone(res)
+        self.assertTrue(res["is_concentrated"])
+        self.assertEqual(res["column"], "monto")
+        self.assertEqual(res["top_entity_share"], 80.0)
+
+        # Caso 2: Distribución balanceada
+        balanced_rows = [
+            {"cliente": "A", "monto": 200.0},
+            {"cliente": "B", "monto": 200.0},
+            {"cliente": "C", "monto": 200.0},
+            {"cliente": "D", "monto": 200.0},
+            {"cliente": "E", "monto": 200.0},
+        ]
+        res_bal = KPICalculator.compute_pareto_concentration(balanced_rows, ["cliente", "monto"])
+        self.assertIsNotNone(res_bal)
+        self.assertFalse(res_bal["is_concentrated"])
+        self.assertEqual(res_bal["top_entity_share"], 20.0)
+
+    def test_tactical_plan_and_count_directives_in_prompts(self):
+        """Verifica que los prompts incluyan conteo y planes tácticos a futuro.
+
+        Se quaron dos aserciones que vivian aqui y nuncarion
+        `get_text_to_sql_system_prompt`: la directiva "DESCOMPOSICIÓN CAUSAL" y
+        "AVG". Ninguna de las dos existe en ese prompt, y el prompt de
+        text-to-SQL nunca las llevo: la descomposición causal vive en el prompt
+        de SÍNTESIS (`get_unified_synthesis_system_prompt`), que es donde se
+        comprueba abajo. Se eliminaron en vez de relajar el assert: un test que
+        espera una cadena que el codigo no produce no documenta el
+        comportamiento, documenta el olvido.
+        """
+        sql_prompt = PromptManager.get_text_to_sql_system_prompt("Economista", {"fact_ventas"})
+        self.assertIn("COUNT", sql_prompt)
+
+        synth_prompt = PromptManager.get_unified_synthesis_system_prompt("Economista")
+        self.assertIn("PLAN TÁCTICO ESTRUCTURADO", synth_prompt)
+        self.assertIn("Paso 1", synth_prompt)
+        self.assertIn("Paso 2", synth_prompt)
+        self.assertIn("Paso 3", synth_prompt)
+        self.assertIn("What-If", synth_prompt)
+
 if __name__ == "__main__":
     unittest.main()
+

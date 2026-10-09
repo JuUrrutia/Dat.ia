@@ -51,6 +51,10 @@ Servir como la única fuente de verdad (Single Source of Truth) para el diseño,
     *Documentación detallada de las 4 Fases de Refactorización: migración del Backend a Domain-Driven Design (DDD), eliminación de endpoints legados, descomposición de God Objects del Frontend, aislamiento de Contextos (Auth vs Settings) y modularización del importador tabular.*  
     `Estado: ✅ Completado y Aprobado`
 
+11. **[11 - Auditoría Integral y Plan de Trabajo](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/DOCS/11_AUDITORIA_INTEGRAL_Y_PLAN_DE_TRABAJO.md)**  
+     *Auditoría por dimensiones (bugs, seguridad, fugas de recursos, honestidad del dato, mocks, coherencia documental) con los 5 hallazgos críticos que originaron los planes 001-003 de `plans/`. Sus cifras de verificación base corresponden al commit `c5f1af4` y quedaron desactualizadas.*  
+     `Estado: ⚠️ Publicado — cifras de línea base desactualizadas`
+
 ---
 
 ## 🔒 Reglas Principales del Proyecto

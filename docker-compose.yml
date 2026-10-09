@@ -10,8 +10,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-democratizacion_metadatos}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+    # Port NOT published: the backend reaches Postgres over datia-network.
+    # Uncomment only to attach a host-side client (pgAdmin, psql):
+    # ports:
+    #   - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -38,16 +40,21 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - ENVIRONMENT=production
-      - SECRET_KEY=${SECRET_KEY:-democratizacion_datos_super_secret_key_local_2026_aes256_change_in_prod}
+      # ':?' makes compose refuse to start when these are missing, instead of
+      # falling back to a key that is published in the README and .env.example.
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required - copy it from .env}
+      # Required in Docker: a key regenerated per boot leaves previously
+      # encrypted columns undecryptable, and that only surfaces mid-query.
+      - FERNET_KEY=${FERNET_KEY:?FERNET_KEY is required - generate one with 'python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'}
       - POSTGRES_SERVER=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - POSTGRES_DB=${POSTGRES_DB:-democratizacion_metadatos}
       - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5-coder:7b}
-      - CORS_ORIGINS=["*"]
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
     ports:
       - "8000:8000"
     volumes:

@@ -67,12 +67,35 @@ export function buildPieChartOption(params: {
       trigger: 'item',
       formatter: (p: any) => formatTooltipHtml(p.name, p.value),
     },
+    // `type: 'scroll'` es lo que evita el desborde, y no es cosmético.
+    //
+    // El default de ECharts es `type: 'plain'`: la leyenda envuelve en tantas
+    // líneas como necesite y SIN límite de altura. Con las ~300 categorías que
+    // devuelve una consulta agregada por cliente, la leyenda crecía hasta tapar
+    // el canvas entero y la torta quedaba invisible detrás del texto.
+    //
+    // `scroll` la convierte en una única línea paginada con flechas, con ancho y
+    // alto explícitos. Ninguna cantidad de categorías puede desbordarla.
+    //
+    // No se recortan los datos a un top-N: eso perdería categorías sin avisar.
+    // Con scroll el tooltip sigue mostrando el detalle de cada porción.
     legend: {
+      type: 'scroll',
       orient: 'horizontal',
-      bottom: '0%',
-      textStyle: { color: '#94A3B8', fontSize: 11 },
+      left: 0,
+      // El espacio de la derecha es para las flechas de página; sin él la
+      // última etiqueta queda debajo de la flecha siguiente.
+      right: 18,
+      bottom: 0,
+      height: 22,
       itemWidth: 10,
       itemHeight: 10,
+      itemGap: 12,
+      textStyle: { color: '#94A3B8', fontSize: 11 },
+      pageIconColor: currentTheme.primary,
+      pageIconInactiveColor: '#334155',
+      pageIconSize: 10,
+      pageTextStyle: { color: '#94A3B8', fontSize: 10 },
       formatter: (name: string) => (name.length > 18 ? `${name.substring(0, 16)}...` : name),
     },
     series: [

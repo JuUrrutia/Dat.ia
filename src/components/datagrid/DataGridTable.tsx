@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   ArrowUpDown,
@@ -16,6 +16,7 @@ import {
   Type,
 } from 'lucide-react';
 import { reportService } from '../../features/dashboard/services/report_service';
+import { copyToClipboard } from '../../shared/clipboard';
 
 type ColumnType = 'currency' | 'number' | 'date' | 'string';
 
@@ -106,6 +107,16 @@ interface DataGridTableProps {
 
 export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, question, auditLogId }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  // El filtro escanea TODAS las filas con `String()` por celda. Con el tope de
+  // 500 filas y 15 columnas son miles de conversiones por pulsacion. El input
+  // sigue escribiendo al instante (el control no se traba) pero la busqueda
+  // corre 250 ms despues de la ultima tecla. Mismo criterio que
+  // useAdminAudit: la ultima tecla gana.
+  const [needle, setNeedle] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => setNeedle(searchTerm.trim().toLowerCase()), 250);
+    return () => clearTimeout(id);
+  }, [searchTerm]);
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
@@ -121,33 +132,42 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
     return map;
   }, [columns, rows]);
 
-  // Filter rows
-  const filteredRows = rows.filter((row) =>
-    Object.values(row).some(
-      (val) => val !== null && val !== undefined && String(val).toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  );
+  // Filter rows. El needle es el debounced (ver arriba), no el del input.
+  const filteredRows = useMemo(() => {
+    if (!needle) return rows;
+    return rows.filter((row) =>
+      Object.values(row).some(
+        (val) => val !== null && val !== undefined && String(val).toLowerCase().includes(needle)
+      )
+    );
+  }, [rows, needle]);
 
   // Sort rows
-  const sortedRows = [...filteredRows].sort((a, b) => {
-    if (!sortColumn) return 0;
-    const valA = a[sortColumn];
-    const valB = b[sortColumn];
+  const sortedRows = useMemo(() => {
+    if (!sortColumn) return filteredRows;
+    const sorted = [...filteredRows].sort((a, b) => {
+      const valA = a[sortColumn];
+      const valB = b[sortColumn];
 
-    if (valA === valB) return 0;
-    if (valA === null || valA === undefined) return 1;
-    if (valB === null || valB === undefined) return -1;
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined) return 1;
+      if (valB === null || valB === undefined) return -1;
 
-    if (typeof valA === 'number' && typeof valB === 'number') {
-      return sortDirection === 'asc' ? valA - valB : valB - valA;
-    }
-    return sortDirection === 'asc'
-      ? String(valA).localeCompare(String(valB))
-      : String(valB).localeCompare(String(valA));
-  });
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sortDirection === 'asc' ? valA - valB : valB - valA;
+      }
+      return sortDirection === 'asc'
+        ? String(valA).localeCompare(String(valB))
+        : String(valB).localeCompare(String(valA));
+    });
+    return sorted;
+  }, [filteredRows, sortColumn, sortDirection]);
 
-  // Pagination calculation
-  const effectivePageSize = pageSize === -1 ? Math.max(sortedRows.length, 1) : pageSize;
+  // Pagination calculation. "Todas" used to mount every row: a 20k-row result
+  // froze the tab for seconds. Capped, with the cap stated in the UI.
+  const ALL_ROWS_CAP = 500;
+  const effectivePageSize =
+    pageSize === -1 ? Math.min(Math.max(sortedRows.length, 1), ALL_ROWS_CAP) : pageSize;
   const totalPages = Math.ceil(sortedRows.length / effectivePageSize) || 1;
   const paginatedRows = sortedRows.slice((currentPage - 1) * effectivePageSize, currentPage * effectivePageSize);
 
@@ -167,16 +187,26 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
     const body = sortedRows
       .map((row) => columns.map((col) => row[col] ?? '').join('\t'))
       .join('\n');
-    navigator.clipboard.writeText(`${header}\n${body}`);
-    setCopiedTSV(true);
-    setTimeout(() => setCopiedTSV(false), 2000);
+    void copyToClipboard(`${header}\n${body}`).then((ok: boolean) => {
+      if (!ok) return;
+      setCopiedTSV(true);
+      setTimeout(() => setCopiedTSV(false), 2000);
+    });
   };
 
   const handleExportCSV = () => {
     if (!rows.length) return;
-    const header = columns.join(',');
+
+    // RFC 4180: a cell containing a quote must double it, and an embedded newline
+    // breaks the row count in Excel. Neither was escaped, so any text field
+    // with a quotation mark or a multi-line note produced a CSV Excel refused
+    // to open or silently mis-aligned.
+    const csvCell = (v: unknown) =>
+      '"' + String(v ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ') + '"';
+
+    const header = columns.map(csvCell).join(',');
     const body = sortedRows
-      .map((row) => columns.map((col) => `"${row[col] ?? ''}"`).join(','))
+      .map((row) => columns.map((col) => csvCell(row[col])).join(','))
       .join('\n');
     const blob = new Blob([`${header}\n${body}`], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -325,7 +355,12 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
           </thead>
           <tbody className="divide-y divide-slate-200 dark:divide-dark-border text-xs text-slate-800 dark:text-gray-200 bg-white dark:bg-transparent">
             {paginatedRows.length > 0 ? (
-              paginatedRows.map((row) => {
+              paginatedRows.map((row, rowIndex) => {
+                // El fallback anterior armaba la clave con las 15 columnas de
+                // la fila, y eso corria en CADA render para cada fila. El
+                // indice de la pagina cumple el mismo trabajo (la identidad la
+                // da la posicion dentro de la pagina, y React solo necesita que
+                // sea estable entre renders de la misma fila).
                 const rowKey =
                   row.id ??
                   row.id_venta ??
@@ -337,7 +372,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
                   row.id_incidente ??
                   row.id_consumo ??
                   row.id_categoria ??
-                  columns.map((c) => String(row[c])).join('-');
+                  `row-${rowIndex}`;
                 return (
                   <tr key={rowKey} className="hover:bg-slate-50 dark:hover:bg-dark-card/50 transition-colors">
                     {columns.map((col) => {
@@ -410,7 +445,11 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ columns, rows, que
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 border border-slate-200 dark:bg-dark-base dark:text-gray-400 dark:hover:text-white dark:border-dark-border'
                 }`}
               >
-                {size === -1 ? 'Todas' : size}
+                {size === -1
+                  ? sortedRows.length > ALL_ROWS_CAP
+                    ? `Primeras ${ALL_ROWS_CAP}`
+                    : 'Todas'
+                  : size}
               </button>
             ))}
           </div>
