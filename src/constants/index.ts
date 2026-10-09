@@ -6,6 +6,21 @@ export const DEFAULT_LLM_PROVIDER = 'llama_cpp';
 export const DEFAULT_OLLAMA_URL = 'http://127.0.0.1:8080';
 export const DEFAULT_LLM_MODEL = 'qwen2.5-coder:7b';
 
+/**
+ * Defaults por proveedor LLM: URL y modelo que se ofrecen al cambiar de
+ * proveedor en el panel de ajustes.
+ *
+ * Esta tabla es la UNICA lista de endpoints LLM locales del frontend. Antes
+ * estaba triplicada (aqui, en `useSettingsDiagnostics` y en `llm_service`) y cada
+ * copia se podia desincronizar. El diagnostico la recorre para probar cada
+ * servidor via backend; `llm_service.ts` ya no la conoce.
+ */
+export const LLM_PROVIDER_DEFAULTS: Record<string, { url: string; model: string }> = {
+  llama_cpp: { url: 'http://127.0.0.1:8080', model: 'Qwen3.8-27B' },
+  ollama: { url: 'http://localhost:11434', model: 'qwen2.5-coder:7b' },
+  openai_compatible: { url: 'http://localhost:1234', model: 'local-model' },
+};
+
 export const DEFAULT_POSTGRES_HOST = 'localhost';
 export const DEFAULT_POSTGRES_PORT = 5432;
 export const DEFAULT_POSTGRES_DB = 'democratizacion_metadatos';

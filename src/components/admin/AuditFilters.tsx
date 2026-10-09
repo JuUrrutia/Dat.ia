@@ -21,11 +21,13 @@ export const AuditFilters: React.FC<AuditFiltersProps> = ({
   startDate,
   endDate,
   filterUsername,
+  filterDatabase,
   filterStatus,
   loading,
   onStartDateChange,
   onEndDateChange,
   onUsernameChange,
+  onDatabaseChange,
   onStatusChange,
   onSubmit,
   onClear,
@@ -35,6 +37,24 @@ export const AuditFilters: React.FC<AuditFiltersProps> = ({
       onSubmit={onSubmit}
       className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs bg-slate-50 dark:bg-dark-base/40 p-4 rounded-xl border border-slate-200 dark:border-dark-border"
     >
+      {/* Was declared in the props, sent to the API as target_database, and
+          never rendered: "which database did the rejected query touch" was
+          unanswerable during an incident. */}
+      <div>
+        <label htmlFor="audit-filter-db" className="block text-gray-700 dark:text-gray-400 font-medium mb-1">
+          Base de Datos
+        </label>
+        <input
+          id="audit-filter-db"
+          aria-label="Filtrar por base de datos"
+          type="text"
+          value={filterDatabase}
+          onChange={(e) => onDatabaseChange(e.target.value)}
+          placeholder="todas"
+          className="w-full bg-white dark:bg-dark-base border border-slate-300 dark:border-dark-border rounded-xl px-3 py-1.5 text-gray-900 dark:text-white focus:outline-none focus:border-emerald-500"
+        />
+      </div>
+
       <div>
         <label htmlFor="audit-filter-user" className="block text-gray-700 dark:text-gray-400 font-medium mb-1">
           Usuario

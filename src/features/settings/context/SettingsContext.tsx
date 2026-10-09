@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useRef } from 'react';
 import { AppSettings } from '../../../types';
 import {
   DEFAULT_LLM_PROVIDER,
@@ -11,7 +11,7 @@ import {
 
 interface SettingsContextType {
   settings: AppSettings;
-  updateSettings: (newSettings: Partial<AppSettings>) => void;
+  updateSettings: (newSettings: Partial<AppSettings>) => boolean;
 }
 
 const defaultSettings: AppSettings = {
@@ -39,17 +39,23 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [settings, setSettings] = useState<AppSettings>(loadPersistedSettings);
+  const settingsRef = useRef<AppSettings>(settings);
+  settingsRef.current = settings;
 
-  const updateSettings = useCallback((newSettings: Partial<AppSettings>) => {
-    setSettings((prev) => {
-      const updated = { ...prev, ...newSettings };
-      try {
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
-      } catch {
-        // Ignore quota errors
-      }
-      return updated;
-    });
+  // Returns whether the write actually persisted. The previous version wrote
+  // localStorage inside the setSettings updater — a render-phase side effect
+  // that runs twice under StrictMode — and swallowed quota errors, so the UI
+  // reported "guardado correctamente" for a config that was never stored.
+  const updateSettings = useCallback((newSettings: Partial<AppSettings>): boolean => {
+    const next = { ...settingsRef.current, ...newSettings };
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+    } catch {
+      return false;
+    }
+    settingsRef.current = next;
+    setSettings(next);
+    return true;
   }, []);
 
   const value = useMemo(

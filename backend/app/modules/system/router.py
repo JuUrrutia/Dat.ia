@@ -1,11 +1,12 @@
 import time
 import datetime
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.api.deps import get_db, get_current_user
+from app.core.database import discard_failed_transaction
 from app.modules.auth.models import User
 from app.modules.admin_catalog.models import CorporateConnection
 from app.core.config import settings
@@ -13,9 +14,20 @@ from app.core.constants import (
     SYSTEM_STATUS_OPERATIONAL,
     SYSTEM_STATUS_DEGRADED,
     SYSTEM_STATUS_CRITICAL,
+    ADMIN_ROLES,
+    ROLE_ADMINISTRADOR,
+    ROLE_USUARIO,
 )
 from app.modules.system.schemas import ComponentHealth, SystemHealthResponse
 from app.modules.system.health_service import HealthService
+# Misma validacion que /llm/test-connection y /llm/test-completion. Este endpoint
+# es la SEGUNDA puerta al mismo sink: `base_url` venia de un query param y
+# llegaba crudo a HealthService.check_llm_connectivity, que emite httpx GET a
+# donde el usuario dijera. Con ?base_url=http://169.254.169.254 cualquier
+# usuario autenticado hacia GET a la red interna. Se importa la funcion en vez
+# de copiar el allowlist para que las dos entradas compartan una sola
+# implementacion y la proxima puerta que se abra herede la proteccion.
+from app.modules.chat_engine.llm_diagnostic_router import _resolve_llm_base_url
 
 router = APIRouter()
 
@@ -34,7 +46,10 @@ async def get_system_health(
     - Active registered corporate database connectors
     """
     effective_provider = provider or settings.LLM_PROVIDER
-    effective_base_url = base_url or settings.OLLAMA_BASE_URL
+    # Si el cliente manda base_url, se valida ANTES de tocar la red: host fuera
+    # del loopback -> 400 y ni una request sale. Sin base_url se usa la
+    # configuracion del servidor, que es de confianza y no necesita validacion.
+    effective_base_url = _resolve_llm_base_url(base_url) if base_url else settings.OLLAMA_BASE_URL
     effective_model = model_name or settings.OLLAMA_MODEL
 
     llm_res = await HealthService.check_llm_connectivity(
@@ -72,6 +87,11 @@ async def get_system_health(
         meta_latency = int((time.time() - start_meta) * 1000)
         meta_ok = False
         meta_msg = f"Error en base de datos de metadatos: {str(e)}"
+        # El `except` se traga el error pero la transaccion queda ABORTADA: el
+        # `db.query(CorporateConnection)` de abajo fallaria con
+        # `InFailedSqlTransaction`, un error que no tiene nada que ver con la BD de
+        # metadatos. Se devuelve la sesion a un estado usable antes de seguir.
+        discard_failed_transaction(db)
 
     meta_comp = ComponentHealth(
         name="Metadata Store (Datia DB)",
@@ -232,14 +252,31 @@ async def get_system_anomalies(
             from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
             from app.modules.chat_engine.sql_executor import SQLExecutor
             from app.modules.chat_engine.kpi_calculator import KPICalculator
+            from app.modules.chat_engine.governance_guard import GovernanceGuard
 
             is_pg = (target_conn.db_type == DatabaseType.POSTGRESQL or str(target_conn.db_type).lower() == "postgresql")
             engine_dialect = "postgres" if is_pg else "sqlite"
             target_exec = target_conn if is_pg else DynamicSchemaPruningService.resolve_db_path(db, target_conn.id)
 
+            # El escaneo no puede mirar una tabla que el perfil no puede ver. Antes
+            # elegia la primera tabla fact_ alfabetica del servidor y hacia SELECT *,
+            # devolviendo en crudo columnas BLOCKED y MASKED a cualquier usuario
+            # autenticado, sin importar su rol.
+            role_name = current_user.role.name if current_user.role else ROLE_USUARIO
+            is_admin = current_user.is_admin or role_name in ADMIN_ROLES
+            if is_admin and not current_user.role:
+                role_name = ROLE_ADMINISTRADOR
+            allowed_tables = GovernanceGuard.get_allowed_tables_for_role(
+                role_name, is_admin, db=db, role_id=current_user.role_id, connection_id=target_conn.id
+            )
+            allowed_lower = {t.lower() for t in (allowed_tables or set())}
+
             physical_tables = DynamicSchemaPruningService.get_physical_db_tables(target_exec)
-            fact_tables = [t for t in sorted(physical_tables) if t.lower().startswith("fact_")]
-            chosen_table = fact_tables[0] if fact_tables else (next(iter(sorted(physical_tables))) if physical_tables else None)
+            visible_tables = sorted(
+                t for t in physical_tables if is_admin or t.lower() in allowed_lower
+            )
+            fact_tables = [t for t in visible_tables if t.lower().startswith("fact_")]
+            chosen_table = fact_tables[0] if fact_tables else (visible_tables[0] if visible_tables else None)
 
             if chosen_table:
                 cols_info = DynamicSchemaPruningService.get_physical_table_columns(chosen_table, db_path=target_exec)
@@ -251,7 +288,12 @@ async def get_system_anomalies(
 
                 if num_cols:
                     metric = num_cols[0]
-                    scan_sql = f'SELECT * FROM "{chosen_table}" LIMIT 60' if is_pg else f'SELECT * FROM `{chosen_table}` LIMIT 60'
+                    # Proyectar SOLO la metrica numerica. SELECT * tambien traia
+                    # columnas sensibles y las metia en las descripciones de
+                    # anomalias que se devuelven al cliente.
+                    quoted_table = f'"{chosen_table}"' if is_pg else f'`{chosen_table}`'
+                    quoted_metric = f'"{metric}"' if is_pg else f'`{metric}`'
+                    scan_sql = f"SELECT {quoted_metric} FROM {quoted_table} LIMIT 60"
                     rows = SQLExecutor.execute_raw_sql(target_exec, scan_sql, dialect=engine_dialect)
                     if rows and len(rows) >= 4:
                         data_anomalies = KPICalculator.detect_statistical_anomalies(rows, list(rows[0].keys()))
@@ -268,6 +310,13 @@ async def get_system_anomalies(
                             })
         except Exception:
             pass
+        # El bloque anterior se traga su error con `pass` y el escaneo es
+        # best-effort por diseño: no debe tumbar el endpoint. Pero al tragarse el
+        # error puede dejar la sesion con la transaccion ABORTADA, y entonces la
+        # consulta de la seccion 5 (y cualquier otra de este request) muere con
+        # `InFailedSqlTransaction`. Ese error si tumbaba el endpoint, y sin
+        # relacion con lo que falló: por eso la sesión se devuelve usable.
+        discard_failed_transaction(db)
 
     # 5. Conexiones con revisión de permisos pendiente o tablas sin dominio asignado
     unassigned_counts = dict(

@@ -16,7 +16,9 @@ La meta fundamental es permitir que **cualquier colaborador (sin conocimientos t
 3. **Tabla interactiva de datos subyacentes** con paginación, ordenamiento y búsqueda.
 4. **Panel desplegable de trazabilidad y auditoría** con la explicación del cálculo, diccionario del dato y la consulta SQL ejecutada de fondo.
 
-Todo el ecosistema opera bajo una premisa inquebrantable de **soberanía de datos, privacidad absoluta y costo operativo cero en licencias de IA en la nube**, ejecutándose en formato de **Aplicación de Escritorio Standalone 100% desconectada (offline)**.
+Todo el ecosistema opera bajo una premisa inquebrantable de **soberanía de datos, privacidad absoluta y costo operativo cero en licencias de IA en la nube**, ejecutándose como **aplicación web autocontenida 100% desconectada (offline)**, desplegada con Docker en la estación de trabajo o en el servidor interno (Nginx como servidor de estáticos y proxy inverso hacia FastAPI).
+
+> **Nota de alcance:** el empaquetado como ejecutable de escritorio (Electron/Tauri) es una visión del proyecto, **no está implementado**: no existe el paquete `electron` en `package.json`, ni directorio `electron/`, ni script de empaquetado.
 
 ---
 
@@ -37,7 +39,7 @@ En el entorno corporativo tradicional se presentan los siguientes cuellos de bot
 │                        PILARES DEL SISTEMA                             │
 ├────────────────────┬────────────────────┬──────────────────────────────┤
 │ 1. 100% OFFLINE /  │ 2. MOTOR LLM LOCAL │ 3. GOBERNANZA Y CONTROL      │
-│    DESKTOP APP     │    AGNÓSTICO       │    DE ACCESO ESTRICTO (RBAC) │
+│    SELF-HOSTED WEB │    AGNÓSTICO       │    DE ACCESO ESTRICTO (RBAC) │
 │                    │                    │                              │
 │ Cero conexión a    │ Conexión local a   │ Permisos a nivel de dominio, │
 │ internet. Datos    │ Ollama / OpenAI-API│ tabla y enmascaramiento de   │
@@ -46,7 +48,7 @@ En el entorno corporativo tradicional se presentan los siguientes cuellos de bot
 └────────────────────┴────────────────────┴──────────────────────────────┘
 ```
 
-### 3.1. Soberanía y Privacidad 100% Offline (Local Standalone)
+### 3.1. Soberanía y Privacidad 100% Offline (Self-Hosted)
 - **Aislamiento absoluto:** La aplicación no requiere conexión a internet y opera en modo local cerrado.
 - **Cero telemetría externa:** Ninguna consulta, esquema de base de datos ni resultado viaja a servidores de terceros.
 
@@ -76,7 +78,7 @@ En el entorno corporativo tradicional se presentan los siguientes cuellos de bot
 sequenceDiagram
     autonumber
     actor U as Usuario (Rol: Finanzas)
-    participant UI as Desktop App (Chat + Dashboard)
+    participant UI as App Web (Chat + Dashboard)
     participant RBAC as Módulo RBAC & Catálogo Semántico
     participant LLM as Motor LLM Local (Ollama)
     participant Sec as Validador AST / SQL Guard
@@ -99,7 +101,7 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor U as Usuario (Rol: Finanzas)
-    participant UI as Desktop App
+    participant UI as App Web
     participant RBAC as Módulo RBAC & Catálogo
     participant LLM as Motor LLM Local (Ollama)
 
@@ -114,11 +116,15 @@ sequenceDiagram
 
 ## 5. Fuentes de Datos Soportadas
 
-El sistema se conecta a las bases de datos relacionales corporativas más utilizadas mediante drivers nativos universales:
-- **PostgreSQL** (`psycopg` binary)
+**Implementado:** el sistema se conecta a las bases de datos relacionales corporativas soportadas mediante drivers nativos universales:
+- **PostgreSQL** (`psycopg[binary]`)
 - **SQLite 3** (nativo embebido)
-- **MySQL / MariaDB** (`pymysql`)
-- **Microsoft SQL Server (MSSQL)** (`pymssql` / `pyodbc`)
+
+**No implementado (visión de producto, fuera del alcance actual):**
+- **MySQL / MariaDB** (`pymysql`) — no hay driver en `backend/requirements.txt` ni rama que lo construya en `core/database.py:build_engine_for_connector`.
+- **Microsoft SQL Server (MSSQL)** (`pymssql` / `pyodbc`) — misma razón: sin driver y sin rama en el builder.
+
+Ambos están igualmente ausentes de `DatabaseType` en `backend/app/modules/admin_catalog/models.py`, que solo admite `POSTGRESQL` y `SQLITE`. Implementarlos requiere añadir el driver, el valor en el enum y la rama correspondiente en el builder.
 
 *(Nota: Oracle Database fue excluida deliberadamente por razones de portabilidad y dependencias nativas complejas; consultar ADR-001 en Documento 06).*
 

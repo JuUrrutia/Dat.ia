@@ -1,310 +1,171 @@
 import time
 import re
-from typing import Dict, Any, List, Set, Optional
+import logging
+from typing import Any, Callable, List, Dict, Optional, Set, Tuple
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
-from app.core.constants import ADMIN_ROLES, ROLE_USUARIO, DEFAULT_DEMO_ROLE
-from app.modules.chat_engine.ast_validator import ASTValidator, ASTValidationError
-from app.modules.chat_engine.llm_service import LLMService
-from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
+from app.core.constants import DEFAULT_DEMO_ROLE, ROLE_USUARIO, ADMIN_ROLES
+from app.core.database import discard_failed_transaction
 from app.core.prompts import PromptManager
+from app.core.security import mask_rows
+from app.modules.admin_catalog.models import DatabaseType
 from app.modules.chat_engine.schemas import QueryResponse, PresentationHints
+from app.modules.chat_engine.ast_validator import ASTValidator, ASTValidationError
 from app.modules.chat_engine.intent_classifier import IntentClassifier
-from app.modules.chat_engine.sql_executor import SQLExecutor
 from app.modules.chat_engine.kpi_calculator import KPICalculator, is_true_numeric_metric
 from app.modules.chat_engine.response_builder import ResponseBuilder
+from app.modules.chat_engine.sql_executor import SQLExecutor
+from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
 from app.modules.catalog.services.null_manager import NullManagerService
+from app.modules.chat_engine.governance_guard import GovernanceGuard
+from app.modules.chat_engine.suggestions_service import SuggestionsService
+from app.modules.chat_engine.sql_generator import SQLGenerator
+from app.modules.chat_engine.null_handler import NullHandler
 
-DEMO_DB_PATH = settings.SQLITE_DB_PATH
+logger = logging.getLogger(__name__)
 
 class QueryEngine:
     """
-    Refactored, modularized Dynamic Query Engine.
-    Orchestrates IntentClassifier, DynamicSchemaPruningService, ASTValidator,
-    PromptManager, LLMService, SQLExecutor, KPICalculator, and ResponseBuilder.
+    Unified Orchestrator for DATIA conversational analytics and data democratization.
+    Delegates domain governance, intent classification, SQL generation, execution,
+    null remediation, and visualization to specialized modules.
     """
 
-    @classmethod
-    def get_allowed_tables_for_role(
-        cls,
-        user_role: str,
-        is_admin: bool,
-        db: Optional[Session] = None,
-        role_id: Optional[int] = None,
-        connection_id: Optional[int] = None
-    ) -> Set[str]:
-        if is_admin or user_role in ADMIN_ROLES:
-            is_admin = True
+    # --- Governance & RBAC Facade ---
+    get_allowed_tables_for_role = GovernanceGuard.get_allowed_tables_for_role
+    get_blocked_columns_for_role = GovernanceGuard.get_blocked_columns_for_role
+    get_masked_columns_for_role = GovernanceGuard.get_masked_columns_for_role
+    check_domain_governance = GovernanceGuard.check_domain_governance
 
-        local_db = None
-        if db is None:
-            try:
-                from app.core.database import SessionLocal
-                local_db = SessionLocal()
-                active_db = local_db
-            except Exception:
-                active_db = None
-        else:
-            active_db = db
+    # --- Suggestions Facade ---
+    get_dynamic_suggestions_with_llm = SuggestionsService.get_dynamic_suggestions_with_llm
+    get_dynamic_suggestions = SuggestionsService.get_dynamic_suggestions
 
-        if active_db is not None:
-            try:
-                schema_info = DynamicSchemaPruningService.get_authorized_schema_prompt(
-                    db=active_db,
-                    role_id=role_id,
-                    user_role=user_role,
-                    connection_id=connection_id,
-                    is_admin=is_admin
-                )
-                return schema_info.get("allowed_tables", set())
-            except Exception:
-                return set()
-            finally:
-                if local_db is not None:
-                    local_db.close()
-
-        return set()
-
-    @classmethod
-    def get_blocked_columns_for_role(
-        cls,
-        user_role: str,
-        is_admin: bool,
-        db: Optional[Session] = None,
-        role_id: Optional[int] = None,
-        connection_id: int = 1
-    ) -> Set[str]:
-        if is_admin or user_role in ADMIN_ROLES:
-            return set()
-
-        local_db = None
-        if db is None:
-            try:
-                from app.core.database import SessionLocal
-                local_db = SessionLocal()
-                active_db = local_db
-            except Exception:
-                active_db = None
-        else:
-            active_db = db
-
-        if active_db is not None:
-            try:
-                schema_info = DynamicSchemaPruningService.get_authorized_schema_prompt(
-                    db=active_db,
-                    role_id=role_id,
-                    user_role=user_role,
-                    connection_id=connection_id,
-                    is_admin=is_admin
-                )
-                return schema_info.get("blocked_columns", set())
-            except Exception:
-                return set()
-            finally:
-                if local_db is not None:
-                    local_db.close()
-
-        return set()
-
-    @classmethod
-    async def get_dynamic_suggestions_with_llm(
-        cls,
-        user_role: str,
-        allowed_tables: Set[str],
-        schema_prompt: str = ""
-    ) -> List[str]:
-        if not allowed_tables:
-            return [
-                "¿Qué información puedo consultar con mi perfil?",
-                "¿Cómo solicito acceso a tablas adicionales de la base de datos?"
-            ]
-
-        try:
-            system_prompt = PromptManager.get_suggestions_system_prompt()
-            tables_str = ", ".join(sorted(allowed_tables))
-            prompt_llm = f"""Perfil del usuario: {user_role}
-Base de datos activa ({tables_str}):
-
-{schema_prompt}
-
-Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos activa."""
-
-            llm_text = await LLMService.generate_completion(
-                prompt_llm,
-                system_prompt=system_prompt,
-                temperature=0.3,
-                max_tokens=150
-            )
-
-            if llm_text:
-                lines = [line.strip() for line in llm_text.split('\n') if line.strip()]
-                clean_suggestions = []
-                for line in lines:
-                    line_clean = re.sub(r'^[\d\.\-\*\•\>\s]+', '', line).strip()
-                    line_clean = line_clean.strip('"\'')
-                    if len(line_clean) > 8 and ('?' in line_clean or '¿' in line_clean or any(k in line_clean.lower() for k in ['cuál', 'cuanto', 'mostrar', 'total', 'ventas', 'resumen', 'promedio', 'ingreso', 'costo', 'listar'])):
-                        clean_suggestions.append(line_clean)
-                if len(clean_suggestions) >= 2:
-                    return clean_suggestions[:4]
-        except Exception:
-            pass
-
-        return cls.get_dynamic_suggestions(user_role, allowed_tables, schema_prompt=schema_prompt)
-
-    @classmethod
-    def get_dynamic_suggestions(
-        cls,
-        user_role: str,
-        allowed_tables: Set[str],
-        schema_prompt: str = ""
-    ) -> List[str]:
-        if not allowed_tables:
-            return [
-                "¿Qué información puedo consultar con mi perfil?",
-                "¿Cómo solicito acceso a tablas adicionales de la base de datos?"
-            ]
-
-        suggestions = []
-        sorted_tables = sorted(list(allowed_tables), key=lambda t: (0 if t.lower().startswith("fact_") else 1, t.lower()))
-
-        # Attempt to extract physical metrics & dimensions from schema_prompt
-        extracted_metrics = []
-        extracted_categories = []
-        extracted_dates = []
-
-        if schema_prompt:
-            col_matches = re.findall(r'^\s*-\s*([a-zA-Z0-9_]+)\s*\(([^)]+)\)', schema_prompt, re.MULTILINE)
-            for c_name, c_type in col_matches:
-                c_low = c_name.lower()
-                t_low = c_type.lower()
-                if c_low in {"id", "id_tabla"} or c_low.endswith("_id") or c_low.endswith("_key"):
-                    continue
-                if any(m in c_low for m in ["monto", "total", "precio", "ingreso", "costo", "venta", "salario", "sueldo", "cantidad", "consumo", "cpu", "ram", "incidente", "unidades", "horas", "duracion"]) or any(it in t_low for it in ["int", "real", "float", "numeric", "decimal", "double"]):
-                    extracted_metrics.append(c_name)
-                elif any(d in c_low for d in ["fecha", "mes", "anio", "date", "periodo", "created_at", "timestamp"]):
-                    extracted_dates.append(c_name)
-                elif any(cat in c_low for cat in ["categoria", "producto", "cliente", "departamento", "region", "sucursal", "canal", "tipo", "estado", "ciudad", "pais", "marca", "servidor", "usuario", "proveedor"]):
-                    extracted_categories.append(c_name)
-
-        clean_table_names = []
-        for tbl in sorted_tables:
-            clean_name = tbl
-            for prefix in ["fact_", "dim_", "tbl_", "table_"]:
-                if clean_name.lower().startswith(prefix):
-                    clean_name = clean_name[len(prefix):]
-                    break
-            clean_table_names.append((tbl, clean_name.replace("_", " ").strip()))
-
-        # If we have extracted metrics and categories from the active database schema
-        if extracted_metrics and (extracted_categories or clean_table_names):
-            best_metric = extracted_metrics[0].replace("_", " ").strip()
-            best_cat = (extracted_categories[0].replace("_", " ").strip()) if extracted_categories else clean_table_names[0][1]
-            primary_tbl = clean_table_names[0][1]
-
-            suggestions.append(f"📊 ¿Cuál es el total de {best_metric} agrupado por {best_cat}?")
-            suggestions.append(f"📈 Top 5 {best_cat} con mayor {best_metric}")
-            if extracted_dates:
-                best_date = extracted_dates[0].replace("_", " ").strip()
-                suggestions.append(f"📅 Evolución temporal de {best_metric} por {best_date}")
-            elif len(extracted_metrics) > 1:
-                sec_metric = extracted_metrics[1].replace("_", " ").strip()
-                suggestions.append(f"⚡ Comparativa de {best_metric} y {sec_metric} en {primary_tbl}")
-            else:
-                suggestions.append(f"🔍 Promedio y registros destacados de {best_metric} en {primary_tbl}")
-
-            if len(clean_table_names) > 1:
-                sec_tbl = clean_table_names[1][1]
-                suggestions.append(f"💡 Resumen consolidado y principales indicadores de {sec_tbl}")
-            else:
-                suggestions.append(f"📋 Desglose detallado y análisis de {primary_tbl}")
-
-        # Fallback table-based templates
-        if len(suggestions) < 4:
-            templates = [
-                "📊 Distribución y resumen de registros en {name}",
-                "📈 Métricas acumuladas y evolución en {name}",
-                "📋 Listado detallado y consulta de {name}",
-                "💡 Indicadores clave y registros principales de {name}"
-            ]
-
-            for i, (orig_tbl, clean_spaced) in enumerate(clean_table_names):
-                tmpl = templates[i % len(templates)]
-                suggestions.append(tmpl.format(name=clean_spaced))
-
-                if len(clean_table_names) == 1:
-                    suggestions.append(f"🔍 Top registros con mayores valores en {clean_spaced}")
-                    suggestions.append(f"⚡ Totales agregados y promedio general de {clean_spaced}")
-
-        seen = set()
-        unique = []
-        for s in suggestions:
-            if s not in seen:
-                seen.add(s)
-                unique.append(s)
-
-        return unique[:4]
-
-    @classmethod
-    def check_domain_governance(cls, question: str, user_role: str, allowed_tables: Set[str]) -> Optional[str]:
-        """
-        Enforces cross-domain governance guardrails.
-        Detects if a user role attempts to query topics strictly outside their business domain.
-        Returns a denial reason string if violated, or None if permitted.
-        """
-        role_lower = (user_role or "").lower()
-        q_lower = (question or "").lower()
-        allowed_lower = {t.lower() for t in allowed_tables}
-
-        # Domain 1: Tech / TI roles attempting to access financial / commercial / sales data
-        is_tech_role = any(k in role_lower for k in ["ti", "infraestructura", "tecnolog", "sistemas"])
-        if is_tech_role:
-            business_tables = {
-                "fact_ventas", "fact_ingresos_costos", "dim_clientes", "dim_productos",
-                "dim_categorias", "vbak_cabpedidoventa", "vbap_pospedidoventa",
-                "ekko_cabpedidocompra", "ekpo_pospedidocompra", "kna1_clientes"
-            }
-            if not (allowed_lower & business_tables):
-                financial_pattern = r'\b(saldo|saldos|venta|ventas|ingreso|ingresos|ganancia|ganancias|precio|precios|facturaci[oó]n|margen|ebitda|rentabilidad|costo|costos)\b'
-                if re.search(financial_pattern, q_lower):
-                    return (
-                        f"Gobernanza RBAC: Acceso denegado. El perfil '{user_role}' no tiene autorización "
-                        "para consultar información financiera, saldos, ventas ni ingresos de la organización."
-                    )
-
-        # Domain 2: Business / Financial / Economic roles attempting to access technical IT infrastructure
-        is_fin_role = any(k in role_lower for k in ["economista", "financiero", "finanzas", "comercial", "negocio"])
-        if is_fin_role:
-            tech_tables = {
-                "dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos"
-            }
-            if not (allowed_lower & tech_tables):
-                tech_pattern = r'\b(servidor|servidores|cpu|memoria ram|incidente|incidentes ti|incidentes_ti|consumo de recursos|uptime|downtime)\b'
-                if re.search(tech_pattern, q_lower):
-                    return (
-                        f"Gobernanza RBAC: Acceso denegado. El perfil '{user_role}' no tiene autorización "
-                        "para consultar servidores, incidentes técnicos ni métricas de infraestructura TI."
-                    )
-
-        return None
-
-    # Delegates to ResponseBuilder and NullManagerService
-    _build_llm_offline_response = ResponseBuilder.build_llm_offline_response
-    _build_rbac_denied_response = ResponseBuilder.build_rbac_denied_response
+    # --- Null & Remediation Facade ---
+    _detect_remediation_intent = NullHandler.detect_remediation_intent
     _apply_in_memory_null_remediation = NullManagerService.apply_in_memory_remediation
 
+    # --- Response & Intent Facade ---
+    _build_llm_offline_response = ResponseBuilder.build_llm_offline_response
+    _build_rbac_denied_response = ResponseBuilder.build_rbac_denied_response
+    _build_visibility_diagnostic_response = ResponseBuilder.build_visibility_diagnostic_response
+    _classify_intent = IntentClassifier.classify_intent
+    _heuristic_presentation_hints = IntentClassifier.heuristic_presentation_hints
+    _generate_conversational_response = IntentClassifier.generate_conversational_response
+    _generate_unified_synthesis_with_llm = KPICalculator.generate_unified_synthesis_with_llm
+    _build_dynamic_visualization = KPICalculator.build_dynamic_visualization
+    _get_grounding_query_for_question = SQLExecutor.get_grounding_query
+    _retrieve_few_shot_memories = SQLExecutor.retrieve_few_shot_memories
+    _persist_learning_memory = SQLExecutor.persist_learning_memory
+
     @classmethod
-    def _detect_remediation_intent(cls, text: str) -> Optional[str]:
-        if not text:
-            return None
-        t_low = text.lower()
-        if any(k in t_low for k in ["eliminar filas", "eliminar registros", "eliminar nulos", "quitar nulos", "delete_rows"]):
-            return "delete_rows"
-        if any(k in t_low for k in ["adaptar a la moda", "moda estadística", "imputar moda", "tratar nulos: moda", "a la moda"]) or ("moda" in t_low and ("nulo" in t_low or "tratar" in t_low)):
-            return "mode"
-        if any(k in t_low for k in ["adaptar al más cercano", "más cercano", "mas cercano", "nearest", "imputar cercano"]) or (("cercano" in t_low or "nearest" in t_low) and ("nulo" in t_low or "tratar" in t_low)):
-            return "nearest"
-        return None
+    def _extract_suggested_questions(
+        cls,
+        conversational: Optional[str],
+        rows: List[Dict[str, Any]],
+        columns: List[str],
+        tables_used: List[str]
+    ) -> Tuple[List[str], Optional[str]]:
+        """
+        Extracts <preguntas_sugeridas> tags or markdown question headers from conversational response,
+        cleaning up the text body. Falls back to physical metric-derived questions if empty.
+        """
+        suggested: List[str] = []
+        cleaned_conversational = conversational
+
+        if cleaned_conversational:
+            sugg_match = re.search(r'<preguntas_sugeridas>\s*(.*?)\s*</preguntas_sugeridas>', cleaned_conversational, re.DOTALL | re.IGNORECASE)
+            if sugg_match:
+                raw_suggs = sugg_match.group(1).strip().split("\n")
+                suggested = [re.sub(r'^[-*0-9.)\s]+', '', s).strip() for s in raw_suggs if s.strip()]
+                cleaned_conversational = re.sub(r'<preguntas_sugeridas>[\s\S]*?</preguntas_sugeridas>', '', cleaned_conversational).strip()
+
+            text_sugg_match = re.search(r'(?:###?\s*)?(?:Preguntas\s+de\s+Profundización|Próximas\s+Preguntas|Preguntas\s+Sugeridas)[\s:]*([\s\S]*)$', cleaned_conversational, re.IGNORECASE)
+            if text_sugg_match:
+                lines = [re.sub(r'^[-*0-9.)\s]+', '', l).strip() for l in text_sugg_match.group(1).strip().split("\n") if l.strip()]
+                if not suggested and lines:
+                    suggested = [l for l in lines if l.startswith("¿") or len(l) > 10][:3]
+                cleaned_conversational = cleaned_conversational[:text_sugg_match.start()].strip()
+
+        if not suggested and rows and columns:
+            first_col = columns[0]
+            num_cols = [c for c in columns if is_true_numeric_metric(c, rows[0].get(c))]
+            if num_cols:
+                suggested = [
+                    f"¿Cuál es la evolución temporal de {num_cols[0]}?",
+                    f"¿Cómo se distribuye {num_cols[0]} según {first_col}?",
+                    f"¿Cuáles son los valores más destacados de {num_cols[0]}?"
+                ]
+            else:
+                table_label = tables_used[0] if tables_used else "esta tabla"
+                suggested = [
+                    f"¿Cuántos registros totales existen en {table_label}?",
+                    f"¿Cuáles son los registros más recientes?",
+                    f"¿Cómo se desglosan por {first_col}?"
+                ]
+
+        return suggested, cleaned_conversational
+
+    @classmethod
+    def _diagnose_empty_visibility(
+        cls, db: Optional[Session], connection_id: Optional[int], is_admin: bool
+    ) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """
+        Por que `allowed_tables` vuelve vacio. Sin esto los tres casos son el
+        mismo "sin resultados": no hay datos, tu rol no ve tablas, o NADIE ha
+        encendido la base. El tercero es real en este despliegue (11 conexiones,
+        las 11 con `is_active=False`) y es el unico que el usuario no puede
+        arreglar solo.
+
+        `state`:
+          - `"no_active_connection"`: hay conectores y ninguno activo.
+          - `"role_without_tables"`: hay al menos uno activo (el caso que ya
+            reportaba `build_rbac_denied_response`).
+          - `"unknown"`: no se pudo comprobar. Se devuelve `unknown` y NO
+            "no hay conexiones": afirmar sin medir es el bug que esto cierra
+            (mismo criterio que `test_audit_log_honesty.py`).
+
+        La accion de activar solo se propone al admin y solo cuando se pudo
+        comprobar: es una escritura que `get_current_admin` rechazaria para
+        cualquier otro perfil.
+        """
+        state = "unknown"
+        activate: Optional[Dict[str, Any]] = None
+        if db is None:
+            return state, activate
+        try:
+            from app.modules.admin_catalog.models import CorporateConnection
+            # Una sola lectura y la cuenta en Python: dos `filter` sobre el
+            # mismo modelo se contradicen en cuanto algo cambia entre ambos, y
+            # aqui solo hace falta "hay alguna activa?".
+            conns = db.query(CorporateConnection).all()
+            inactive = [c for c in conns if not c.is_active]
+            if any(c.is_active for c in conns):
+                return "role_without_tables", None
+            if not conns:
+                # Cero conectores NO es "nadie activó uno": es que no hay ninguna
+                # base dada de alta. La accion util es crear una, no activar, y el
+                # mensaje de `no_active_connection` mandaria al admin a buscar un
+                # interruptor que no existe. Se declara aparte.
+                return "no_connections_registered", None
+            state = "no_active_connection"
+            # La del propio pedido manda: es la que el usuario esta mirando en
+            # el selector. Con una sola inactiva no hay duda posible.
+            target = next((c for c in inactive if c.id == connection_id), None)
+            if target is None and len(inactive) == 1:
+                target = inactive[0]
+            if is_admin and target is not None:
+                activate = {
+                    "connection_id": target.id,
+                    "connection_name": target.name,
+                    "endpoint": f"/api/v1/connectors/{target.id}/toggle-active"
+                }
+        except Exception as ex:
+            logger.warning(f"No se pudo verificar el estado de las conexiones de datos: {ex}")
+            # La sesion es del CALLER: tragarnos el error sin deshacer la
+            # transaccion abortada la deja muerta para el resto de la request.
+            discard_failed_transaction(db)
+        return state, activate
 
     @classmethod
     async def execute_query(
@@ -315,11 +176,23 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         db: Optional[Session] = None,
         role_id: Optional[int] = None,
         connection_id: int = 1,
-        conversation_history: Optional[List[Dict[str, Any]]] = None
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
+        narrative_sink: Optional[Callable[[str], Any]] = None
     ) -> QueryResponse:
+        """
+        `narrative_sink` es opcional y solo lo usa `POST /chat/query/stream`.
 
-        # 0. Check if question is a null remediation directive for a previous query
-        remediation_action = cls._detect_remediation_intent(question)
+        Opcional a proposito: cuando es `None` (o sea, en TODOS los caminos que
+        ya existian, incluido `POST /chat/query`) el motor se comporta exactamente
+        igual que antes. El sink se invoca DESPUES del enmascarado de
+        `mask_rows` y en el mismo punto donde hoy se construye la narrativa, asi
+        que lo que se emite al navegador sale del mismo `rows` enmascarado que
+        alimenta la respuesta completa: stremear no abre una via de datos sin
+        enmascarar.
+        """
+
+        # 1. Null remediation directive resolution
+        remediation_action = NullHandler.detect_remediation_intent(question)
         original_question = None
         original_sql = None
 
@@ -331,7 +204,7 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             if conversation_history:
                 for turn in reversed(conversation_history):
                     t_q = turn.get("question", "").strip()
-                    if t_q and not cls._detect_remediation_intent(t_q):
+                    if t_q and not NullHandler.detect_remediation_intent(t_q):
                         if not original_question:
                             original_question = t_q
                         if turn.get("sql") and not original_sql:
@@ -340,19 +213,46 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
 
         effective_question = original_question or question
 
-        # 1. RBAC check for unassigned "Usuario" role
+        # 2. RBAC check for unassigned "Usuario" role
         if not is_admin and (user_role == ROLE_USUARIO or not user_role):
             return ResponseBuilder.build_rbac_denied_response(
                 effective_question,
                 "Tu cuenta se encuentra registrada con el perfil inicial 'Usuario'. Un Administrador debe asignarte un rol (Economista o TI) para acceder a los datos corporativos."
             )
 
-        # 2. INTENT CLASSIFICATION
-        response_type = await IntentClassifier.classify_intent(effective_question)
-
         allowed_tables = cls.get_allowed_tables_for_role(user_role, is_admin, db=db, role_id=role_id, connection_id=connection_id)
 
-        # BRANCH 0: GREETING / GENERAL CONVERSATION
+        # 3.0 Por que no hay tablas, ANTES de gastar un grounding_query o una
+        # llamada al LLM. Sin tablas no hay nada que consultar, y el mensaje
+        # tiene que decir cual de los dos motivos es; el resto del pipeline solo
+        # sabe producir "sin resultados", que es lo que hace que el producto
+        # parezca roto cuando en realidad nadie encendio la base.
+        if not allowed_tables:
+            diag_state, activate_action = cls._diagnose_empty_visibility(db, connection_id, is_admin)
+            if diag_state in ("no_active_connection", "no_connections_registered") or (diag_state == "unknown" and not is_admin):
+                # El `unknown` del admin NO corta el flujo: antes un admin sin
+                # tablas caia al resto del motor y ese comportamiento se
+                # conserva. No hay ningun dato nuevo que contarle.
+                return cls._build_visibility_diagnostic_response(
+                    effective_question, user_role, diag_state, activate_action
+                )
+
+        # 3. Strict Cross-Domain RBAC Governance Check (Defense Layer 1 - Fail Closed)
+        if not is_admin and user_role not in ADMIN_ROLES:
+            domain_denial = cls.check_domain_governance(effective_question, user_role, allowed_tables)
+            if domain_denial:
+                return ResponseBuilder.build_rbac_denied_response(effective_question, domain_denial)
+
+        if not allowed_tables and not is_admin:
+            return ResponseBuilder.build_rbac_denied_response(
+                effective_question,
+                f"El rol '{user_role}' no tiene tablas asignadas en la matriz RBAC."
+            )
+
+        # 4. Intent Classification
+        response_type = await IntentClassifier.classify_intent(effective_question)
+
+        # BRANCH 0: Greeting
         if response_type == "greeting" and not remediation_action:
             clarification_opts = IntentClassifier.detect_ambiguity_and_options(effective_question, allowed_tables)
             conversational = await IntentClassifier.generate_conversational_response(
@@ -362,27 +262,25 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 effective_question, user_role, allowed_tables, conversational, clarification_options=clarification_opts
             )
 
-        if not allowed_tables:
-            return ResponseBuilder.build_rbac_denied_response(
-                effective_question,
-                f"El rol '{user_role}' no tiene tablas asignadas en la matriz RBAC."
+        # BRANCH 0.1: Out of scope capabilities
+        if response_type == "out_of_scope" and not remediation_action:
+            conversational = await IntentClassifier.generate_conversational_response(
+                effective_question, user_role, "out_of_scope", columns=list(allowed_tables), is_llm_active=True
+            )
+            return ResponseBuilder.build_out_of_scope_response(
+                effective_question, user_role, allowed_tables, conversational
             )
 
-        # Cross-domain RBAC governance check
-        if not is_admin and user_role not in ADMIN_ROLES:
-            domain_denial = cls.check_domain_governance(effective_question, user_role, allowed_tables)
-            if domain_denial:
-                return ResponseBuilder.build_rbac_denied_response(effective_question, domain_denial)
-
         blocked_columns = cls.get_blocked_columns_for_role(user_role, is_admin, db=db, role_id=role_id, connection_id=connection_id)
+        masked_columns = cls.get_masked_columns_for_role(user_role, is_admin, db=db, role_id=role_id, connection_id=connection_id)
         start_time = time.time()
         is_llm_active = False
 
-        # Resolve active connection and dialect
+        # 5. Resolve active connection and target dialect
         conn_record = None
         if db is not None:
             try:
-                from app.modules.admin_catalog.models import CorporateConnection, DatabaseType
+                from app.modules.admin_catalog.models import CorporateConnection
                 if connection_id:
                     conn_record = db.query(CorporateConnection).filter(CorporateConnection.id == connection_id).first()
                 if not conn_record:
@@ -390,19 +288,62 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 if not conn_record:
                     conn_record = db.query(CorporateConnection).order_by(CorporateConnection.id.desc()).first()
             except Exception:
-                pass
+                # `conn_record` queda None y la request sigue por el resto del
+                # camino, pero la sesion no: la consulta fallida la dejo
+                # abortada, asi que todo lo que se ejecute despues en esta misma
+                # request moriria con `InFailedSqlTransaction` sin relacion con
+                # nada. Es exactamente el defecto de los demas handlers
+                # best-effort, y por eso usa el mismo helper.
+                discard_failed_transaction(db)
 
+        # El retorno de `apply_null_policy` NO se descarta: devuelve `status:
+        # no_op` / `rows_affected: 0` cuando no remedio nada. Mirar solo el exito
+        # hacia que el chat anunciara "remediacion aplicada" sobre una base sin
+        # remediar. La politica aplicada no cambia aqui; solo se comunica el
+        # resultado (el banner de la seccion 8 usa este texto en vez del exito).
+        remediation_notice: Optional[str] = None
         if remediation_action and conn_record and db:
             try:
-                NullManagerService.apply_null_policy(conn_record, remediation_action, db)
+                result = NullManagerService.apply_null_policy(conn_record, remediation_action, db) or {}
                 conn_record.null_policy = 'open'
                 db.commit()
+                if result.get("status") != "success" or not (result.get("rows_affected") or 0):
+                    remediation_notice = (
+                        "⚠️ **No se remedió ningún valor nulo**\n\n"
+                        f"{result.get('message') or 'La remediación no modificó ninguna celda.'}\n\n"
+                    )
             except Exception as ex:
                 logger.warning(f"Error applying null remediation to DB: {ex}")
+                # Medido contra PostgreSQL, y NO es el mismo estado que una query
+                # fallida: un `db.commit()` que revienta en el flush deja la sesion
+                # en `PendingRollbackError` ("rolled back due to a previous
+                # exception during flush"), mientras que una sentencia fallida la
+                # deja en `InFailedSqlTransaction`. Los dos envenenan la sesion y
+                # los dos se limpian con el mismo rollback; lo que cambia es que
+                # aqui el fallo puede venir del propio commit, asi que el rollback
+                # va DESPUES de la excepcion, nunca antes.
+                discard_failed_transaction(db)
+                # `apply_null_policy` revierte la política si falla: tampoco se
+                # logro remediar nada, y decirlo es lo unico honesto.
+                remediation_notice = (
+                    "⚠️ **No se remedió ningún valor nulo**\n\n"
+                    f"La remediación falló y se revirtió: {ex}. La base queda sin cambios.\n\n"
+                )
 
-        is_pg = conn_record is not None and (conn_record.db_type == DatabaseType.POSTGRESQL or str(conn_record.db_type).lower() == "postgresql")
+        is_pg = conn_record is not None and (
+            getattr(conn_record, "db_type", None) == DatabaseType.POSTGRESQL
+            or "postgres" in str(getattr(conn_record, "db_type", "")).lower()
+        )
         engine_dialect = "postgres" if is_pg else "sqlite"
-        target_db_path = DynamicSchemaPruningService.resolve_db_path(db, connection_id)
+        try:
+            target_db_path = DynamicSchemaPruningService.resolve_db_path(db, connection_id)
+        except Exception as ex:
+            # Fallar cerrado: sin ruta resuelta no se sabe a que base del cliente
+            # apuntan los permisos ya calculados, y seguir con `exec_target` caeria
+            # en la BD demo interna de Datia.
+            return ResponseBuilder.build_execution_error_response(
+                effective_question, str(ex), int((time.time() - start_time) * 1000)
+            )
         exec_target = conn_record if is_pg else target_db_path
 
         table_columns_map: Dict[str, List[str]] = {}
@@ -412,7 +353,7 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             )
             table_columns_map[tbl.lower()] = [c["name"] for c in phys_cols_info if "name" in c]
 
-        # BRANCH A: CONVERSATIONAL ASSISTANT
+        # BRANCH A: Conversational Assistant
         if response_type == "conversational" and not remediation_action:
             grounding_sql = SQLExecutor.get_grounding_query(effective_question, user_role, allowed_tables)
             try:
@@ -421,7 +362,8 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                     dialect=engine_dialect,
                     allowed_tables=allowed_tables,
                     blocked_columns=blocked_columns,
-                    table_columns=table_columns_map
+                    table_columns=table_columns_map,
+                    is_admin=is_admin
                 )
                 rows = SQLExecutor.execute_raw_sql(exec_target, secured_sql, dialect=engine_dialect)
             except ASTValidationError:
@@ -429,7 +371,24 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 meta = {"tables_used": []}
                 rows = []
             except Exception:
+                secured_sql = "-- CONSULTA NO EJECUTADA POR ERROR TÉCNICO"
+                meta = {"tables_used": []}
                 rows = []
+
+            # Enmascarado de columnas MASKED, identico al de la rama analitica mas
+            # abajo. Esta rama estaba fuera del:`mask_rows` solo se aplicaba en
+            # BRANCH B, y el grounding query es `SELECT * ... LIMIT 20`, o sea que
+            # se llevaba al LLM (y de ahi al snapshot de auditoria y a los exports
+            # PDF/Excel) el RUT/token/API key en claro aunque el usuario no tuviera
+            # permiso de lectura. `forecast_service.py` ya lo hacia y lo documentaba
+            # como "una prediccion no es una exencion del RBAC": el hueco era
+            # accidental.
+            # ponytail: el sitio definitivo seria `SQLExecutor.execute_raw_sql`, que
+            # es el punto unico por el que pasa TODA ejecucion (incluido
+            # `execute_with_self_healing`). Ahi no se puede sin cambiar su contrato:
+            # el executor es agnostico al RBAC y no recibe `masked_columns`.
+            if masked_columns and rows:
+                mask_rows(rows, masked_columns)
 
             exec_time_ms = int((time.time() - start_time) * 1000)
             conversational = await IntentClassifier.generate_conversational_response(
@@ -439,13 +398,9 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             if not conversational:
                 return ResponseBuilder.build_llm_offline_response(effective_question, exec_time_ms)
 
-            suggested_questions: List[str] = []
-            if conversational:
-                sugg_match = re.search(r'<preguntas_sugeridas>\s*(.*?)\s*</preguntas_sugeridas>', conversational, re.DOTALL | re.IGNORECASE)
-                if sugg_match:
-                    raw_suggs = sugg_match.group(1).strip().split("\n")
-                    suggested_questions = [re.sub(r'^[-*0-9.)\s]+', '', s).strip() for s in raw_suggs if s.strip()]
-                    conversational = re.sub(r'<preguntas_sugeridas>[\s\S]*?</preguntas_sugeridas>', '', conversational).strip()
+            suggested_questions, conversational = cls._extract_suggested_questions(
+                conversational, rows, list(rows[0].keys()) if rows else [], meta.get("tables_used", list(allowed_tables))
+            )
 
             clarification_opts = IntentClassifier.detect_ambiguity_and_options(effective_question, allowed_tables)
             anomalies_detected = KPICalculator.detect_statistical_anomalies(rows, list(rows[0].keys()) if rows else [])
@@ -459,8 +414,11 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 sql_explanation=sql_explanation
             )
 
-        # BRANCH B: DATA ANALYSIS / REPORT / HYBRID
+        # BRANCH B: Data Analysis / Report / Hybrid
         candidate_sql = None
+        thinking_process: Optional[str] = None
+        schema_context = ""
+
         if remediation_action and original_sql:
             candidate_sql = original_sql
             is_llm_active = True
@@ -473,70 +431,51 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                         dialect=engine_dialect,
                         allowed_tables=allowed_tables,
                         blocked_columns=blocked_columns,
-                        table_columns=table_columns_map
+                        table_columns=table_columns_map,
+                        is_admin=is_admin
                     )
                     candidate_sql = secured_sql
                     is_llm_active = True
                 except ASTValidationError as e:
                     return ResponseBuilder.build_rbac_denied_response(effective_question, str(e))
 
-        schema_context = ""
-        thinking_process: Optional[str] = None
         if not candidate_sql:
-            try:
-                s_info = DynamicSchemaPruningService.get_authorized_schema_prompt(
-                    db=db,
-                    role_id=role_id,
-                    user_role=user_role,
-                    connection_id=connection_id,
-                    is_admin=is_admin
-                )
-                schema_context = s_info.get("schema_prompt", "")
-            except Exception:
-                pass
-
-            few_shots = SQLExecutor.retrieve_few_shot_memories(db, effective_question, connection_id)
-            conv_context = PromptManager.format_conversation_context(conversation_history) if conversation_history else ""
-            try:
-                system_prompt = PromptManager.get_text_to_sql_system_prompt(user_role, allowed_tables)
-                prompt_llm = PromptManager.get_text_to_sql_user_prompt(
-                    effective_question, user_role, schema_context, allowed_tables, few_shots, conversation_context=conv_context
-                )
-
-                llm_response_text = await LLMService.generate_completion(
-                    prompt_llm,
-                    system_prompt=system_prompt,
-                    temperature=0.05,
-                    max_tokens=600
-                )
-
-                if llm_response_text:
-                    is_llm_active = True
-                    denied_match = re.search(r'<acceso_denegado>\s*(.*?)\s*</acceso_denegado>', llm_response_text, re.DOTALL | re.IGNORECASE)
-                    if denied_match:
-                        denied_reason = denied_match.group(1).strip()
-                        return ResponseBuilder.build_rbac_denied_response(effective_question, denied_reason)
-
-                    thinking_match = re.search(r'<pensamiento>\s*(.*?)\s*</pensamiento>', llm_response_text, re.DOTALL | re.IGNORECASE)
-                    if thinking_match:
-                        thinking_process = thinking_match.group(1).strip()
-
-                    sql_match = re.search(r'```sql\s*(.*?)\s*```', llm_response_text, re.DOTALL | re.IGNORECASE)
-                    if sql_match:
-                        extracted = sql_match.group(1).strip()
-                        if "SELECT" in extracted.upper():
-                            candidate_sql = extracted
-                    elif "SELECT" in llm_response_text.upper():
-                        select_match = re.search(r'(SELECT\s+.*?(?:;|$))', llm_response_text, re.DOTALL | re.IGNORECASE)
-                        if select_match:
-                            candidate_sql = select_match.group(1).strip().rstrip(';')
-            except Exception:
-                is_llm_active = False
+            candidate_sql, thinking_process, rbac_denial, schema_context, is_llm_active = await SQLGenerator.generate_candidate_sql(
+                question=effective_question,
+                user_role=user_role,
+                allowed_tables=allowed_tables,
+                db=db,
+                role_id=role_id,
+                connection_id=connection_id,
+                is_admin=is_admin,
+                conversation_history=conversation_history,
+                dialect=engine_dialect,
+            )
+            if rbac_denial and not is_admin:
+                return ResponseBuilder.build_rbac_denied_response(effective_question, rbac_denial)
 
         if not candidate_sql or not is_llm_active:
             exec_time_ms = int((time.time() - start_time) * 1000)
             return ResponseBuilder.build_llm_offline_response(effective_question, exec_time_ms)
 
+        # 5.5 Pre-flight Physical Schema Verification (Fail-Fast < 1ms)
+        physical_tables = DynamicSchemaPruningService.get_physical_db_tables(exec_target)
+        if physical_tables:
+            candidate_tables = ASTValidator.extract_tables_from_query(candidate_sql, dialect=engine_dialect)
+            missing_physical_tables = [t for t in candidate_tables if t.lower() not in physical_tables]
+            if missing_physical_tables:
+                exec_time_ms = int((time.time() - start_time) * 1000)
+                conn_name = getattr(conn_record, "name", "Base de datos activa") if conn_record else "Base de datos activa"
+                missing_str = ", ".join(f"`{t}`" for t in missing_physical_tables)
+                avail_str = ", ".join(f"`{t}`" for t in sorted(physical_tables))
+                err_msg = (
+                    f"La consulta requiere la tabla {missing_str}, que no existe en '{conn_name}'. "
+                    f"Tablas disponibles en esta conexión: [{avail_str}]. "
+                    f"Faltan datos para realizar esta consulta en la fuente seleccionada."
+                )
+                return ResponseBuilder.build_execution_error_response(effective_question, err_msg, exec_time_ms)
+
+        # 6. SQL Execution & Self-Healing
         try:
             rows, secured_sql, meta, was_self_healed, validation_label = await SQLExecutor.execute_with_self_healing(
                 target_db_path=exec_target,
@@ -547,10 +486,21 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 table_columns_map=table_columns_map,
                 schema_context=schema_context,
                 is_llm_active=is_llm_active,
-                dialect=engine_dialect
+                dialect=engine_dialect,
+                is_admin=is_admin
             )
-        except Exception as e:
+        except ASTValidationError as e:
             return ResponseBuilder.build_rbac_denied_response(effective_question, str(e))
+        except Exception as e:
+            exec_time_ms = int((time.time() - start_time) * 1000)
+            return ResponseBuilder.build_execution_error_response(effective_question, str(e), exec_time_ms)
+
+        # Enmascarado de columnas MASKED: se aplica a las filas recien ejecutadas y
+        # ANTES de que entren a cualquier respuesta. A partir de aca `rows` es lo
+        # unico que circula, asi que el RUT en claro no llega ni al snapshot de
+        # auditoria, ni a los reportes exportados a PDF/Excel, ni a la vista.
+        if masked_columns and rows:
+            mask_rows(rows, masked_columns)
 
         SQLExecutor.persist_learning_memory(
             db=db,
@@ -565,82 +515,28 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         exec_time_ms = int((time.time() - start_time) * 1000)
         columns = list(rows[0].keys()) if rows else []
 
-        # --- NULL DETECTION & REMEDIATION (Policy: 'open') ---
-        null_cols_in_rows = set()
-        null_rows_count = 0
-        for r in rows:
-            row_has_null = False
-            for c_name, val in r.items():
-                if val is None or str(val).strip().lower() in ("none", "null"):
-                    null_cols_in_rows.add(c_name)
-                    row_has_null = True
-            if row_has_null:
-                null_rows_count += 1
+        # 7. Null Detection & Interactive Remediation
+        nulls_detected: Optional[Dict[str, Any]] = None
+        null_cols_in_rows, null_rows_count = NullHandler.inspect_nulls(rows)
+        conn_policy = getattr(conn_record, 'null_policy', 'open') or 'open'
+        is_remediation = bool(remediation_action)
 
         if remediation_action and null_cols_in_rows:
             rows = NullManagerService.apply_in_memory_remediation(rows, columns, remediation_action)
             null_cols_in_rows = set()
             null_rows_count = 0
 
-        nulls_detected = None
-        conn_policy = getattr(conn_record, 'null_policy', 'open') or 'open'
-        is_remediation = bool(remediation_action)
-
-        # Early pause on Prompt 1 when nulls are found under policy 'open':
-        # Do NOT compute distorted KPIs or false conclusions analyzing "null" as a data category!
+        # Early pause on Prompt 1 when nulls are found under policy 'open'
         if null_rows_count > 0 and conn_policy == 'open' and not is_remediation:
             primary_table = meta.get("tables_used", ["la tabla"])[0] if meta.get("tables_used") else "la tabla activa"
-            cols_sorted = sorted(list(null_cols_in_rows))
-            cols_text = ", ".join(f"`{c}`" for c in cols_sorted)
-            nulls_detected = {
-                "has_nulls": True,
-                "table_name": primary_table,
-                "columns_with_nulls": cols_sorted,
-                "null_rows_count": null_rows_count,
-                "total_rows": len(rows),
-                "options": [
-                    {
-                        "action": "delete_rows",
-                        "label": "Eliminar registros con nulos",
-                        "prompt": f"Tratar nulos en {primary_table} (eliminar registros con nulos) para la consulta: {effective_question}"
-                    },
-                    {
-                        "action": "mode",
-                        "label": "Adaptar a la moda",
-                        "prompt": f"Tratar nulos en {primary_table} (adaptar a la moda) para la consulta: {effective_question}"
-                    },
-                    {
-                        "action": "nearest",
-                        "label": "Adaptar al más cercano",
-                        "prompt": f"Tratar nulos en {primary_table} (adaptar al más cercano) para la consulta: {effective_question}"
-                    }
-                ]
-            }
-
-            conversational = (
-                f"⚠️ **Valores nulos detectados en la consulta**\n\n"
-                f"Se detectaron valores nulos en la tabla `{primary_table}` (columnas: {cols_text}), "
-                f"afectando a {null_rows_count} de {len(rows)} registros analizados.\n\n"
-                f"Para entregarte un análisis confiable y evitar distorsiones en los resultados o gráficos "
-                f"(como considerar los valores nulos como una categoría de datos), "
-                f"por favor selecciona cómo deseas procesar estos registros antes de calcular la respuesta definitiva:"
+            nulls_detected, conversational = NullHandler.build_null_alert_payload(
+                rows, null_cols_in_rows, null_rows_count, primary_table, effective_question
             )
-            fallback_summary = conversational
-            kpis = []
-            chart_type = "none"
-            chart_option = {"series": []}
-            final_exec_report = None
-            suggested_questions = []
-            anomalies_detected = []
-            clarification_opts = []
-            sql_explanation = ASTValidator.generate_sql_explanation(secured_sql, dialect=engine_dialect)
             pres_hints = PresentationHints(
-                show_executive_report=False,
-                show_kpis=False,
-                show_chart=False,
-                preferred_view="assistant",
-                summary_style="detailed"
+                show_executive_report=False, show_kpis=False, show_chart=False,
+                preferred_view="assistant", summary_style="detailed"
             )
+            sql_explanation = ASTValidator.generate_sql_explanation(secured_sql, dialect=engine_dialect)
 
             return ResponseBuilder.build_analytics_response(
                 question=effective_question,
@@ -654,49 +550,74 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
                 exec_time_ms=exec_time_ms,
                 is_llm_active=is_llm_active,
                 pres_hints=pres_hints,
-                kpis=kpis,
-                chart_type=chart_type,
-                chart_option=chart_option,
-                final_summary=fallback_summary,
-                final_exec_report=final_exec_report,
+                kpis=[],
+                chart_type="none",
+                chart_option={"series": []},
+                final_summary=conversational,
+                final_exec_report=None,
                 conversational=conversational,
                 thinking_process=thinking_process,
-                suggested_questions=suggested_questions,
-                clarification_options=clarification_opts,
-                anomalies_detected=anomalies_detected,
+                suggested_questions=[],
+                clarification_options=[],
+                anomalies_detected=[],
                 sql_explanation=sql_explanation,
                 nulls_detected=nulls_detected
             )
 
-        pres_hints = await IntentClassifier.classify_presentation_format(
+        # 8. Visual Presentation & Single-Pass Unified Synthesis
+        pres_hints = IntentClassifier.heuristic_presentation_hints(
             effective_question, response_type, rows, columns
         )
 
         kpis, chart_type, chart_option, fallback_summary, fallback_exec_report = KPICalculator.build_dynamic_visualization(
             effective_question, columns, rows, user_role
         )
-
         final_exec_report = fallback_exec_report
+        conversational: Optional[str] = None
+        extracted_suggs: Optional[List[str]] = None
 
         if is_llm_active:
-            semantic_res = await KPICalculator.generate_semantic_analysis_with_llm(
+            conv_context = PromptManager.format_conversation_context_for_synthesis(conversation_history) if conversation_history else ""
+            unified_res = await KPICalculator.generate_unified_synthesis_with_llm(
                 question=effective_question,
                 user_role=user_role,
                 rows=rows,
                 columns=columns,
                 secured_sql=secured_sql,
-                schema_context=schema_context,
-                is_llm_active=is_llm_active
+                conversation_context=conv_context,
+                is_llm_active=is_llm_active,
+                narrative_sink=narrative_sink
             )
-            if semantic_res:
-                kpis, semantic_overview, final_exec_report = semantic_res
-                fallback_summary = semantic_overview
-            elif pres_hints.show_executive_report:
-                llm_exec_report = await KPICalculator.generate_deep_executive_report_with_llm(
-                    effective_question, user_role, rows, columns, secured_sql, is_llm_active
+            if unified_res:
+                if unified_res.get("narrative"):
+                    conversational = unified_res["narrative"]
+                if unified_res.get("kpis"):
+                    kpis = unified_res["kpis"]
+                if unified_res.get("executive_report"):
+                    final_exec_report = unified_res["executive_report"]
+                if unified_res.get("suggested_questions"):
+                    extracted_suggs = unified_res["suggested_questions"]
+
+            # Fallback to standalone conversational call if unified synthesis yielded no narrative
+            if not conversational:
+                conversational = await IntentClassifier.generate_conversational_response(
+                    effective_question, user_role, response_type, rows, columns, is_llm_active
                 )
-                if llm_exec_report:
-                    final_exec_report = llm_exec_report
+
+        if is_remediation:
+            banner = remediation_notice or NullHandler.format_remediation_banner(remediation_action, effective_question)
+            conversational = (banner + conversational) if conversational else banner
+            if fallback_summary:
+                fallback_summary = banner + fallback_summary
+
+        if extracted_suggs:
+            suggested_questions = extracted_suggs
+            if conversational:
+                conversational = re.sub(r'<preguntas_sugeridas>[\s\S]*?</preguntas_sugeridas>', '', conversational).strip()
+        else:
+            suggested_questions, conversational = cls._extract_suggested_questions(
+                conversational, rows, columns, meta.get("tables_used", list(allowed_tables))
+            )
 
         if not pres_hints.show_executive_report:
             final_exec_report = None
@@ -706,56 +627,6 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             chart_type = "none"
             chart_option = {"series": []}
 
-        conversational = await IntentClassifier.generate_conversational_response(
-            effective_question, user_role, response_type, rows, columns, is_llm_active
-        )
-
-        if is_remediation:
-            action_labels = {
-                "delete_rows": "Eliminación de registros con nulos",
-                "mode": "Adaptación a la moda estadística",
-                "nearest": "Adaptación al valor más cercano"
-            }
-            lbl = action_labels.get(remediation_action, remediation_action)
-            banner = f"✅ **Tratamiento de nulos ({lbl}) aplicado para responder a:** *\"{effective_question}\"*\n\n"
-            if conversational:
-                conversational = banner + conversational
-            if fallback_summary:
-                fallback_summary = banner + fallback_summary
-
-        suggested_questions: List[str] = []
-        if conversational:
-            # 1. Extract from XML tags <preguntas_sugeridas>
-            sugg_match = re.search(r'<preguntas_sugeridas>\s*(.*?)\s*</preguntas_sugeridas>', conversational, re.DOTALL | re.IGNORECASE)
-            if sugg_match:
-                raw_suggs = sugg_match.group(1).strip().split("\n")
-                suggested_questions = [re.sub(r'^[-*0-9.)\s]+', '', s).strip() for s in raw_suggs if s.strip()]
-                conversational = re.sub(r'<preguntas_sugeridas>[\s\S]*?</preguntas_sugeridas>', '', conversational).strip()
-
-            # 2. Also strip any un-tagged question headers like 'Preguntas de Profundización:' from text body
-            text_sugg_match = re.search(r'(?:###?\s*)?(?:Preguntas\s+de\s+Profundización|Próximas\s+Preguntas|Preguntas\s+Sugeridas)[\s:]*([\s\S]*)$', conversational, re.IGNORECASE)
-            if text_sugg_match:
-                lines = [re.sub(r'^[-*0-9.)\s]+', '', l).strip() for l in text_sugg_match.group(1).strip().split("\n") if l.strip()]
-                if not suggested_questions and lines:
-                    suggested_questions = [l for l in lines if l.startswith("¿") or len(l) > 10][:3]
-                conversational = conversational[:text_sugg_match.start()].strip()
-
-        if not suggested_questions and rows and columns:
-            first_col = columns[0]
-            num_cols = [c for c in columns if is_true_numeric_metric(c, rows[0].get(c))]
-            if num_cols:
-                suggested_questions = [
-                    f"¿Cuál es la evolución temporal de {num_cols[0]}?",
-                    f"¿Cómo se distribuye {num_cols[0]} según {first_col}?",
-                    f"¿Cuáles son los valores más destacados de {num_cols[0]}?"
-                ]
-            else:
-                suggested_questions = [
-                    f"¿Cuántos registros totales existen en {meta.get('tables_used', ['esta tabla'])[0]}?",
-                    f"¿Cuáles son los registros más recientes?",
-                    f"¿Cómo se desglosan por {first_col}?"
-                ]
-
         clarification_opts = IntentClassifier.detect_ambiguity_and_options(effective_question, allowed_tables)
         anomalies_detected = KPICalculator.detect_statistical_anomalies(rows, columns)
         sql_explanation = ASTValidator.generate_sql_explanation(secured_sql, dialect=engine_dialect)
@@ -763,15 +634,12 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
         if conversational:
             first_block = conversational.split("\n\n")[0].replace("#", "").strip()
             final_summary = first_block if len(first_block) > 10 else fallback_summary
-            if conversational and (pres_hints.preferred_view in ("table", "report") or response_type in ("data_analysis", "conversational", "advisory", "explanation", "hybrid")):
+            if pres_hints.preferred_view in ("table", "report") or response_type in ("data_analysis", "conversational", "advisory", "explanation", "hybrid"):
                 pres_hints.preferred_view = "assistant"
         elif pres_hints.summary_style == "executive" and final_exec_report and final_exec_report.overview:
             final_summary = final_exec_report.overview
         elif pres_hints.summary_style == "concise":
-            final_summary = (
-                f"Se obtuvieron {len(rows)} registros de "
-                f"{', '.join(meta.get('tables_used', []))} para la consulta '{effective_question}'."
-            )
+            final_summary = f"Se obtuvieron {len(rows)} registros de {', '.join(meta.get('tables_used', []))} para la consulta '{effective_question}'."
         else:
             final_summary = final_exec_report.overview if final_exec_report and final_exec_report.overview else fallback_summary
 
@@ -800,23 +668,3 @@ Genera 4 sugerencias simples y breves de preguntas sobre ESTA base de datos acti
             sql_explanation=sql_explanation,
             nulls_detected=nulls_detected
         )
-
-    # Legacy static method aliases
-    _classify_intent = IntentClassifier.classify_intent
-    _classify_presentation_format = IntentClassifier.classify_presentation_format
-    _heuristic_presentation_hints = IntentClassifier.heuristic_presentation_hints
-    _generate_conversational_response = IntentClassifier.generate_conversational_response
-    _generate_deep_executive_report_with_llm = KPICalculator.generate_deep_executive_report_with_llm
-    _build_dynamic_visualization = KPICalculator.build_dynamic_visualization
-    
-    @classmethod
-    def _get_grounding_query_for_question(
-        cls,
-        question: str,
-        user_role: str = "Economista",
-        allowed_tables: Optional[Set[str]] = None
-    ) -> str:
-        return SQLExecutor.get_grounding_query(question, user_role, allowed_tables)
-
-    _retrieve_few_shot_memories = SQLExecutor.retrieve_few_shot_memories
-    _persist_learning_memory = SQLExecutor.persist_learning_memory
