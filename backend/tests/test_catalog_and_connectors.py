@@ -263,12 +263,17 @@ class TestCatalogAndConnectors(unittest.TestCase):
 
     def test_upload_database_closed_by_default_permissions(self):
         """
-        Uploading a new database grants access to operational roles (Admin, Economista, TI, etc.)
-        while strictly keeping unassigned/restricted roles ('Usuario', 'Usuario Consultor') with 0 permissions.
-        Response includes requires_permission_review: True and detected_tables list.
+        Uploading a new database grants access to NOBODY.
+
+        Antes este test afirmaba lo contrario ("permisos > 0 para roles
+        operacionales"): el upload creaba un RoleTablePermission(is_allowed=True)
+        por cada (rol, tabla) y solo se saltaba unas tablas de la demo SAP por
+        substring sobre el nombre del rol. En cualquier dataset real la exclusion
+        no excluye nada, o sea que casi todos los roles quedaban con todas las
+        tablas. Default-deny: sin decision explicita no hay acceso. El admin
+        concede con PUT /api/v1/permissions.
         """
         from app.modules.admin_catalog.models import RoleTablePermission
-        from app.core.constants import ADMIN_ROLES
 
         csv_content = b"id_sensor,ubicacion,temperatura\n1,Servidor-01,23.5\n2,Servidor-02,28.1\n"
         file_obj = io.BytesIO(csv_content)
@@ -288,15 +293,19 @@ class TestCatalogAndConnectors(unittest.TestCase):
             self.assertTrue(data.get("requires_permission_review"))
             self.assertIn("sensores_iot", data.get("detected_tables", []))
 
-            # Query all permissions for this connection
+            # La tabla entra declarada, pero sin ninguna fila de permiso: el
+            # dataset existe y aun asi nadie puede consultarlo.
             perms = self.db.query(RoleTablePermission).filter(
                 RoleTablePermission.connection_id == conn_id
             ).all()
+            self.assertEqual(
+                len(perms), 0,
+                "Subir un dataset no concede acceso a ningun rol. Un permiso "
+                "creado sin decision de nadie es un over-grant, no un default.",
+            )
 
-            # Verify permissions exist for operational roles
-            self.assertGreater(len(perms), 0)
-
-            # Check that unassigned/restricted roles have 0 permissions for this connection
+            # Y el rol restringido tampoco, que era la unica garantia que este
+            # test sostenia antes y ahora es trivial.
             restricted_roles = self.db.query(Role).filter(
                 Role.name.in_(["Usuario", "Usuario Consultor"])
             ).all()
@@ -342,8 +351,15 @@ class TestCatalogAndConnectors(unittest.TestCase):
                 data={"name": "Base de Datos Clientes Nuevos"},
                 headers=self.headers
             )
-            self.assertEqual(res_upload.status_code, 201)
+            self.assertEqual(res_upload.status_code, 201, res_upload.text)
             conn_id = res_upload.json()["id"]
+            # El nombre que REALMENTE quedo guardado, no el que se pidio. El
+            # servicio deduplica nombres globalmente ("_1", "_2", ...), asi que
+            # afirmar el literal exacto ataba este test al estado de la base:
+            # alcanzaba con que una corrida anterior dejara una fila y el test
+            # ya no podia volver a pasar. Lo que importa es que el diccionario
+            # reporte el nombre del conector que se acaba de crear.
+            uploaded_name = res_upload.json()["name"]
 
             # 1. Verify that semantic catalog was automatically seeded on upload for connection 2
             res_cat_conn2 = self.client.get(f"/api/v1/catalog/?connection_id={conn_id}", headers=self.headers)
@@ -358,7 +374,7 @@ class TestCatalogAndConnectors(unittest.TestCase):
             self.assertEqual(res_dict_conn2.status_code, 200)
             dict_data_conn2 = res_dict_conn2.json()
             self.assertEqual(dict_data_conn2["connection_id"], conn_id)
-            self.assertEqual(dict_data_conn2["connection_name"], "Base de Datos Clientes Nuevos")
+            self.assertEqual(dict_data_conn2["connection_name"], uploaded_name)
             tbl_names = [t["table_name"] for t in dict_data_conn2["tables"]]
             self.assertIn("clientes_nuevos", tbl_names)
 

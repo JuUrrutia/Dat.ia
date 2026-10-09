@@ -5,6 +5,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
+from app.core.security import sanitize_spreadsheet_value
 from app.modules.admin_catalog.schemas import ReportExportData, ReportExportRequest
 from app.modules.reports.data_compiler import ReportDataCompiler
 
@@ -53,7 +54,7 @@ class ExcelExporter:
 
         ws_summary["A6"] = "Base de Datos:"
         ws_summary["A6"].font = font_bold
-        ws_summary["B6"] = data.target_database or "demo_corporativa.db (SQLite)"
+        ws_summary["B6"] = ReportDataCompiler.compile_db_name(data)
         ws_summary["B6"].font = font_normal
 
         current_row = 8
@@ -108,7 +109,7 @@ class ExcelExporter:
         ws_summary.cell(row=current_row, column=1, value="4. TRAZABILIDAD TÉCNICA").font = font_section
         current_row += 1
         trace = data.traceability
-        ws_summary.cell(row=current_row, column=1, value=f"Estado AST: {trace.validation_status if trace else 'APROBADO'} | Filas: {trace.rows_returned if trace else len(data.data_rows)} | Latencia: {trace.execution_time_ms if trace else 0} ms").font = font_normal
+        ws_summary.cell(row=current_row, column=1, value=ReportDataCompiler.compile_trace_line(data)).font = font_normal
         current_row += 1
         if trace and trace.sql_executed:
             ws_summary.cell(row=current_row, column=1, value="SQL Ejecutado:").font = font_bold
@@ -159,6 +160,16 @@ class ExcelExporter:
             if columns and data.data_rows:
                 last_col_letter = get_column_letter(len(columns))
                 ws_data.auto_filter.ref = f"A1:{last_col_letter}{len(data.data_rows) + 1}"
+
+        # ponytail: sweep unico de formulas vivas. Va aca y no en cada call site
+        # para que un header, un titulo de seccion o un campo del LLM que
+        # empiece por '=' quede neutralizado igual que un valor de la hoja Datos.
+        for sheet in wb.worksheets:
+            for row_cells in sheet.iter_rows():
+                for cell in row_cells:
+                    safe = sanitize_spreadsheet_value(cell.value)
+                    if safe != cell.value:
+                        cell.value = safe
 
         out_buffer = io.BytesIO()
         wb.save(out_buffer)

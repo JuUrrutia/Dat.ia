@@ -1,6 +1,6 @@
 import React from 'react';
 import { CheckCircle2, AlertTriangle, AlertOctagon, Info, X } from 'lucide-react';
-import { useNotifications } from '../../context/NotificationContext';
+import { useToastList } from '../../context/NotificationContext';
 import { ToastNotification, ToastType } from '../../types';
 
 const getToastStyle = (type: ToastType) => {
@@ -38,7 +38,9 @@ const ToastItem: React.FC<{ toast: ToastNotification; onDismiss: (id: string) =>
   return (
     <div
       className={`pointer-events-auto flex items-start space-x-3 p-3.5 rounded-2xl border backdrop-blur-md shadow-2xl transition-all animate-fadeIn text-xs ${style.bg}`}
-      role="alert"
+      // Only errors interrupt. role="alert" on every toast meant a screen reader
+      // announced the polite container and then each item again.
+      role={toast.type === 'error' ? 'alert' : 'status'}
     >
       {style.icon}
       <div className="flex-1 leading-relaxed font-medium pr-1">{toast.message}</div>
@@ -46,7 +48,7 @@ const ToastItem: React.FC<{ toast: ToastNotification; onDismiss: (id: string) =>
         type="button"
         onClick={() => onDismiss(toast.id)}
         aria-label="Cerrar notificación"
-        className="text-white/60 hover:text-white p-0.5 rounded-lg hover:bg-white/10 transition-colors shrink-0"
+        className="text-white/60 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors shrink-0"
       >
         <X className="w-3.5 h-3.5" />
       </button>
@@ -55,14 +57,14 @@ const ToastItem: React.FC<{ toast: ToastNotification; onDismiss: (id: string) =>
 };
 
 export const ToastContainer: React.FC = () => {
-  const { toasts, dismiss } = useNotifications();
+  const { toasts, dismiss } = useToastList();
 
   if (toasts.length === 0) return null;
 
   return (
     <div
       aria-live="polite"
-      className="fixed top-5 right-5 z-[120] flex flex-col space-y-2.5 max-w-sm w-full pointer-events-none"
+      className="fixed top-4 right-4 left-4 sm:left-auto z-[120] flex flex-col space-y-2.5 sm:w-full sm:max-w-sm pointer-events-none"
     >
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onDismiss={dismiss} />

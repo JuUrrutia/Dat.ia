@@ -3,7 +3,14 @@
 **Commit de referencia:** `c5f1af4`  
 **Prioridad:** Crítica (Fase 1 - Blindaje de Seguridad y Gobernanza)  
 **Complejidad:** M (Manejo de estado en memoria y desacoplamiento de mutación física)  
-**Riesgo:** MEDIO (debe mantener intacta la experiencia conversacional)
+**Riesgo:** MEDIO (debe mantener intacta la experiencia conversacional)  
+
+> **Estado: ⛔ NO IMPLEMENTADO — sigue siendo el plan pendiente.** El código actual
+> conserva la mutación física: `engine.py:230` sigue llamando
+> `apply_null_policy(...)`, que ejecuta `DELETE`/`UPDATE` sobre la base
+> corporativa y hace `commit` (`null_manager.py:218-333`). La vía en memoria
+> (`apply_in_memory_remediation`) existe y se usa en `engine.py:448`, pero
+> convive con la escritura física. El hallazgo de la auditoría sigue vigente.
 
 ---
 

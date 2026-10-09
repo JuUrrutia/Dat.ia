@@ -13,16 +13,8 @@ ROLE_INGENIERO_TI = "Ingeniero de Infraestructura & TI"
 ROLE_OFICIAL_SEGURIDAD = "Oficial de Cumplimiento & Seguridad"
 ROLE_USUARIO = "Usuario Consultor"
 
-# Backward compatibility aliases
-ROLE_ECONOMISTA = "Economista"
-ROLE_TI = "TI"
-
 ADMIN_ROLES = {
     ROLE_ADMINISTRADOR,
-    "Administrador",
-    "Super Administrador",
-    "Admin",
-    "Data Platform Admin"
 }
 
 DEFAULT_USER_ROLE = ROLE_USUARIO
@@ -70,7 +62,8 @@ GREETING_KEYWORDS = [
     "hola", "buenos dias", "buenos días", "buenas tardes", "buenas noches", 
     "hey", "saludos", "quien eres", "quién eres", "que eres", "qué eres", 
     "que haces", "qué haces", "como estas", "cómo estás", "gracias", 
-    "ayuda general", "qué puedes hacer", "que puedes hacer", "cómo funciona", "como funciona"
+    "ayuda general", "qué puedes hacer", "que puedes hacer", "cómo funciona", "como funciona",
+    "perfecto", "excelente", "genial", "listo"
 ]
 
 ADVISORY_KEYWORDS = [

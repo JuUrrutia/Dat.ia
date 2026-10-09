@@ -9,9 +9,31 @@ export interface ExportReportOptions {
 }
 
 export const reportService = {
-  async captureChartAsBase64(): Promise<string | undefined> {
+  // `scope` narrows the search to one container. Pass it whenever possible.
+//
+// Without it we can only fall back to the whole document, which silently
+// exported the FIRST chart on the page: a question #7 report could embed
+// question #2's chart. All charts render on the canvas renderer, so the SVG
+// branch below never matched in practice.
+async captureChartAsBase64(scope?: ParentNode | null): Promise<string | undefined> {
     try {
-      const svgEl = document.querySelector('.echarts-for-react svg') as SVGElement | null;
+      let root: ParentNode = scope ?? document;
+
+      if (!scope) {
+        const charts = document.querySelectorAll('.echarts-for-react');
+        // More than one chart and no way to tell them apart: refuse rather
+        // than embed a figure that belongs to another message.
+        if (charts.length > 1) {
+          console.warn(
+            `[report] ${charts.length} charts en pantalla y sin scope: se omite el gráfico para no exportar el de otro mensaje.`
+          );
+          return undefined;
+        }
+        if (charts.length === 0) return undefined;
+        root = charts[0];
+      }
+
+      const svgEl = root.querySelector('.echarts-for-react svg') as SVGElement | null;
       if (svgEl) {
         const svgString = new XMLSerializer().serializeToString(svgEl);
         const dataUri = 'data:image/svg+xml;base64,' + window.btoa(unescape(encodeURIComponent(svgString)));
@@ -44,7 +66,7 @@ export const reportService = {
         });
       }
 
-      const canvasEl = document.querySelector('.echarts-for-react canvas') as HTMLCanvasElement | null;
+      const canvasEl = root.querySelector('.echarts-for-react canvas') as HTMLCanvasElement | null;
       if (canvasEl) {
         return canvasEl.toDataURL('image/png');
       }

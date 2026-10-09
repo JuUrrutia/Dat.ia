@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { ShieldCheck, CheckCircle2, XCircle, AlertTriangle, X, Copy, Check } from 'lucide-react';
 import { AuditLog } from '../../types';
+import { useModalA11y } from '../../hooks/useModalA11y';
+import { copyToClipboard } from '../../shared/clipboard';
 
 interface AuditInspectorModalProps {
   log: AuditLog | null;
@@ -44,16 +46,21 @@ export const AuditStatusBadge: React.FC<{ status: string }> = ({ status }) => {
 export const AuditInspectorModal: React.FC<AuditInspectorModalProps> = ({ log, onClose }) => {
   const [sqlCopied, setSqlCopied] = useState(false);
 
+  // Dialog semantics, Escape, focus containment and focus restore.
+  const modalRef = useModalA11y<HTMLDivElement>(Boolean(log), onClose);
+
   if (!log) return null;
 
   const handleCopySql = (sql: string) => {
-    navigator.clipboard.writeText(sql);
-    setSqlCopied(true);
-    setTimeout(() => setSqlCopied(false), 2000);
+    void copyToClipboard(sql).then((ok: boolean) => {
+      if (!ok) return;
+      setSqlCopied(true);
+      setTimeout(() => setSqlCopied(false), 2000);
+    });
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Inspector de registro de auditoría" tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
       <div className="glass-panel w-full max-w-2xl rounded-2xl border border-slate-200 dark:border-white/10 p-6 space-y-4 shadow-2xl bg-white dark:bg-zinc-900">
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-dark-border pb-3">
           <div className="flex items-center space-x-2">

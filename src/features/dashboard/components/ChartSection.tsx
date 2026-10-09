@@ -1,9 +1,22 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { QueryResult } from '../../../types';
-import { THEME_COLORS, ColorTheme, ChartType } from './charts/theme';
+import { THEME_COLORS, ColorTheme, ChartType, prefersReducedMotion } from './charts/theme';
 import { buildDynamicChartOption, deriveProcessedRows } from '../../../components/dashboard/executiveDashboardUtils';
-import { BarChart3, TrendingUp, PieChart, Layers, AlignLeft, Copy, Check } from 'lucide-react';
+import {
+  BarChart3,
+  TrendingUp,
+  PieChart,
+  Layers,
+  AlignLeft,
+  Copy,
+  Check,
+  ChevronDown,
+  CircleDot,
+  Gauge,
+  LayoutGrid,
+  Radar,
+} from 'lucide-react';
 
 interface ChartSectionProps {
   result: QueryResult;
@@ -12,20 +25,42 @@ interface ChartSectionProps {
   onTimeFilter?: (filterLabel: string) => void;
 }
 
-const AVAILABLE_CHART_TYPES: Array<{ id: ChartType; label: string; icon: React.FC<{ className?: string }> }> = [
-  { id: 'bar', label: 'Barras', icon: BarChart3 },
-  { id: 'line', label: 'Líneas', icon: TrendingUp },
-  { id: 'area', label: 'Área', icon: Layers },
-  { id: 'donut', label: 'Donut', icon: PieChart },
-  { id: 'horizontal_bar', label: 'Horizontal', icon: AlignLeft },
+interface ChartTypeOption {
+  id: ChartType;
+  label: string;
+  group: string;
+  icon: React.FC<{ className?: string }>;
+}
+
+// El orden de los grupos es el que se renderiza. `pie` ya tenía builder
+// (pieChartConfig) pero nunca estuvo expuesto en la barra de morphing.
+const AVAILABLE_CHART_TYPES: ChartTypeOption[] = [
+  { id: 'bar', label: 'Barras', group: 'Comparar', icon: BarChart3 },
+  { id: 'horizontal_bar', label: 'Horizontal', group: 'Comparar', icon: AlignLeft },
+  { id: 'radial', label: 'Radial', group: 'Comparar', icon: Radar },
+  { id: 'scatter', label: 'Dispersión', group: 'Comparar', icon: CircleDot },
+  { id: 'line', label: 'Líneas', group: 'Tendencia', icon: TrendingUp },
+  { id: 'area', label: 'Área', group: 'Tendencia', icon: Layers },
+  { id: 'pie', label: 'Torta', group: 'Composición', icon: PieChart },
+  { id: 'donut', label: 'Donut', group: 'Composición', icon: PieChart },
+  { id: 'treemap', label: 'Treemap', group: 'Composición', icon: LayoutGrid },
+  { id: 'gauge', label: 'Medidor', group: 'KPI', icon: Gauge },
 ];
+
+const CHART_GROUP_ORDER = ['Comparar', 'Tendencia', 'Composición', 'KPI'];
+const CHART_TYPE_STORAGE_KEY = 'datia-chart-type';
+
+const isKnownChartType = (id: unknown): id is ChartType =>
+  typeof id === 'string' && AVAILABLE_CHART_TYPES.some((ct) => ct.id === id);
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 const TIME_FILTER_OPTIONS = [
   { id: 'all', label: 'Todo' },
   { id: 'month', label: 'Este Mes' },
   { id: 'qtr', label: 'Últimos 90 Días' },
-  { id: '2024', label: 'Año 2024' },
-  { id: '2023', label: 'Año 2023' },
+  { id: String(CURRENT_YEAR), label: `Año ${CURRENT_YEAR}` },
+  { id: String(CURRENT_YEAR - 1), label: `Año ${CURRENT_YEAR - 1}` },
 ];
 
 export const ChartSection: React.FC<ChartSectionProps> = ({
@@ -34,11 +69,51 @@ export const ChartSection: React.FC<ChartSectionProps> = ({
   onDrillDown,
   onTimeFilter,
 }) => {
-  const initialType = (result.chart_type as ChartType) || 'bar';
-  const [activeChartType, setActiveChartType] = useState<ChartType>(initialType);
+  const [activeChartType, setActiveChartType] = useState<ChartType>(() => {
+    const backendType = result.chart_type as ChartType;
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = window.localStorage.getItem(CHART_TYPE_STORAGE_KEY);
+        if (isKnownChartType(saved)) return saved;
+      } catch {
+        // localStorage bloqueado (modo privado / iframe): usar el del backend.
+      }
+    }
+    return isKnownChartType(backendType) ? backendType : 'bar';
+  });
   const [activeTimeFilter, setActiveTimeFilter] = useState<string>('all');
   const [copiedChart, setCopiedChart] = useState(false);
+  const [chartMenuOpen, setChartMenuOpen] = useState(false);
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!chartMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (chartMenuRef.current && !chartMenuRef.current.contains(e.target as Node)) {
+        setChartMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setChartMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [chartMenuOpen]);
+
+  const handleSelectChartType = (id: ChartType) => {
+    setActiveChartType(id);
+    setChartMenuOpen(false);
+    try {
+      window.localStorage.setItem(CHART_TYPE_STORAGE_KEY, id);
+    } catch {
+      // Sin persistencia: el tipo sigue válido en esta sesión.
+    }
+  };
 
   const handleCopyChart = async () => {
     if (!chartContainerRef.current) return;
@@ -109,20 +184,37 @@ export const ChartSection: React.FC<ChartSectionProps> = ({
   }
 
   const currentTheme = THEME_COLORS[colorTheme] || THEME_COLORS.indigo;
-  const { catCol, numCol, processedRows } = deriveProcessedRows(result, 'default');
-  const isCurrency = Boolean(numCol && (numCol.includes('ingreso') || numCol.includes('monto') || numCol.includes('precio') || numCol.includes('costo') || numCol.includes('total')));
-  const totalVal = processedRows.reduce((sum, r) => sum + (Number(r[numCol]) || 0), 0);
 
-  const finalOption = buildDynamicChartOption({
-    processedRows,
-    catCol,
-    numCol,
-    activeChartType,
-    currentTheme,
-    isCurrency,
-    totalVal,
-    fallbackChartOption: result.chart_option,
-  });
+  // Rebuilt on every render before. Combined with notMerge on the ECharts
+  // instance, each render forced a full setOption (destroy/recreate of every
+  // series) — once per second per chart while the page's elapsed-seconds timer
+  // ticked. animation is JS-driven, so prefers-reduced-motion in globals.css
+  // never reached the canvas.
+  const { finalOption } = useMemo(() => {
+    const { catCol, numCol, processedRows } = deriveProcessedRows(result, 'default');
+    const isCurrency = Boolean(
+      numCol &&
+        (numCol.includes('ingreso') ||
+          numCol.includes('monto') ||
+          numCol.includes('precio') ||
+          numCol.includes('costo') ||
+          numCol.includes('total'))
+    );
+    const totalVal = processedRows.reduce((sum, r) => sum + (Number(r[numCol]) || 0), 0);
+
+    const option = buildDynamicChartOption({
+      processedRows,
+      catCol,
+      numCol,
+      activeChartType,
+      currentTheme,
+      isCurrency,
+      totalVal,
+      fallbackChartOption: result.chart_option,
+    });
+
+    return { finalOption: { ...option, animation: !prefersReducedMotion() } };
+  }, [result, activeChartType, currentTheme, colorTheme]);
 
   const handleChartClick = (params: any) => {
     const category = params?.name || params?.seriesName;
@@ -148,34 +240,76 @@ export const ChartSection: React.FC<ChartSectionProps> = ({
             Visualización Analítica Proyectada
           </h3>
           <p className="text-xs text-slate-600 dark:text-zinc-400 mt-0.5">
-            Gráfico dinámico ({activeChartType.toUpperCase()}) • Clic en elementos para desglose interactivo
+            Gráfico dinámico (
+            {AVAILABLE_CHART_TYPES.find((ct) => ct.id === activeChartType)?.label ?? activeChartType}) • Clic en
+            elementos para desglose interactivo
           </p>
         </div>
 
         {/* Action Controls: Chart Morpher + Theme Selector + Copy Chart */}
         <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
-          {/* Chart Morpher Buttons */}
-          <div className="flex items-center space-x-1 bg-slate-100 dark:bg-zinc-950 p-1 rounded-xl border border-slate-200 dark:border-white/10">
-            {AVAILABLE_CHART_TYPES.map((ct) => {
-              const Icon = ct.icon;
-              const isSelected = activeChartType === ct.id;
-              return (
-                <button
-                  key={ct.id}
-                  type="button"
-                  onClick={() => setActiveChartType(ct.id)}
-                  className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                    isSelected
-                      ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 shadow-xs'
-                      : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/5 border border-transparent'
-                  }`}
-                  title={`Cambiar a gráfico de ${ct.label}`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span className="hidden md:inline text-[11px]">{ct.label}</span>
-                </button>
-              );
-            })}
+          {/* Chart Morph Dropdown */}
+          <div ref={chartMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setChartMenuOpen((prev) => !prev)}
+              aria-haspopup="listbox"
+              aria-expanded={chartMenuOpen}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-zinc-950 border border-slate-200 dark:border-white/10 text-xs font-semibold text-slate-700 dark:text-zinc-200 hover:border-slate-300 dark:hover:border-white/20 transition-all"
+              title="Cambiar tipo de gráfico"
+            >
+              {(() => {
+                const Current = AVAILABLE_CHART_TYPES.find((ct) => ct.id === activeChartType)?.icon ?? BarChart3;
+                return <Current className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />;
+              })()}
+              <span className="text-[11px]">
+                {AVAILABLE_CHART_TYPES.find((ct) => ct.id === activeChartType)?.label ?? 'Gráfico'}
+              </span>
+              <ChevronDown
+                className={`w-3 h-3 text-slate-400 transition-transform duration-200 ${chartMenuOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+
+            {chartMenuOpen && (
+              <div
+                role="listbox"
+                className="absolute right-0 top-full mt-1.5 z-50 w-[22rem] max-w-[calc(100vw-2rem)] p-2 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 shadow-2xl"
+              >
+                {CHART_GROUP_ORDER.map((group, gi) => (
+                  <div key={group}>
+                    {gi > 0 && (
+                      <div className="my-1.5 border-t border-slate-200 dark:border-white/10" />
+                    )}
+                    <p className="px-2 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
+                      {group}
+                    </p>
+                    <div className="grid grid-cols-2 gap-0.5">
+                      {AVAILABLE_CHART_TYPES.filter((ct) => ct.group === group).map((ct) => {
+                        const Icon = ct.icon;
+                        const isSelected = activeChartType === ct.id;
+                        return (
+                          <button
+                            key={ct.id}
+                            type="button"
+                            role="option"
+                            aria-selected={isSelected}
+                            onClick={() => handleSelectChartType(ct.id)}
+                            className={`flex items-center space-x-2 px-2 py-1.5 rounded-lg text-left text-xs font-semibold transition-all ${
+                              isSelected
+                                ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30'
+                                : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 border border-transparent'
+                            }`}
+                          >
+                            <Icon className="w-3.5 h-3.5 shrink-0" />
+                            <span className="text-[11px] truncate">{ct.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Copy Chart Image Button */}

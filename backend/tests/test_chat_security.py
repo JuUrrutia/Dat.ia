@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from main import app
 from app.core.database import SessionLocal
+from app.core.constants import ROLE_USUARIO
 from app.db.init_db import init_db
 from app.modules.auth.models import User, UserSession
 from app.core.security import create_access_token
@@ -103,7 +104,7 @@ class TestChatSecurity(unittest.TestCase):
         """
         POST /auth/register uses UserSelfRegister. Even if a malicious request
         supplies is_admin=True and role_id=1, the endpoint ignores undeclared fields
-        and creates a standard user with is_admin=False and role 'Usuario'.
+        and creates a standard user with is_admin=False and role 'Usuario Consultor'.
         """
         username = f"hacker_{uuid.uuid4().hex[:6]}"
         payload = {
@@ -118,14 +119,14 @@ class TestChatSecurity(unittest.TestCase):
             self.assertEqual(resp.status_code, 201)
             data = resp.json()
             self.assertFalse(data["is_admin"])
-            self.assertEqual(data.get("role_name"), "Usuario")
+            self.assertEqual(data.get("role_name"), ROLE_USUARIO)
 
             # Check directly in the database
             user_in_db = self.db.query(User).filter(User.username == username).first()
             self.assertIsNotNone(user_in_db)
             self.assertFalse(user_in_db.is_admin)
             if user_in_db.role:
-                self.assertEqual(user_in_db.role.name, "Usuario")
+                self.assertEqual(user_in_db.role.name, ROLE_USUARIO)
         finally:
             self.db.query(User).filter(User.username == username).delete()
             self.db.commit()

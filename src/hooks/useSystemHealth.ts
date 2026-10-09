@@ -6,6 +6,8 @@ import { useAuth } from '../features/auth/context/AuthContext';
 
 export const DEFAULT_POLLING_INTERVAL_MS = 60000;
 
+export type SystemHealthStatus = 'OPERATIVO' | 'DEGRADADO' | 'CRITICO' | 'DESCONOCIDO';
+
 export const useSystemHealth = (pollingIntervalMs: number = DEFAULT_POLLING_INTERVAL_MS) => {
   const [healthData, setHealthData] = useState<SystemHealthResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -52,10 +54,17 @@ export const useSystemHealth = (pollingIntervalMs: number = DEFAULT_POLLING_INTE
 
       prevStatusRef.current = currentStatus;
     } catch {
-      // Backend offline
+      // Backend offline: sin datos. Dejamos healthData en null para que el
+      // header reporte DESCONOCIDO en vez de un OPERATIVO que nadie midió.
+      setHealthData(null);
       const fallbackStatus = 'CRITICO';
-      if (prevStatusRef.current !== fallbackStatus && prevStatusRef.current !== null) {
-        notify('error', 'No se pudo contactar al servidor Backend de Datia.');
+      // `prevStatusRef.current !== null` excluded the FIRST poll, so a first-time
+      // admin whose backend was down got a neutral DESCONOCIDO badge with no
+      // message at all, and a login screen whose credentials cannot work.
+      // Persistent (duration 0): it was the only record of the outage and it
+      // used to self-erase in 5s.
+      if (prevStatusRef.current !== fallbackStatus) {
+        notify('error', 'No se pudo contactar al servidor Backend de Datia.', { duration: 0 });
       }
       prevStatusRef.current = fallbackStatus;
     } finally {
@@ -87,7 +96,7 @@ export const useSystemHealth = (pollingIntervalMs: number = DEFAULT_POLLING_INTE
   }, [fetchHealth, pollingIntervalMs]);
 
   return {
-    status: healthData?.status || 'OPERATIVO',
+    status: (healthData?.status || 'DESCONOCIDO') as SystemHealthStatus,
     details: healthData,
     lastChecked,
     isLoading,

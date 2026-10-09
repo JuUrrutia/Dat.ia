@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Datia — Topología de Docker Compose</title>
+<style>
+  html,body{margin:0;padding:0;background:#eef2f6;}
+  svg{display:block;}
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" font-family="Segoe UI, Inter, system-ui, sans-serif">
+
+  <rect x="0" y="0" width="1400" height="900" fill="#eef2f6"/>
+
+  <text x="35" y="52" font-size="27" font-weight="700" fill="#0f172a">Datia — Topología de Docker Compose</text>
+  <text x="35" y="78" font-size="14" fill="#64748b">3 servicios en la red bridge <tspan font-family="Consolas,monospace">datia-network</tspan> · 2 volúmenes nombrados · el LLM local vive FUERA de la red, en el host</text>
+
+  <!-- ============ HOST BOUNDARY ============ -->
+  <rect x="35" y="95" width="1330" height="700" rx="14" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <text x="52" y="120" font-size="13" font-weight="700" fill="#64748b" letter-spacing="1.2">HOST DOCKER  ·  docker compose up -d</text>
+
+  <!-- ============ NETWORK ============ -->
+  <rect x="272" y="205" width="1000" height="370" rx="12" fill="#f8fafc" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="8 5"/>
+  <text x="288" y="228" font-size="12.5" font-weight="700" fill="#0284c7" letter-spacing="1.1">RED  datia-network   (driver: bridge)</text>
+
+  <!-- ============ BROWSER ============ -->
+  <rect x="55" y="330" width="175" height="95" rx="10" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="72" y="366" font-size="16" font-weight="700" fill="#334155">Navegador</text>
+  <text x="72" y="389" font-size="12.5" fill="#64748b">http://localhost</text>
+
+  <!-- ============ FRONTEND ============ -->
+  <rect x="300" y="250" width="250" height="300" rx="11" fill="#ffffff" stroke="#0ea5e9" stroke-width="2.5"/>
+  <rect x="300" y="250" width="250" height="40" rx="11" fill="#0ea5e9"/>
+  <rect x="300" y="278" width="250" height="12" fill="#0ea5e9"/>
+  <text x="316" y="276" font-size="15.5" font-weight="700" fill="#ffffff">frontend · datia-frontend</text>
+  <text x="316" y="315" font-size="12.5" fill="#334155">imagen: nginx:alpine</text>
+  <text x="316" y="337" font-size="12.5" fill="#334155">build: node:20-alpine</text>
+  <text x="316" y="359" font-size="12.5" fill="#334155">(npm ci → npm run build)</text>
+  <line x1="316" y1="374" x2="534" y2="374" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="316" y="397" font-size="12.5" fill="#334155">sirve  /usr/share/nginx/html</text>
+  <text x="316" y="419" font-size="12.5" fill="#334155">proxy  /api/ → backend:8000</text>
+  <text x="316" y="441" font-size="12.5" fill="#334155">proxy_buffering off  (SSE)</text>
+  <text x="316" y="463" font-size="12.5" fill="#334155">proxy_read_timeout 300s</text>
+  <text x="316" y="485" font-size="12.5" fill="#334155">client_max_body_size 512m</text>
+  <text x="316" y="507" font-size="12.5" fill="#334155">CSP · gzip · try_files</text>
+  <rect x="316" y="520" width="218" height="20" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="425" y="534" font-size="11.5" fill="#0369a1" text-anchor="middle">publica 80:80  y  5173:80</text>
+
+  <!-- ============ BACKEND ============ -->
+  <rect x="620" y="250" width="270" height="300" rx="11" fill="#ffffff" stroke="#8b5cf6" stroke-width="2.5"/>
+  <rect x="620" y="250" width="270" height="40" rx="11" fill="#8b5cf6"/>
+  <rect x="620" y="278" width="270" height="12" fill="#8b5cf6"/>
+  <text x="636" y="276" font-size="15.5" font-weight="700" fill="#ffffff">backend · datia-backend</text>
+  <text x="636" y="315" font-size="12.5" fill="#334155">imagen: python:3.12-slim</text>
+  <text x="636" y="337" font-size="12.5" fill="#334155">FastAPI + SQLAlchemy 2</text>
+  <text x="636" y="359" font-size="12.5" fill="#334155">uvicorn  0.0.0.0:8000</text>
+  <line x1="636" y1="374" x2="874" y2="374" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="636" y="397" font-size="12.5" fill="#334155">depends_on: postgres</text>
+  <text x="636" y="419" font-size="12.5" fill="#334155">   condition: service_healthy</text>
+  <text x="636" y="441" font-size="12.5" fill="#334155">healthcheck  GET /health</text>
+  <text x="636" y="463" font-size="12.5" fill="#334155">DATIA_ROOT=/app</text>
+  <text x="636" y="485" font-size="12.5" fill="#334155">SECRET_KEY / FERNET_KEY  (:?)</text>
+  <rect x="636" y="500" width="238" height="20" rx="5" fill="#ede9fe" stroke="#c4b5fd"/>
+  <text x="755" y="514" font-size="11.5" fill="#5b21b6" text-anchor="middle">publica 8000:8000</text>
+
+  <!-- ============ POSTGRES ============ -->
+  <rect x="970" y="250" width="270" height="300" rx="11" fill="#ffffff" stroke="#336791" stroke-width="2.5"/>
+  <rect x="970" y="250" width="270" height="40" rx="11" fill="#336791"/>
+  <rect x="970" y="278" width="270" height="12" fill="#336791"/>
+  <text x="986" y="276" font-size="15.5" font-weight="700" fill="#ffffff">postgres · datia-postgres</text>
+  <text x="986" y="315" font-size="12.5" fill="#334155">imagen: postgres:16-alpine</text>
+  <text x="986" y="337" font-size="12.5" fill="#334155">BD  democratizacion_metadatos</text>
+  <line x1="986" y1="352" x2="1224" y2="352" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="986" y="375" font-size="12.5" fill="#334155">13 tablas de metadatos</text>
+  <text x="986" y="397" font-size="12.5" fill="#334155">(auth, RBAC, catálogo, chat,</text>
+  <text x="986" y="419" font-size="12.5" fill="#334155">memoria, auditoría)</text>
+  <text x="986" y="447" font-size="12.5" fill="#334155">healthcheck  pg_isready</text>
+  <rect x="986" y="462" width="238" height="34" rx="5" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="1105" y="477" font-size="11.5" font-weight="700" fill="#b91c1c" text-anchor="middle">SIN PUERTO PUBLICADO</text>
+  <text x="1105" y="491" font-size="11" fill="#b91c1c" text-anchor="middle">el puerto 5432 está comentado a propósito</text>
+
+  <!-- ============ OLLAMA (host, fuera de la red) ============ -->
+  <rect x="300" y="640" width="250" height="110" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="2"/>
+  <text x="318" y="668" font-size="15" font-weight="700" fill="#047857">Ollama  (en el HOST)</text>
+  <text x="318" y="692" font-size="12.5" fill="#065f46">qwen2.5-coder:7b  ·  LLM local</text>
+  <text x="318" y="714" font-size="12.5" fill="#065f46">no es un servicio de compose</text>
+  <text x="318" y="736" font-size="11.5" fill="#059669">extra_hosts: host-gateway</text>
+
+  <!-- ============ VOLUMES ============ -->
+  <rect x="620" y="640" width="270" height="110" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="638" y="668" font-size="14.5" font-weight="700" fill="#334155">volumen  data_sources_data</text>
+  <text x="638" y="692" font-size="12.5" fill="#475569">→  /app/data_sources</text>
+  <text x="638" y="714" font-size="12.5" fill="#475569">bases .sqlite subidas por el usuario</text>
+  <text x="638" y="736" font-size="11.5" fill="#64748b">sobrevive a  docker compose down</text>
+
+  <rect x="970" y="640" width="270" height="110" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="988" y="668" font-size="14.5" font-weight="700" fill="#334155">volumen  postgres_data</text>
+  <text x="988" y="692" font-size="12.5" fill="#475569">→  /var/lib/postgresql/data</text>
+  <text x="988" y="714" font-size="12.5" fill="#475569">los 13 metadatos</text>
+  <text x="988" y="736" font-size="11.5" fill="#64748b">única fuente de verdad en producción</text>
+
+  <!-- ============ ARROWS ============ -->
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="3.2" orient="auto">
+      <path d="M0,0 L8,3.2 L0,6.4 z" fill="#334155"/>
+    </marker>
+    <marker id="ad" markerWidth="9" markerHeight="9" refX="8" refY="3.2" orient="auto">
+      <path d="M0,0 L8,3.2 L0,6.4 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <line x1="230" y1="377" x2="294" y2="377" stroke="#334155" stroke-width="2.5" marker-end="url(#a)"/>
+  <text x="262" y="366" font-size="11.5" fill="#334155" text-anchor="middle">:80 / :5173</text>
+
+  <line x1="550" y1="400" x2="614" y2="400" stroke="#334155" stroke-width="2.5" marker-end="url(#a)"/>
+  <text x="582" y="389" font-size="11.5" fill="#334155" text-anchor="middle">/api/</text>
+
+  <line x1="890" y1="400" x2="964" y2="400" stroke="#334155" stroke-width="2.5" marker-end="url(#a)"/>
+  <text x="927" y="389" font-size="11.5" fill="#334155" text-anchor="middle">:5432</text>
+
+  <line x1="755" y1="550" x2="755" y2="634" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ad)"/>
+
+  <line x1="1105" y1="550" x2="1105" y2="634" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ad)"/>
+
+  <polyline points="650,550 650,600 425,600 425,634" fill="none" stroke="#10b981" stroke-width="2.2" stroke-dasharray="6 4" marker-end="url(#a)" opacity="0.9"/>
+  <text x="540" y="592" font-size="11.5" fill="#047857" text-anchor="middle">host.docker.internal:11434</text>
+
+  <!-- ============ LEGEND / NOTES ============ -->
+  <text x="35" y="832" font-size="12.5" font-weight="700" fill="#334155">Flujo de arranque</text>
+  <text x="35" y="853" font-size="12" fill="#475569">1) postgres levanta y su healthcheck <tspan font-family="Consolas,monospace">pg_isready</tspan> pasa   2) el backend arranca solo cuando postgres está healthy   3) nginx sirve el SPA y hace de reverse proxy hacia el backend</text>
+  <text x="35" y="875" font-size="12.5" font-weight="700" fill="#b91c1c">Lo que este diagrama NO cubre</text>
+  <text x="35" y="896" font-size="12" fill="#7f1d1d">El LLM local y el mapeo <tspan font-family="Consolas,monospace">host.docker.internal → gateway del host</tspan>. Si Ollama corre en un contenedor aparte hay que unirlo a <tspan font-family="Consolas,monospace">datia-network</tspan> y cambiar <tspan font-family="Consolas,monospace">OLLAMA_BASE_URL</tspan> a <tspan font-family="Consolas,monospace">http://ollama:11434</tspan>.</text>
+
+</svg>
+</body>
+</html>

@@ -42,7 +42,10 @@ def convert_uploaded_file_to_sqlite(source_path: str, ext: str, target_sqlite_pa
         return import_excel_to_sqlite(source_path, target_sqlite_path)
     
     elif clean_ext == ".sql":
-        return import_sql_script_to_sqlite(source_path, target_sqlite_path)
+        raise ValueError(
+            "Los scripts .sql no se aceptan: ejecutan DDL/DML arbitrario sin pasar por "
+            "el validador AST. Sube el dataset como .csv, .xlsx o .sqlite."
+        )
 
     elif clean_ext in [".sqlite", ".db", ".sqlite3"]:
         return inspect_sqlite_database(target_sqlite_path)
@@ -67,7 +70,11 @@ def convert_uploaded_file_to_postgres(source_path: str, ext: str, target_engine,
         return import_sqlite_to_postgres(source_path, target_engine)
 
     elif clean_ext == ".sql":
-        return import_sql_script_to_postgres(source_path, target_engine)
+        raise ValueError(
+            "Los scripts .sql no se aceptan: ejecutan DDL/DML arbitrario contra el "
+            "PostgreSQL destino sin pasar por el validador AST. Sube el dataset como "
+            ".csv, .xlsx o .sqlite."
+        )
 
     else:
         raise ValueError(f"Formato no soportado: {clean_ext}. Formatos permitidos: .sqlite, .db, .sqlite3, .csv, .xlsx, .xls, .sql")

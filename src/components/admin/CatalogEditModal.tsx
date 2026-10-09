@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save } from 'lucide-react';
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 export interface CatalogItem {
   id?: number;
@@ -33,6 +34,9 @@ export const CatalogEditModal: React.FC<CatalogEditModalProps> = ({
     }
   }, [item]);
 
+  // Dialog semantics, Escape, focus containment and focus restore.
+  const modalRef = useModalA11y<HTMLDivElement>(isOpen, onClose);
+
   if (!isOpen || !item) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -41,18 +45,18 @@ export const CatalogEditModal: React.FC<CatalogEditModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Editar regla de catálogo" tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
       <div className="glass-panel w-full max-w-md rounded-2xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[88vh] sm:max-h-[90vh]">
         {/* Header */}
         <div className="shrink-0 px-5 sm:px-6 py-4 border-b border-dark-border flex items-center justify-between bg-dark-surface/95 backdrop-blur">
-          <h4 className="text-sm font-bold text-white truncate">
+          <h4 className="text-sm font-bold text-app-text truncate">
             Editar Regla Semántica: {item.table}.{item.column}
           </h4>
           <button
             type="button"
             onClick={onClose}
             aria-label="Cerrar modal"
-            className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-dark-card transition-colors shrink-0"
+            className="text-gray-400 hover:text-app-text p-1 rounded-lg hover:bg-dark-card transition-colors shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -70,7 +74,7 @@ export const CatalogEditModal: React.FC<CatalogEditModalProps> = ({
               value={formDesc}
               onChange={(e) => setFormDesc(e.target.value)}
               rows={3}
-              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-app-text focus:outline-none focus:border-purple-500"
               required
             />
           </div>
@@ -85,7 +89,7 @@ export const CatalogEditModal: React.FC<CatalogEditModalProps> = ({
               type="text"
               value={formFormula}
               onChange={(e) => setFormFormula(e.target.value)}
-              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500 font-mono"
+              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-app-text focus:outline-none focus:border-purple-500 font-mono"
             />
           </div>
         </form>

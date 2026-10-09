@@ -132,13 +132,48 @@ class NullsAuditResponse(BaseModel):
 class ApplyNullPolicyRequest(BaseModel):
     policy: str # "delete_rows" | "mode" | "nearest" | "open"
 
+# --- Cobertura de gobernanza (GET /permissions/coverage) ---
+# Derivada, no guardada: se recalcula en cada GET desde la misma fuente que usa
+# el chat, asi que este numero no puede contradecir al guardarrail.
+
+class GovernanceCoverageTable(BaseModel):
+    table: str
+    # Roles con ALGO asignado a esta tabla (allow o deny): "alguien lo toco".
+    assigned_roles: List[str] = []
+    # Roles que la pueden LEER de verdad, segun el resolutor del chat. Un rol al
+    # que solo se le denego NO cuenta.
+    visible_to_roles: List[str] = []
+    coverage: str  # "assigned" | "orphaned"
+    blocked_columns: List[str] = []
+    masked_columns: List[str] = []
+
+class GovernanceCoverageSummary(BaseModel):
+    total_tables: int
+    assigned_tables: int
+    orphaned_tables: int  # ningun rol las puede leer
+
+class GovernanceCoverageResponse(BaseModel):
+    connection_id: int
+    connection_name: str
+    tables: List[GovernanceCoverageTable] = []
+    summary: GovernanceCoverageSummary
+
 class ConnectionTestRequest(BaseModel):
     db_type: DatabaseType
     host: str
     port: int
     database_name: str
     username: str
-    password: str
+    # Este endpoint NO lee la contraseña: `test_connection_connectivity` solo
+    # abre un socket TCP o el fichero SQLite en modo ro. Exigirla era un
+    # requisito falso que rompia al boton "Probar" de la tarjeta, que prueba una
+    # conexion YAGUARDADA y por tanto no tiene la contraseña en el cliente
+    # (vive cifrada en el servidor). Ese 422 era ademas la causa de que la
+    # pantalla quedara en negro: FastAPI devuelve `detail` como ARRAY de
+    # objetos, el catch del front lo pasaba tal cual a `message` y React no
+    # puede renderizar un objeto como child. El modal si la mandaba, por eso
+    # solo fallaba la tarjeta.
+    password: str = ""
 
 class ConnectionTestResult(BaseModel):
     success: bool
@@ -170,7 +205,11 @@ class TraceabilityAuditData(BaseModel):
     sql_executed: Optional[str] = ""
     execution_time_ms: Optional[int] = 0
     rows_returned: Optional[int] = 0
-    validation_status: Optional[str] = "APROBADO"
+    # ponytail: si no lo se, es None. El default "APROBADO" afirmaba una
+    # validacion que nadie hacia: un snapshot de auditoria sin este campo
+    # entraba al export con el default ya puesto y el informe ejecutivo
+    # imprimia "Estado AST: APROBADO" sobre una consulta no validada.
+    validation_status: Optional[str] = None
     schema_tables_used: List[str] = []
     explanation: Optional[str] = None
 

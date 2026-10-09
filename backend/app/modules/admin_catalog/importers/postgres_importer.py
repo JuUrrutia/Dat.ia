@@ -6,6 +6,27 @@ from typing import List, Optional, Any
 from sqlalchemy import text, inspect
 from .base import sanitize_identifier
 
+from app.core.logging import logger
+
+
+class SQLScriptExecutionError(RuntimeError):
+    """Una o mas sentencias del script .sql fallaron.
+
+    Se propaga para que el endpoint no responda 201 con exito sobre una importacion
+    que en realidad fallo (o que solo borro tablas).
+    """
+
+    def __init__(self, failures: List[Any], created_tables: Optional[List[str]] = None):
+        self.failures = failures
+        self.created_tables = created_tables
+        verbs = ", ".join(sorted({f[0] for f in failures}))
+        count = len(failures)
+        super().__init__(
+            f"{count} sentencia(s) del script fallaron ({verbs}). "
+            "Las que si se ejecutaron quedaron aplicadas; revisa el script antes de reintentar."
+        )
+
+
 def infer_postgres_type(values: List[Any]) -> str:
     """
     Infers the most appropriate PostgreSQL column type from a sample of non-null values.
@@ -339,20 +360,46 @@ def import_sqlite_to_postgres(sqlite_path: str, target_engine) -> List[str]:
     return created_tables
 
 def import_sql_script_to_postgres(sql_path: str, target_engine) -> List[str]:
+    """REMOVIDO a proposito: ejecutar un .sql arbitrario queda fuera del producto.
+
+    Antes esto corria `conn.execute(text(stmt))` por cada sentencia del script, sin
+    ASTValidator y sin modo read-only, con el usuario del conector (superusuario en la
+    imagen oficial de Postgres). Alcanzaba DROP, GRANT, CREATE FUNCTION y
+    `COPY ... TO PROGRAM`, que es ejecucion de comandos en el host. Ademas los errores
+    se tragaban con `except: pass` y la funcion devolvia las tablas preexistentes
+    cuando el script no habia creado ninguna, reportando exito sobre una importacion
+    que solo habia destruido datos.
+
+    Se conserva la funcion, pero negandose, para que una llamada directa no tenga un
+    caminoalterno. Para conectar con Oracle/MySQL/MSSQL se usa la funcionalidad de
+    conectores, que es independiente de esto.
     """
-    Executes a raw SQL script against target PostgreSQL database.
-    """
+    raise ValueError(
+        "La importacion de scripts .sql fue retirada: ejecuta SQL arbitrario sin pasar "
+        "por el validador AST. Sube el dataset como .csv, .xlsx o .sqlite."
+    )
     with open(sql_path, "r", encoding="utf-8", errors="ignore") as sql_file:
         sql_script = sql_file.read()
 
     before_tables = set(inspect(target_engine).get_table_names(schema="public"))
     statements = [stmt.strip() for stmt in sql_script.split(";") if stmt.strip()]
+
+    failures = []
     with target_engine.begin() as conn:
         for stmt in statements:
             try:
                 conn.execute(text(stmt))
-            except Exception:
-                pass
+            except Exception as exc:
+                # Se registra que sentencia fallo y con que error. El script sigue:
+                # la decision de si un script parcialmente valido se acepta es del
+                # administrador, no nuestra.
+                failures.append((stmt.split()[0][:40].upper(), str(exc)[:200]))
+                logger.error("Sentencia fallida en import SQL: %s", stmt.split()[0][:40])
+
+    if failures:
+        # `begin()` commitea igual, asi que las sentencias que SI funcionaron ya
+        # quedaron aplicadas. Se avisa en vez de reportar un import limpio.
+        raise SQLScriptExecutionError(failures, created_tables=None)
+
     after_tables = set(inspect(target_engine).get_table_names(schema="public"))
-    new_tables = list(after_tables - before_tables)
-    return new_tables if new_tables else list(after_tables)
+    return list(after_tables - before_tables)

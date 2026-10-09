@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { ReportExportToolbar } from './report/ReportExportToolbar';
 import { ReportFindingsView } from './report/ReportFindingsView';
+import { copyToClipboard } from '../../shared/clipboard';
 
 interface ExecutiveReportViewProps {
   result: QueryResult;
@@ -28,15 +29,17 @@ export const ExecutiveReportView: React.FC<ExecutiveReportViewProps> = ({
 
   const onCopyReport = externalCopyHandler || (() => {
     const textToCopy = result.executive_report?.overview || result.summary_text || '';
-    navigator.clipboard.writeText(textToCopy);
-    setInternalCopied(true);
-    setTimeout(() => setInternalCopied(false), 2000);
+    void copyToClipboard(textToCopy).then((ok: boolean) => {
+      if (!ok) return;
+      setInternalCopied(true);
+      setTimeout(() => setInternalCopied(false), 2000);
+    });
   });
 
   return (
-    <div className="executive-report-view bg-gradient-to-br from-zinc-900/95 via-zinc-900/60 to-zinc-950/95 border border-white/10 rounded-3xl p-7 shadow-2xl space-y-7 animate-fadeIn">
+    <div className="executive-report-view bg-gradient-to-br from-white dark:from-zinc-900/95 via-slate-100 dark:via-zinc-900/60 to-slate-50 dark:to-zinc-950/95 border border-slate-200 dark:border-white/10 rounded-3xl p-7 shadow-2xl space-y-7 animate-fadeIn">
       {/* Report Title & Action Buttons */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-white/10">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-200 dark:border-white/10">
         <div className="space-y-1">
           <div className="flex items-center space-x-2">
             <FileText className="w-5 h-5 text-amber-400" />
@@ -44,7 +47,7 @@ export const ExecutiveReportView: React.FC<ExecutiveReportViewProps> = ({
               Informe Ejecutivo de Negocio
             </h3>
           </div>
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-slate-600 dark:text-zinc-400">
             Generado automáticamente a partir de la consulta "{result.question}" sobre la base de datos activa.
           </p>
         </div>
@@ -68,11 +71,11 @@ export const ExecutiveReportView: React.FC<ExecutiveReportViewProps> = ({
       <ReportFindingsView result={result} />
 
       {/* Section 4: Technical Traceability & Governance */}
-      <div className="pt-4 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-zinc-400">
+      <div className="pt-4 border-t border-slate-200 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 dark:text-zinc-400">
         <div className="flex items-center space-x-4">
-          <span>SQL: <strong className="text-zinc-200">{result.traceability?.validation_status || 'APROBADO'}</strong></span>
-          <span>Filas: <strong className="text-zinc-200">{result.traceability?.rows_returned || result.data_rows?.length || 0}</strong></span>
-          <span>Latencia: <strong className="text-zinc-200">{result.traceability?.execution_time_ms || 0} ms</strong></span>
+          <span>SQL: <strong className="text-slate-900 dark:text-zinc-200">{result.traceability?.validation_status || 'Sin registro'}</strong></span>
+          <span>Filas: <strong className="text-slate-900 dark:text-zinc-200">{result.traceability?.rows_returned || result.data_rows?.length || 0}</strong></span>
+          <span>Latencia: <strong className="text-slate-900 dark:text-zinc-200">{result.traceability?.execution_time_ms ?? '—'}{result.traceability?.execution_time_ms != null ? ' ms' : ''}</strong></span>
         </div>
 
         {onOpenTraceability && (

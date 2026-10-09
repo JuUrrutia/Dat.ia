@@ -3,6 +3,7 @@ import { CorporateConnection } from '../../features/admin/services/connector_ser
 import { Database, RefreshCw, CheckCircle2, AlertCircle, Save, X } from 'lucide-react';
 import { ConnectorFormFields } from './ConnectorFormFields';
 import { useConnectorForm } from '../../features/admin/hooks/useConnectorForm';
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 interface ConnectorModalProps {
   isOpen: boolean;
@@ -24,10 +25,13 @@ export const ConnectorModal: React.FC<ConnectorModalProps> = ({
     onClose
   );
 
+  // Dialog semantics, Escape, focus containment and focus restore.
+  const modalRef = useModalA11y<HTMLDivElement>(isOpen, onClose);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Configurar fuente de datos" tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
       <div className="glass-panel w-full max-w-xl rounded-2xl border border-slate-200 dark:border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] bg-white dark:bg-zinc-900">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-dark-border flex items-center justify-between bg-slate-50 dark:bg-dark-surface/90">
@@ -83,7 +87,11 @@ export const ConnectorModal: React.FC<ConnectorModalProps> = ({
                   : 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-500/10 dark:border-rose-500/20 dark:text-rose-400'
               }`}
             >
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              {state.testResult.success ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0" />
+              )}
               <span>{state.testResult.message} ({state.testResult.latency_ms} ms)</span>
             </div>
           )}
