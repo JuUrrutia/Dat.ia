@@ -1,17 +1,50 @@
 import React, { useState } from 'react';
 import { useAuth } from '../features/auth/context/AuthContext';
-import { ShieldCheck, Database, Lock, KeyRound, Mail, UserPlus, LogIn, ArrowRight, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Database, Lock, KeyRound, Mail, UserPlus, LogIn, ArrowRight, AlertCircle, Eye, EyeOff, Users, ChevronDown } from 'lucide-react';
+import { CORPORATE_ROLES } from '../constants';
 import logoDatiaDark from './Logo_datia_2.png';
 import logoDatiaLight from './Logo_Datia_3.png';
 
-const PRESET_USERS = [
-  { name: 'Administrador', username: 'admin', password: 'admin123', role: 'Administrador', is_admin: true },
-  { name: 'Economista', username: 'economista', password: 'economista123', role: 'Economista', is_admin: false },
-  { name: 'Soporte TI', username: 'ti', password: 'ti123', role: 'TI', is_admin: false },
-];
+// Las credenciales de la demo viven aca porque el backend las siembra; el NOMBRE
+// del rol sale de `CORPORATE_ROLES`, que es la unica lista del frontend. Escribir
+// el nombre dos veces hacia que el perfil del desplegable y el badge del Header
+// digan cosas distintas en cuanto uno de los dos se toca.
+//
+// El orden sigue el de la matriz de `init_db`, de mas a menos privilegios.
+const DEMO_PASSWORDS: Record<string, string> = {
+  'Administrador de Plataforma': 'admin123',
+  'Director Ejecutivo (C-Level)': 'director123',
+  'Analista Financiero & Comercial': 'economista123',
+  'Gerente de Talento & Operaciones': 'talento123',
+  'Analista de Datos & BI': 'bi123',
+  'Ingeniero de Infraestructura & TI': 'ti123',
+  'Oficial de Cumplimiento & Seguridad': 'seguridad123',
+  'Usuario Consultor': 'consultor123',
+};
+
+const DEMO_USERNAMES: Record<string, string> = {
+  'Administrador de Plataforma': 'admin',
+  'Director Ejecutivo (C-Level)': 'director',
+  'Analista Financiero & Comercial': 'economista',
+  'Gerente de Talento & Operaciones': 'talento',
+  'Analista de Datos & BI': 'bi',
+  'Ingeniero de Infraestructura & TI': 'ti',
+  'Oficial de Cumplimiento & Seguridad': 'seguridad',
+  'Usuario Consultor': 'consultor',
+};
+
+const DEMO_PROFILES = CORPORATE_ROLES
+  .filter((r) => DEMO_USERNAMES[r.name])
+  .map((r) => ({
+    role: r.name,
+    username: DEMO_USERNAMES[r.name],
+    password: DEMO_PASSWORDS[r.name],
+  }));
+
+const PERFIL_INICIAL = DEMO_PROFILES[0].username;
 
 export const LoginPage: React.FC = () => {
-  const { login, register, loginDemo, error, clearError } = useAuth();
+  const { login, register, error, clearError } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
 
   // Form Fields
@@ -22,6 +55,14 @@ export const LoginPage: React.FC = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  // Perfil elegido en el desplegable de la demo. Es estado propio, no el valor de
+  // `username`: el desplegable elige una cuenta y el login manual escribe en el
+  // campo. Si compartieran estado, teclear un usuario cerrando en el perfil
+  // "Administrador" pondria las credenciales de otro sin que nadie lo pidiera.
+  const [perfilDemo, setPerfilDemo] = useState<string>(PERFIL_INICIAL);
+  // One toggle for both password fields on purpose: confirming a password means
+  // comparing the two, which needs them visible at the same time.
+  const [showPasswords, setShowPasswords] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,21 +99,20 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handlePresetLogin = async (u: typeof PRESET_USERS[0]) => {
-    setUsername(u.username);
-    setPassword(u.password);
+  // Elegir un perfil RELLENA el formulario en vez de entrar directo. El login
+  // manual queda por encima y es el que manda; con autologin, cambiar el
+  // desplegable se comia la sesion de alguien que solo estaba mirando el
+  // catalogo de roles. Rellenar deja la accion a un click explicito y hace
+  // visible que esas credenciales son de la demo y no un atajo.
+  const handlePerfilChange = (username: string) => {
+    setPerfilDemo(username);
+    const p = DEMO_PROFILES.find((x) => x.username === username);
+    if (!p) return;
+    setUsername(p.username);
+    setPassword(p.password);
     setLocalError(null);
     clearError();
-    setIsSubmitting(true);
-    try {
-      await login(u.username, u.password);
-    } catch (err: any) {
-      loginDemo(u.username, u.role, u.is_admin);
-    } finally {
-      setIsSubmitting(false);
-    }
   };
-
   const activeError = localError || error;
 
   return (
@@ -84,7 +124,7 @@ export const LoginPage: React.FC = () => {
             <img src={logoDatiaLight} alt="Logo Datia" className="block dark:hidden w-full h-full object-contain p-1" />
             <img src={logoDatiaDark} alt="Logo Datia" className="hidden dark:block w-full h-full object-contain p-1" />
           </div>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight">Dat.ia</h1>
+          <h1 className="text-2xl font-extrabold text-app-text tracking-tight">Dat.ia</h1>
           <p className="text-xs text-gray-400">Transformando datos en decisiones</p>
         </div>
 
@@ -98,7 +138,7 @@ export const LoginPage: React.FC = () => {
               className={`flex-1 flex items-center justify-center space-x-2 py-2 rounded-lg text-xs font-semibold transition-colors ${
                 mode === 'login'
                   ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
-                  : 'text-gray-400 hover:text-white'
+                  : 'text-gray-400 hover:text-app-text'
               }`}
             >
               <LogIn className="w-3.5 h-3.5" />
@@ -110,7 +150,7 @@ export const LoginPage: React.FC = () => {
               className={`flex-1 flex items-center justify-center space-x-2 py-2 rounded-lg text-xs font-semibold transition-colors ${
                 mode === 'register'
                   ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
-                  : 'text-gray-400 hover:text-white'
+                  : 'text-gray-400 hover:text-app-text'
               }`}
             >
               <UserPlus className="w-3.5 h-3.5" />
@@ -138,7 +178,7 @@ export const LoginPage: React.FC = () => {
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="ej. economista"
                   required
-                  className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
+                  className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-app-text placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
                 />
                 <KeyRound className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
               </div>
@@ -155,7 +195,7 @@ export const LoginPage: React.FC = () => {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="usuario@empresa.com"
                     required
-                    className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
+                    className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-app-text placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
                   />
                   <Mail className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
                 </div>
@@ -167,14 +207,24 @@ export const LoginPage: React.FC = () => {
               <div className="relative">
                 <input
                   id="login-password-input"
-                  type="password"
+                  name="password"
+                  type={showPasswords ? 'text' : 'password'}
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
+                  className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-10 py-2.5 text-xs text-app-text placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
                 />
                 <Lock className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
+                <button
+                  type="button"
+                  onClick={() => setShowPasswords((v) => !v)}
+                  aria-label={showPasswords ? 'Ocultar contraseñas' : 'Mostrar contraseñas'}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-gray-400 hover:text-app-text hover:bg-dark-card transition-colors"
+                >
+                  {showPasswords ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 
@@ -184,12 +234,14 @@ export const LoginPage: React.FC = () => {
                 <div className="relative">
                   <input
                     id="login-confirm-password-input"
-                    type="password"
+                    name="confirmPassword"
+                    type={showPasswords ? 'text' : 'password'}
+                    autoComplete="new-password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
                     required
-                    className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
+                    className="w-full bg-dark-base border border-dark-border rounded-xl pl-9 pr-10 py-2.5 text-xs text-app-text placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
                   />
                   <Lock className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
                 </div>
@@ -206,22 +258,36 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          {/* Quick Demo Selector for 3 Profiles */}
+          {/* Selector de perfil de la demo: un desplegable y no una fila de
+              botones. Los 8 perfiles no entran en tres botones sin que las
+              etiquetas se corten, y un desplegable deja leer el nombre completo
+              del rol, que es justo lo que hay que comparar entre perfiles. */}
           <div className="pt-4 border-t border-dark-border/60">
-            <p className="text-[11px] text-gray-400 text-center mb-2.5 font-medium">O prueba directamente con un perfil asignado:</p>
-            <div className="grid grid-cols-3 gap-2">
-              {PRESET_USERS.map((u) => (
-                <button
-                  key={u.username}
-                  type="button"
-                  onClick={() => handlePresetLogin(u)}
-                  className="bg-dark-base/50 hover:bg-dark-card border border-dark-border hover:border-brand-500/40 rounded-xl p-2.5 text-center transition-all active:scale-[0.98] cursor-pointer"
-                >
-                  <div className="text-[11px] font-semibold text-gray-200 truncate">{u.name}</div>
-                  <div className="text-[10px] text-brand-400 font-medium truncate">{u.role}</div>
-                </button>
-              ))}
+            <label
+              htmlFor="login-demo-perfil"
+              className="block text-[11px] text-gray-400 mb-2 font-medium"
+            >
+              O entra con un perfil de la demo
+            </label>
+            <div className="relative">
+              <select
+                id="login-demo-perfil"
+                value={perfilDemo}
+                onChange={(e) => handlePerfilChange(e.target.value)}
+                className="w-full appearance-none bg-dark-base/50 border border-dark-border hover:border-brand-500/40 focus:outline-none focus:border-brand-500 rounded-xl pl-9 pr-9 py-2.5 text-xs text-app-text transition-colors cursor-pointer"
+              >
+                {DEMO_PROFILES.map((p) => (
+                  <option key={p.username} value={p.username} className="bg-dark-card text-app-text">
+                    {p.role} — {p.username}
+                  </option>
+                ))}
+              </select>
+              <Users className="w-4 h-4 text-gray-500 absolute left-3 top-3 pointer-events-none" />
+              <ChevronDown className="w-4 h-4 text-gray-500 absolute right-3 top-3 pointer-events-none" />
             </div>
+            <p className="text-[10px] text-gray-500 mt-1.5 text-center">
+              Rellena el formulario. El acceso ocurre al pulsar «Acceder al Sistema».
+            </p>
           </div>
         </div>
 

@@ -6,13 +6,22 @@ from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
 class TestRBACGovernance(unittest.TestCase):
 
     def test_admin_gets_all_catalog_tables(self):
-        """Admin role queries SemanticCatalog model and gets all catalog tables."""
+        """Admin role queries SemanticCatalog model and gets all catalog tables.
+
+        El universo del admin es "introspeccion fisica MAS catalogo semantico"
+        (`get_authorized_schema_prompt`), asi que este test tiene que apagar la
+        introspeccion: un `db` magico no controla el disco, y sin apagarla se
+        cuela la demo SQLite del proyecto y el admin 've' sus nueve tablas.
+        """
+        from unittest.mock import patch
+
         mock_entry1 = MagicMock(table_name="dim_clientes", column_name="id_cliente", description="ID")
         mock_entry2 = MagicMock(table_name="fact_ventas", column_name="id_venta", description="ID")
         mock_db = MagicMock()
         mock_db.query().filter().all.return_value = [mock_entry1, mock_entry2]
 
-        res = QueryEngine.get_allowed_tables_for_role("Administrador", is_admin=True, db=mock_db)
+        with patch.object(DynamicSchemaPruningService, "get_physical_db_tables", return_value=set()):
+            res = QueryEngine.get_allowed_tables_for_role("Administrador", is_admin=True, db=mock_db)
         self.assertEqual(res, {"dim_clientes", "fact_ventas"})
 
     def test_role_permissions_queried_from_permission_model(self):
@@ -278,6 +287,22 @@ class TestRBACGovernance(unittest.TestCase):
                 self.assertIsNotNone(denial, f"Question '{q}' should be blocked for {role}")
                 self.assertIn("Gobernanza RBAC: Acceso denegado", denial)
                 self.assertIn("salarios, remuneraciones, nóminas", denial)
+
+    def test_admin_never_blocked_by_domain_governance(self):
+        """Admin role can query across all domains (financial, IT, HR) without RBAC block."""
+        admin_questions = [
+            "¿Cuáles son los sueldos del personal?",
+            "¿Cuál es la facturación del período?",
+            "Estado de servidores y CPU",
+            "Compara los ingresos contra los costos por producto y dime cuáles tienen menor margen"
+        ]
+        for q in admin_questions:
+            denial = QueryEngine.check_domain_governance(
+                question=q,
+                user_role="Administrador",
+                allowed_tables={"fact_ventas", "dim_servidores", "dim_empleados"}
+            )
+            self.assertIsNone(denial, f"Admin should NEVER be blocked by RBAC on question '{q}'")
 
 if __name__ == "__main__":
     unittest.main()

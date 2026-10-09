@@ -14,7 +14,13 @@ class AuditLog(Base):
     
     question_prompt = Column(Text, nullable=False)
     sql_generated = Column(Text, nullable=True)
-    validation_status = Column(String(50), nullable=False) # APROBADO | RECHAZADO_TABLA_NO_PERMITIDA | ERROR_SINTAXIS
+    # Nullable A PROPOSITO: `NULL` significa "no se registro validacion para esta
+    # consulta". Antes la columna era NOT NULL y eso obligaba al router a inventar
+    # "APROBADO" cuando la respuesta no traia trazabilidad, asi que el CSV de
+    # En un CSV de compliance exportado, "" y "APROBADO" NO pueden significar lo
+    # mismo: uno es "no lo se", el otro es "validado". La migracion que abre la
+    # columna esta en core/database.py.
+    validation_status = Column(String(50), nullable=True) # APROBADO | RECHAZADO_TABLA_NO_PERMITIDA | ERROR_SINTAXIS | NULL (sin registro)
     
     target_database = Column(String(100), nullable=True)
     execution_time_ms = Column(Integer, default=0)

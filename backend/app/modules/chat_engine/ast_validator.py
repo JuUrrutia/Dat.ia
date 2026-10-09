@@ -25,7 +25,8 @@ class ASTValidator:
         allowed_tables: Optional[Set[str]] = None,
         blocked_columns: Optional[Set[str]] = None,
         table_columns: Optional[Dict[str, List[str]]] = None,
-        max_limit: int = 500
+        max_limit: int = 500,
+        is_admin: bool = False
     ) -> Tuple[bool, str, Dict[str, Any]]:
         """
         Validates raw_sql against strict security rules and returns:
@@ -80,15 +81,36 @@ class ASTValidator:
             if table_name:
                 extracted_tables.add(table_name)
 
-        if allowed_tables is not None:
+        # Exclude CTE (Common Table Expression) alias names so subqueries/CTEs are not flagged as missing tables
+        cte_names = {cte.alias_or_name.lower() for cte in expression.find_all(exp.CTE) if cte.alias_or_name}
+        physical_extracted = extracted_tables - cte_names
+
+        # Administrators have total visibility over all data tables in the database
+        if not is_admin and allowed_tables is not None:
             allowed_set = {t.lower() for t in allowed_tables}
-            unauthorized_tables = extracted_tables - allowed_set
+            unauthorized_tables = physical_extracted - allowed_set
             if unauthorized_tables:
                 raise ASTValidationError(
-                    "Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos."
+                    f"Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos. Tablas no autorizadas: {', '.join(sorted(unauthorized_tables))}."
                 )
 
         # Rule 4.5: Expand SELECT * / table.* to explicit allowed columns
+        # A projection star (SELECT * / tabla.*) cannot be filtered without column metadata,
+        # so without table_columns we fail CLOSED instead of letting the star through untouched.
+        # COUNT(*) is an aggregate, not a projection star, and reveals no column.
+        projection_star = any(
+            isinstance(item, exp.Star)
+            or (isinstance(item, exp.Column) and isinstance(item.this, exp.Star))
+            for select_node in expression.find_all(exp.Select)
+            for item in select_node.expressions
+        )
+        if projection_star and not table_columns:
+            raise ASTValidationError(
+                "Seguridad: No se puede expandir 'SELECT *' porque no hay información de columnas "
+                "disponible para esta conexión. Escribe las columnas explícitas "
+                "(ej. SELECT id, monto FROM fact_ventas) o pide al administrador que publique el catálogo."
+            )
+
         has_star = expression.find(exp.Star) is not None
         if has_star:
             if table_columns:
@@ -193,36 +215,72 @@ class ASTValidator:
                 if col_name:
                     extracted_columns.add(col_name)
 
-        if blocked_columns is not None:
+        if not is_admin and blocked_columns is not None:
             blocked_set = {c.lower() for c in blocked_columns}
             attempted_blocked = extracted_columns & blocked_set
             if attempted_blocked:
                 raise ASTValidationError(
-                    "Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos."
+                    f"Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos. Columnas bloqueadas: {', '.join(sorted(attempted_blocked))}."
                 )
 
-        # Rule 6: Inject LIMIT / TOP if not present or exceeds max_limit
-        existing_limit = expression.args.get("limit")
-        if existing_limit is None:
-            expression = expression.limit(max_limit)
-        else:
+        # Rule 6: Inject LIMIT / TOP if not present or exceeds max_limit.
+        # Clamp every Limit in the tree (root and subqueries): the clamp is a ceiling, never a floor.
+        # sqlglot >=30 exposes Literal.this as a read-only property, so nodes are replaced, not mutated.
+        for limit_node in expression.find_all(exp.Limit):
             try:
-                current_val = int(existing_limit.expression.this)
-                if current_val > max_limit:
-                    expression.args["limit"].expression.this = str(max_limit)
+                current_val = int(limit_node.expression.this)
             except Exception:
-                expression.args["limit"].expression.this = str(max_limit)
+                current_val = None
+            if current_val is None or current_val > max_limit:
+                limit_node.set("expression", exp.Literal.number(max_limit))
+
+        if expression.args.get("limit") is None:
+            expression = expression.limit(max_limit)
 
         sanitized_sql = expression.sql(dialect=sqlglot_dialect)
 
+        # sqlglot emite la sentencia SIN terminador, y eso hace que el SQL que el
+        # producto muestra y deja copiar no sea ejecutable tal cual: pegado en un
+        # psql interactivo queda en bucle esperando `;` y no imprime nada — ni
+        # filas, ni `(0 rows)`, ni error, solo el prompt de vuelta. Se lee como
+        # "no hay datos" cuando en realidad la consulta nunca corrio.
+        #
+        # Se termina aqui, y no en el boton de copiar, para que tambien quede
+        # bien en `audit_logs`, en la trazabilidad y en los exports PDF/Excel: la
+        # verificacion a mano es justamente el caso de uso.
+        #
+        # Verificado que no rompe la ejecucion: PostgreSQL (psycopg) y SQLite
+        # (sqlite3) aceptan igual un `;` final en un SELECT.
+        if not sanitized_sql.rstrip().endswith(";"):
+            sanitized_sql = sanitized_sql.rstrip() + ";"
+
         metadata = {
-            "tables_used": list(extracted_tables),
-            "columns_used": list(extracted_columns),
+            "tables_used": sorted(list(physical_extracted)),
+            "columns_used": sorted(list(extracted_columns)),
             "limit_applied": max_limit,
             "dialect": sqlglot_dialect
         }
 
         return True, sanitized_sql, metadata
+
+    @classmethod
+    def extract_tables_from_query(cls, sql: str, dialect: str = "postgres") -> Set[str]:
+        """
+        Extracts physical table names from a SQL query using sqlglot AST,
+        excluding CTE aliases. Fails safe and returns an empty set on parse error.
+        """
+        if not sql or not sql.strip():
+            return set()
+        sqlglot_dialect = dialect.lower() if dialect.lower() in cls.ALLOWED_DIALECTS else "postgres"
+        try:
+            expr = parse_one(sql.strip().rstrip(";"), read=sqlglot_dialect)
+            if not expr:
+                return set()
+            tables = {t.name.lower() for t in expr.find_all(exp.Table) if t.name}
+            ctes = {cte.alias_or_name.lower() for cte in expr.find_all(exp.CTE) if cte.alias_or_name}
+            return tables - ctes
+        except Exception:
+            return set()
 
     @classmethod
     def generate_sql_explanation(cls, sql: str, dialect: str = "sqlite") -> str:

@@ -21,6 +21,45 @@ jobs:
   backend-tests:
     name: Backend Tests (pytest)
     runs-on: ubuntu-latest
+
+    # Sin este bloque la suite corria contra el fallback SQLite de
+    # `app/core/database.py` (lineas 22-38): otra demo y otro motor, que es como
+    # `test_transaction_hygiene.py` se saltea en vez de demostrar el sintoma
+    # `InFailedSqlTransaction`. Con el servicio, la corrida de CI es la misma que
+    # la de la maquina del dev.
+    #
+    # Los nombres coinciden EXACTAMENTE con los campos de `app/core/config.py`
+    # porque `Settings.model_config` va con `case_sensitive=True`. En CI no hay
+    # `.env` (Settings lee `env_file=(".env", "../.env")`), asi que si el workflow
+    # no los aporta todos, `Settings` cae a sus defaults -- que apuntan al 127.0.0.1
+    # equivocado y a una base de metadata vacia.
+    env:
+      POSTGRES_SERVER: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: democratizacion_metadatos
+
+    services:
+      # Misma imagen que `docker-compose.yml`: el motor que produccion usa no es
+      # negociable para una suite que existe, entre otras cosas, para probar la
+      # semantica transaccional de PostgreSQL.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: democratizacion_metadatos
+        ports:
+          - 5432:5432
+        # `pg_isready` hace que GitHub espere a que el servidor acepte conexiones
+        # en vez de correr pytest contra un Postgres que todavia arranca.
+        options: >-
+          --health-cmd "pg_isready -U postgres -d democratizacion_metadatos"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -36,6 +75,29 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
+
+      # Siembra la demo antes de pytest. Lo que la suite necesita de verdad de
+      # este paso es `democratizacion_empresa`: `init_db`, que corre el fixture de
+      # conftest, crea la CorporateConnection apuntando ahi
+      # (`app/db/init_db.py:169`), y sin las 9 tablas sembradas los tests que
+      # consultan la demo no encuentran nada que consultar.
+      #
+      # `POSTGRES_DB` NO se sobreescribe en este paso, y no por descuido: el
+      # script es un proceso aparte que nunca importa `tests/conftest.py`, asi que
+      # escribe en `democratizacion_metadatos` mientras conftest gobierna
+      # `democratizacion_metadatos_test`. Son dos bases distintas y no se tocan.
+      # Fijar el mismo nombre para las dos las mezclaria, que es justo el
+      # aislamiento que conftest existe para dar.
+      #
+      # El script es CREATE-only (todo `CREATE ... IF NOT EXISTS`, y sale por si
+      # no alcanza el servidor) y ademas es idempotente: si `fact_ventas` ya tiene
+      # filas, conserva los datos. `set -e` hace explicito que un `sys.exit(1)` del
+      # script tumba el job en vez de que pytest corra contra una demo a medias.
+      - name: Seed PostgreSQL demo (setup_postgres_full.py)
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/setup_postgres_full.py
 
       - name: Run pytest test suite
         working-directory: backend
@@ -55,10 +117,19 @@ jobs:
           node-version: 20
           cache: 'npm'
 
+      # `npm ci` y no `npm ci || npm install`: el fallback silencia un
+      # package-lock.json desincronizado de package.json, que es justo lo que
+      # CI debería rechazar en vez de tapar.
       - name: Install frontend dependencies
         run: |
-          npm ci || npm install
+          npm ci --no-audit --prefer-offline
 
       - name: Run TypeScript typecheck (tsc --noEmit)
         run: |
           npx tsc --noEmit
+
+      # `npm run build` ya ejecuta `tsc`, pero además genera el bundle: una app
+      # que no compila no debe pasar CI aunque los tipos cuadren.
+      - name: Build frontend (vite build)
+        run: |
+          npm run build

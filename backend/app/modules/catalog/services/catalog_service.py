@@ -1,14 +1,15 @@
-from typing import List, Optional, Any, Dict, Tuple
+from typing import List, Optional, Any, Dict, Set, Tuple
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.security import mask_value
 from app.modules.admin_catalog.models import SemanticCatalog, CorporateConnection, DatabaseType
 from app.modules.admin_catalog.schemas import (
     SemanticCatalogCreate, SemanticCatalogUpdate,
     DataDictionaryResponse, DataDictionaryTable, DataDictionaryColumn,
     AutoEnrichRequest, AutoEnrichResponse
 )
-from app.modules.catalog.services.schema_inspector import SchemaInspector
+from app.modules.catalog.services.schema_inspector import SchemaInspector, SchemaIntrospectionError
 from app.modules.catalog.services.catalog_enricher import CatalogEnricher
 
 class CatalogDomainService:
@@ -59,6 +60,20 @@ class CatalogDomainService:
         target_schema = item_in.schema_name
         conn_record = db.query(CorporateConnection).filter(CorporateConnection.id == target_conn_id).first()
         if not conn_record:
+            # `connection_id` tiene default 1 (= "no especificada"), y ahi si
+            # vale la pena caerse a la conexion activa: es lo que siempre hizo
+            # este endpoint y lo que espera el frontend. Lo que NO se vale es
+            # adivinar cuando el cliente SI mando un id explicito: con
+            # connection_id=999 se escribia contra la conexion activa mas
+            # reciente y, si ya habia curadoria para (tabla, columna) ahi, el
+            # bloque de `existing` de abajo le pisaba friendly_name, description,
+            # synonyms y business_formula.
+            explicit_id = "connection_id" in getattr(item_in, "model_fields_set", set())
+            if explicit_id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Conexión corporativa {target_conn_id} no encontrada."
+                )
             conn_record = db.query(CorporateConnection).filter(CorporateConnection.is_active == True).order_by(CorporateConnection.id.desc()).first()
             if not conn_record:
                 conn_record = db.query(CorporateConnection).order_by(CorporateConnection.id.desc()).first()
@@ -142,19 +157,52 @@ class CatalogDomainService:
         return {"message": "Entrada de catálogo semántico eliminada.", "id": item_id}
 
     @classmethod
-    def get_data_dictionary(cls, db: Session, connection_id: Optional[int] = None) -> DataDictionaryResponse:
+    def get_data_dictionary(
+        cls,
+        db: Session,
+        connection_id: Optional[int] = None,
+        blocked_columns: Optional[Set[str]] = None,
+        masked_columns: Optional[Set[str]] = None,
+    ) -> DataDictionaryResponse:
+        """Introspeccion del esquema de la conexion.
+
+        `blocked_columns` y `masked_columns` son conjuntos de nombres de columna en
+        minuscula. Las BLOCKED no aportan valores de muestra y las MASKED aportan
+        valores enmascarados. Sin ellos el diccionario devuelve el valor real de
+        columnas que el perfil no deberia ver.
+        """
         db_path, conn_obj = SchemaInspector.resolve_connection_db_path(db, connection_id)
-        tables_meta = SchemaInspector.introspect_connection_metadata(conn_obj, db_path)
+        try:
+            tables_meta = SchemaInspector.introspect_connection_metadata(conn_obj, db_path)
+        except SchemaIntrospectionError as ex:
+            # 502: la peticion es valida, la base de destino no responde. Un 200
+            # con total_tables=0 le decia al usuario "esta base no tiene tablas".
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=str(ex)
+            )
 
         catalog_entries = db.query(SemanticCatalog).filter(
             SemanticCatalog.connection_id == (conn_obj.id if conn_obj else 1)
         ).all()
 
-        catalog_map: Dict[str, SemanticCatalog] = {}
+        # Clave (esquema, tabla, columna) en minuscula. Con solo tabla+columna, un
+        # "codigo" de `ventas.public` y otro de `ventas.priv` colisionaban y la
+        # descripcion de una se le asignaba a la otra. Sin esquema NO se
+        # overboardan: se registra con esquema "" y se prueba como fallback, que es
+        # lo que necesitan las filas sembradas antes de que existiera la columna.
+        catalog_map: Dict[Tuple[str, str, str], SemanticCatalog] = {}
         for entry in catalog_entries:
-            col = entry.column_name or "*"
-            key = f"{entry.table_name.lower()}.{col.lower()}"
-            catalog_map[key] = entry
+            col = (entry.column_name or "*").lower()
+            sch = (entry.schema_name or "").strip().lower()
+            tbl = (entry.table_name or "").lower()
+            catalog_map[(sch, tbl, col)] = entry
+
+        def _lookup(schema_name: Optional[str], table_name: str, column_name: str) -> Optional[SemanticCatalog]:
+            sch = (schema_name or "").strip().lower()
+            tbl = (table_name or "").lower()
+            col = (column_name or "*").lower()
+            return catalog_map.get((sch, tbl, col)) or catalog_map.get(("", tbl, col))
 
         tables_result: List[DataDictionaryTable] = []
         total_cols = 0
@@ -163,13 +211,25 @@ class CatalogDomainService:
             tbl = t_info["table_name"]
             schema_name = t_info["schema_name"]
             row_count = t_info["row_count"]
-            table_cat = catalog_map.get(f"{tbl.lower()}.*")
+            table_cat = _lookup(schema_name, tbl, "*")
             table_desc = table_cat.description if table_cat else None
 
             cols_result: List[DataDictionaryColumn] = []
             for c_info in t_info["columns"]:
                 col_name = c_info["name"]
-                cat_entry = catalog_map.get(f"{tbl.lower()}.{col_name.lower()}")
+                col_key = col_name.lower()
+                cat_entry = _lookup(schema_name, tbl, col_name)
+
+                # La columna sigue listada (el nombre no es el secreto, y asi
+                # funciona tambien el prompt del esquema) pero los valores de
+                # muestra respetan la matriz RBAC: BLOCKED no aporta ninguno y
+                # MASKED aporta el valor enmascarado.
+                if blocked_columns and col_key in blocked_columns:
+                    samples = []
+                elif masked_columns and col_key in masked_columns:
+                    samples = [mask_value(v) for v in (c_info["sample_values"] or [])]
+                else:
+                    samples = c_info["sample_values"]
 
                 cols_result.append(DataDictionaryColumn(
                     name=col_name,
@@ -177,7 +237,7 @@ class CatalogDomainService:
                     is_pk=c_info["is_pk"],
                     is_nullable=c_info["is_nullable"],
                     default_value=c_info["default_value"],
-                    sample_values=c_info["sample_values"],
+                    sample_values=samples,
                     friendly_name=cat_entry.friendly_name if cat_entry else None,
                     description=cat_entry.description if cat_entry else None,
                     business_formula=cat_entry.business_formula if cat_entry else None,

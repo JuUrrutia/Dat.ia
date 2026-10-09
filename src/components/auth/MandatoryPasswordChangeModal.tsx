@@ -1,21 +1,30 @@
 import React, { useState } from 'react';
-import { ShieldAlert, KeyRound, AlertTriangle, RefreshCw } from 'lucide-react';
+import { ShieldAlert, KeyRound, AlertTriangle, RefreshCw, LogOut, Eye, EyeOff } from 'lucide-react';
 import { authService } from '../../features/auth/services/auth_service';
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 interface MandatoryPasswordChangeModalProps {
   isOpen: boolean;
   onSuccess: () => void;
+  onCancel?: () => void;
 }
 
 export const MandatoryPasswordChangeModal: React.FC<MandatoryPasswordChangeModalProps> = ({
   isOpen,
   onSuccess,
+  onCancel,
 }) => {
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // One toggle for all three: confirming a new password means comparing the
+  // last two, which needs both visible at the same time.
+  const [showPasswords, setShowPasswords] = useState(false);
+
+  // Dialog semantics, Escape, focus containment and focus restore.
+  const modalRef = useModalA11y<HTMLDivElement>(isOpen, onCancel);
 
   if (!isOpen) return null;
 
@@ -56,14 +65,14 @@ export const MandatoryPasswordChangeModal: React.FC<MandatoryPasswordChangeModal
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Cambio de contraseña obligatorio" tabIndex={-1} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
       <div className="glass-panel w-full max-w-md rounded-2xl border border-amber-500/30 p-6 space-y-4 shadow-2xl shadow-amber-500/10">
         <div className="flex items-center space-x-3 border-b border-dark-border pb-3">
           <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
             <ShieldAlert className="w-5 h-5" />
           </div>
           <div>
-            <h4 className="text-sm font-bold text-white">
+            <h4 className="text-sm font-bold text-app-text">
               Cambio de Contraseña Obligatorio
             </h4>
             <p className="text-xs text-gray-400">Política de Gobernanza y Seguridad</p>
@@ -74,6 +83,22 @@ export const MandatoryPasswordChangeModal: React.FC<MandatoryPasswordChangeModal
           Tu cuenta tiene asignada una clave provisional o se ha solicitado el cambio forzado de contraseña.
           Debes definir una nueva clave para continuar utilizando la plataforma.
         </p>
+
+        {/*
+          Sin esto el modal es una caja sin salida: el overlay es `inset-0 z-[100]`
+          y el logout del Header esta en `z-30`, o sea debajo. Sin refresh del token
+          tampoco se escapa. Cerrar sesion es la unica salida y tiene que existir.
+        */}
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-app-text transition-colors"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Salir de mi cuenta</span>
+          </button>
+        )}
 
         {error && (
           <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center space-x-2">
@@ -90,13 +115,24 @@ export const MandatoryPasswordChangeModal: React.FC<MandatoryPasswordChangeModal
             <input
               id="mandatory-old-pwd"
               aria-label="Contraseña Actual o Temporal"
-              type="password"
+              name="currentPassword"
+              autoComplete="current-password"
+              type={showPasswords ? 'text' : 'password'}
               value={oldPassword}
               onChange={(e) => setOldPassword(e.target.value)}
               placeholder="Ingresa la clave provisional..."
               required
-              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
+              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-app-text focus:outline-none focus:border-amber-500"
             />
+            <button
+              type="button"
+              onClick={() => setShowPasswords((v) => !v)}
+              aria-label={showPasswords ? 'Ocultar contraseñas' : 'Mostrar contraseñas'}
+              className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-app-text transition-colors"
+            >
+              {showPasswords ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              <span>{showPasswords ? 'Ocultar' : 'Mostrar'} contraseñas</span>
+            </button>
           </div>
 
           <div>
@@ -106,13 +142,15 @@ export const MandatoryPasswordChangeModal: React.FC<MandatoryPasswordChangeModal
             <input
               id="mandatory-new-pwd"
               aria-label="Nueva Contraseña"
-              type="password"
+              name="newPassword"
+              autoComplete="new-password"
+              type={showPasswords ? 'text' : 'password'}
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="Crea una contraseña segura..."
               required
               minLength={6}
-              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
+              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-app-text focus:outline-none focus:border-amber-500"
             />
           </div>
 
@@ -123,13 +161,15 @@ export const MandatoryPasswordChangeModal: React.FC<MandatoryPasswordChangeModal
             <input
               id="mandatory-confirm-pwd"
               aria-label="Confirmar Nueva Contraseña"
-              type="password"
+              name="confirmPassword"
+              autoComplete="new-password"
+              type={showPasswords ? 'text' : 'password'}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Repite la nueva contraseña..."
               required
               minLength={6}
-              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
+              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-app-text focus:outline-none focus:border-amber-500"
             />
           </div>
 

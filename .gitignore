@@ -51,6 +51,12 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Agent skills & tooling (local only)
+.agents/
+.opencode/
+opencode.json
+skills-lock.json
+
 # SQLite databases & data files
 *.sqlite
 *.sqlite3
@@ -61,3 +67,4 @@ Thumbs.db
 backend/*.db
 backend/*.sqlite
 backend/*.sqlite3
+data_sources/

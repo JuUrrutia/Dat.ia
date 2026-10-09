@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { X, UserPlus } from 'lucide-react';
+import { X, UserPlus, ShieldCheck } from 'lucide-react';
 import { UserItem } from './AdminUsersTab';
 import { authService } from '../../features/auth/services/auth_service';
-import { CORPORATE_ROLES } from '../../constants';
+import { useModalA11y } from '../../hooks/useModalA11y';
+import { resolveRoleLabel } from '../../constants';
 
 interface UserAddModalProps {
   isOpen: boolean;
@@ -18,10 +19,11 @@ export const UserAddModal: React.FC<UserAddModalProps> = ({
   const [newUsername, setNewUsername] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState('Analista Financiero & Comercial');
-  const [newIsAdmin, setNewIsAdmin] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Dialog semantics, Escape, focus containment and focus restore.
+  const modalRef = useModalA11y<HTMLDivElement>(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -36,19 +38,23 @@ export const UserAddModal: React.FC<UserAddModalProps> = ({
     setCreateError(null);
 
     try {
-      await authService.register({
+      // /auth/register is a PUBLIC self-registration endpoint: the backend
+      // ignores the payload and decides el rol (o lo deja en null). Build the row
+      // from what the server actually did — a synthetic id 404s the next
+      // Edit/Sesiones/Reset call, and a role the account does not hold is worse
+      // than saying que no tiene.
+      const created = await authService.register({
         username: newUsername,
         email: newEmail || undefined,
         password: newPassword,
-        is_admin: newIsAdmin,
       });
 
       const createdItem: UserItem = {
-        id: Date.now(),
-        name: newUsername,
-        email: newEmail || `${newUsername}@empresa.com`,
-        role: newRole,
-        is_admin: newIsAdmin,
+        id: created.id,
+        name: created.username,
+        email: created.email || `${created.username}@empresa.com`,
+        role: resolveRoleLabel(created),
+        is_admin: created.is_admin,
       };
 
       setNewUsername('');
@@ -65,18 +71,18 @@ export const UserAddModal: React.FC<UserAddModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Registrar nuevo usuario" tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
       <div className="glass-panel w-full max-w-md rounded-2xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[88vh] sm:max-h-[90vh]">
         {/* Header */}
         <div className="shrink-0 px-5 sm:px-6 py-4 border-b border-dark-border flex items-center justify-between bg-dark-surface/95 backdrop-blur">
-          <h4 className="text-sm font-bold text-white flex items-center gap-2">
+          <h4 className="text-sm font-bold text-app-text flex items-center gap-2">
             <UserPlus className="w-4 h-4 text-purple-400" /> Registrar Nuevo Usuario
           </h4>
           <button
             type="button"
             onClick={onClose}
             aria-label="Cerrar modal"
-            className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-dark-card transition-colors shrink-0"
+            className="text-gray-400 hover:text-app-text p-1 rounded-lg hover:bg-dark-card transition-colors shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -101,7 +107,7 @@ export const UserAddModal: React.FC<UserAddModalProps> = ({
               value={newUsername}
               onChange={(e) => setNewUsername(e.target.value)}
               placeholder="ej. felipe_analista"
-              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-app-text focus:outline-none focus:border-purple-500"
               required
             />
           </div>
@@ -117,7 +123,7 @@ export const UserAddModal: React.FC<UserAddModalProps> = ({
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
               placeholder="usuario@empresa.com"
-              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-app-text focus:outline-none focus:border-purple-500"
             />
           </div>
 
@@ -132,42 +138,19 @@ export const UserAddModal: React.FC<UserAddModalProps> = ({
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-app-text focus:outline-none focus:border-purple-500"
               required
             />
           </div>
 
-          <div>
-            <label htmlFor="new-user-role" className="block text-gray-300 font-medium mb-1">
-              Perfil Rol RBAC
-            </label>
-            <select
-              id="new-user-role"
-              aria-label="Perfil Rol RBAC"
-              value={newRole}
-              onChange={(e) => setNewRole(e.target.value)}
-              className="w-full bg-dark-base border border-dark-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500 text-xs"
-            >
-              {CORPORATE_ROLES.map((r) => (
-                <option key={r.name} value={r.name}>
-                  {r.label} — {r.description}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center space-x-2 pt-1">
-            <input
-              type="checkbox"
-              id="new-user-is-admin"
-              aria-label="Otorgar Privilegios de Administrador"
-              checked={newIsAdmin}
-              onChange={(e) => setNewIsAdmin(e.target.checked)}
-              className="w-4 h-4 text-purple-600 rounded bg-dark-base border-dark-border focus:ring-purple-500"
-            />
-            <label htmlFor="new-user-is-admin" className="text-gray-300 cursor-pointer">
-              Otorgar Privilegios de Administrador
-            </label>
+          <div className="flex items-start space-x-2 text-[11px] text-gray-400 bg-dark-base/40 rounded-xl border border-dark-border/60 px-3 py-2.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+            <span>
+              El registro es de mínimo privilegio: la cuenta nace con el perfil{' '}
+              <strong className="text-app-text">Usuario</strong> y sin privilegios de
+              administrador. Asigna su rol RBAC y sus permisos desde{' '}
+              <strong className="text-app-text">Editar</strong> una vez creado.
+            </span>
           </div>
         </form>
 
