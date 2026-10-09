@@ -455,7 +455,7 @@ def admin_reset_user_password(
             detail="Usuario no encontrado."
         )
 
-    temp_password = f"Datia-{secrets.token_urlsafe(6)}"
+    temp_password = f"Dat.ia-{secrets.token_urlsafe(6)}"
     user.hashed_password = get_password_hash(temp_password)
     user.must_change_password = True
     user.failed_login_attempts = 0

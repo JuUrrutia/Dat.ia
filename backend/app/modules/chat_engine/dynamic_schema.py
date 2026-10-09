@@ -124,7 +124,7 @@ class DynamicSchemaPruningService:
             except Exception as ex:
                 # Fallar aqui significa que NO sabemos a que base del cliente
                 # apuntan los permisos ya calculados. Devolver `SQLITE_DB_PATH`
-                # (la BD demo interna de Datia) ejecutaba la consulta del cliente
+                # (la BD demo interna de Dat.ia) ejecutaba la consulta del cliente
                 # contra la base interna de la plataforma, con los permisos de otra
                 # conexion: un fallo de resolucion se.convertia en una lectura de
                 # otra base. Se falla cerrado y se propaga; el rollback deja la
@@ -806,5 +806,4 @@ class DynamicSchemaPruningService:
                     cls._schema_cache.clear()
             cls._schema_cache[cache_key] = (now, result)
         return result
-
 

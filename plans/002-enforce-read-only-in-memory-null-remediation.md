@@ -16,7 +16,7 @@
 
 ## 🎯 Contexto y Problema
 
-Uno de los pilares esenciales de **Datia** es la **Gobernanza de Solo Lectura Estricta (`READ ONLY`)** y el aislamiento de datos (Cero Alteración de Bases de Datos Corporativas).
+Uno de los pilares esenciales de **Dat.ia** es la **Gobernanza de Solo Lectura Estricta (`READ ONLY`)** y el aislamiento de datos (Cero Alteración de Bases de Datos Corporativas).
 
 Sin embargo, en [`backend/app/modules/chat_engine/engine.py#L395-L402`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/engine.py#L395-L402):
 ```python

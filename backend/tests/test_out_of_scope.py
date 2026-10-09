@@ -34,7 +34,7 @@ class TestOutOfScopeCapabilities(unittest.IsolatedAsyncioTestCase):
         valid_samples = [
             "¿Cuál es el total de ventas por categoría?",
             "Top 5 clientes con mayores compras",
-            "Hola DATIA, buenos días",
+            "Hola Dat.ia, buenos días",
             "Explícame qué significa el margen de contribución"
         ]
         for query in valid_samples:
@@ -76,7 +76,7 @@ class TestOutOfScopeCapabilities(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Analista Financiero & Comercial", resp.conversational_response)
             self.assertIn("gráficos estadísticos", resp.conversational_response)
             self.assertEqual(len(resp.kpis), 2)
-            self.assertEqual(resp.kpis[0].title, "Alcance DATIA")
+            self.assertEqual(resp.kpis[0].title, "Alcance de Dat.ia")
             self.assertEqual(resp.presentation_hints.preferred_view, "assistant")
             self.assertTrue(resp.presentation_hints.show_kpis)
             self.assertFalse(resp.presentation_hints.show_chart)
