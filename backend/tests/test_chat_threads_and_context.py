@@ -108,6 +108,11 @@ def test_chat_thread_crud(auth_headers):
 def test_chat_feedback(auth_headers):
     client = TestClient(app)
     
+    # El feedback se acepta siempre, pero `QueryLearningMemory` es la memoria
+    # COMPARTIDA de la conexion (la inyecta `sql_executor` en el prompt de todos y
+    # no tiene `user_id`), asi que solo un Administrador la escribe. Esta fixture es
+    # `is_admin=False`: califica, y el refuerzo few-shot no es suyo.
+    # Ver `tests/test_chat_shared_resource_authz.py`.
     feedback_payload = {
         "question": "cuanto se vendio en total",
         "sql": "SELECT SUM(monto) FROM fact_ventas;",
@@ -115,12 +120,13 @@ def test_chat_feedback(auth_headers):
         "rating": "positive",
         "comment": "Respuesta muy precisa"
     }
-    
+
     res = client.post("/api/v1/chat/feedback", json=feedback_payload, headers=auth_headers)
     assert res.status_code == 200
     data = res.json()
     assert data["success"] is True
-    assert data["learning_saved"] is True
+    assert data["learning_saved"] is False
+    assert "se reforzó" not in data["message"]
 
 def test_conversation_context_prompt():
     from app.core.prompts import PromptManager
@@ -151,6 +157,7 @@ def test_shared_chat_thread_and_golden_query(auth_headers):
         "id": "thread-shared-xyz",
         "title": "Reporte Compartido de Pruebas",
         "connection_id": 1,
+        "is_shared": True,
         "results": [{"id": "r1", "question": "test share", "summary_text": "ok"}]
     }
     res = client.post("/api/v1/chat/threads", json=thread_payload, headers=auth_headers)
@@ -162,7 +169,11 @@ def test_shared_chat_thread_and_golden_query(auth_headers):
     assert res_shared.json()["id"] == "thread-shared-xyz"
     assert res_shared.json()["title"] == "Reporte Compartido de Pruebas"
 
-    # 3. Test Golden Query toggle
+    # 3. Test Golden Query toggle.
+    # Este endpoint escribe la memoria COMPARTIDA de la conexion (no tiene
+    # `user_id` y `sql_executor` la inyecta en el prompt de todos), asi que es
+    # solo de Administrador. El usuario de esta fixture es `is_admin=False`.
+    # Ver `tests/test_chat_shared_resource_authz.py` para el detalle.
     golden_payload = {
         "question": "ingresos anuales consolidados",
         "sql": "SELECT SUM(total) FROM fact_ingresos;",
@@ -170,8 +181,7 @@ def test_shared_chat_thread_and_golden_query(auth_headers):
         "is_golden": True
     }
     res_golden = client.post("/api/v1/chat/golden-query", json=golden_payload, headers=auth_headers)
-    assert res_golden.status_code == 200
-    assert res_golden.json()["is_golden"] is True
+    assert res_golden.status_code == 403
 
     # 4. Clean up thread
     client.delete("/api/v1/chat/threads/thread-shared-xyz", headers=auth_headers)

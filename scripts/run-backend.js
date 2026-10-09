@@ -1,48 +1,14 @@
 const { spawnSync, spawn } = require('child_process');
 const path = require('path');
-const fs = require('fs');
+const findPython = require('./find-python');
 
 const backendDir = path.join(__dirname, '..', 'backend');
-
-// 1. Check local virtual environment paths
-const candidates = [
-  path.join(backendDir, 'venv', 'Scripts', 'python.exe'),
-  path.join(backendDir, '.venv', 'Scripts', 'python.exe'),
-  path.join(backendDir, 'venv', 'bin', 'python'),
-  path.join(backendDir, '.venv', 'bin', 'python'),
-];
-
-let pythonCmd = null;
-
-for (const cand of candidates) {
-  if (fs.existsSync(cand)) {
-    pythonCmd = cand;
-    break;
-  }
-}
-
-// 2. If no virtualenv found, probe system Python commands
-if (!pythonCmd) {
-  const probeCommands = process.platform === 'win32'
-    ? ['py', 'python', 'python3']
-    : ['python3', 'python'];
-
-  for (const cmd of probeCommands) {
-    try {
-      const res = spawnSync(cmd, ['--version'], { encoding: 'utf-8' });
-      if (res.status === 0 && ((res.stdout && res.stdout.toLowerCase().includes('python')) || (res.stderr && res.stderr.toLowerCase().includes('python')))) {
-        pythonCmd = cmd;
-        break;
-      }
-    } catch (_) {
-      // try next
-    }
-  }
-}
+const pythonCmd = findPython(backendDir);
 
 if (!pythonCmd) {
-  // Fallback to py on Windows or python3 on Unix
-  pythonCmd = process.platform === 'win32' ? 'py' : 'python3';
+  console.error('[PYTHON] No se encontró un intérprete con FastAPI, SQLAlchemy y Uvicorn instalados.');
+  console.error('[PYTHON] Repara backend\\venv o instala backend\\requirements.txt en un Python disponible.');
+  process.exit(1);
 }
 
 // 3. PostgreSQL Service & Auto-Provisioning Check
@@ -62,11 +28,10 @@ try {
   spawnSync(pythonCmd, [setupScript], {
     cwd: path.join(__dirname, '..'),
     stdio: 'inherit',
-    env: {
-      ...process.env,
+    env: findPython.pythonEnv({
       PYTHONPATH: backendDir,
       PYTHONUNBUFFERED: '1',
-    },
+    }),
   });
 } catch (err) {
   console.warn(`[DB-BOOTSTRAP] Aviso durante la verificación de base de datos: ${err.message}`);
@@ -77,6 +42,7 @@ console.log(`\n[BACKEND-RUNNER] Ejecutando backend FastAPI con: ${pythonCmd}`);
 const child = spawn(pythonCmd, ['main.py'], {
   cwd: backendDir,
   stdio: 'inherit',
+  env: findPython.pythonEnv(),
 });
 
 child.on('exit', (code) => {

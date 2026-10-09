@@ -10,12 +10,14 @@ interface SettingsLLMSectionProps {
   ollamaUrl: string;
   modelName: string;
   detectedModels: string[];
+  detectedEndpoint: { url: string; prov: LLMProvider } | null;
   testingLLM: boolean;
   llmTestResult: LLMConnectionTestResult | null;
   onProviderChange: (prov: LLMProvider) => void;
   onOllamaUrlChange: (url: string) => void;
   onModelNameChange: (model: string) => void;
   onTestLLMConnection: () => void;
+  onApplyDetected: () => void;
 }
 
 export const SettingsLLMSection: React.FC<SettingsLLMSectionProps> = ({
@@ -23,12 +25,14 @@ export const SettingsLLMSection: React.FC<SettingsLLMSectionProps> = ({
   ollamaUrl,
   modelName,
   detectedModels,
+  detectedEndpoint,
   testingLLM,
   llmTestResult,
   onProviderChange,
   onOllamaUrlChange,
   onModelNameChange,
   onTestLLMConnection,
+  onApplyDetected,
 }) => {
   return (
     <div className="glass-panel rounded-2xl p-5 border border-white/10 space-y-4 shadow-xl font-sans">
@@ -110,7 +114,7 @@ export const SettingsLLMSection: React.FC<SettingsLLMSectionProps> = ({
           {detectedModels.length > 0 && (
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5 pt-1">
               <span className="text-[10px] text-gray-600 dark:text-gray-400 font-semibold uppercase tracking-wider flex items-center gap-1">
-                <Radio className="w-3 h-3 text-cyan-400 animate-pulse" /> Modelos Detectados:
+                <Radio className="w-3 h-3 text-cyan-400 animate-pulse" /> Modelos Reportados por el Servidor:
               </span>
               {detectedModels.map((m) => (
                 <button
@@ -142,6 +146,24 @@ export const SettingsLLMSection: React.FC<SettingsLLMSectionProps> = ({
         >
           {llmTestResult.success ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" /> : <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />}
           <span className="font-medium">{llmTestResult.message} ({llmTestResult.latency_ms} ms)</span>
+        </div>
+      )}
+
+      {/* Sugerencia de auto-deteccion: el diagnostico propone, no configura. */}
+      {detectedEndpoint && (
+        <div className="p-3 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-xs text-cyan-800 dark:text-cyan-200 flex flex-wrap items-center gap-2 animate-fadeIn">
+          <Radio className="w-4 h-4 shrink-0" />
+          <span className="font-medium">
+            Se detectó un servidor LLM en <span className="font-mono">{detectedEndpoint.url}</span>. Tu configuración actual
+            no se modificó.
+          </span>
+          <button
+            type="button"
+            onClick={onApplyDetected}
+            className="ml-auto px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold transition-colors"
+          >
+            Usar esta configuración
+          </button>
         </div>
       )}
     </div>

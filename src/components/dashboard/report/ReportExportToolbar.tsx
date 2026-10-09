@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import { reportService } from '../../../features/dashboard/services/report_service';
+import { useModalA11y } from '../../../hooks/useModalA11y';
 
 interface ReportExportToolbarProps {
   result: QueryResult;
@@ -30,6 +31,11 @@ export const ReportExportToolbar: React.FC<ReportExportToolbarProps> = ({
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
+
+  // Dialog semantics, Escape, focus containment and focus restore.
+  const customizeRef = useModalA11y<HTMLDivElement>(isCustomizeOpen, () =>
+    setIsCustomizeOpen(false)
+  );
 
   // Customization fields
   const [customTitle, setCustomTitle] = useState(result.question || '');
@@ -108,12 +114,12 @@ export const ReportExportToolbar: React.FC<ReportExportToolbarProps> = ({
           </button>
 
           {isExportMenuOpen && (
-            <div className="absolute right-0 mt-2 w-52 rounded-xl bg-zinc-900 border border-white/10 shadow-2xl p-1.5 z-30 space-y-1 animate-fadeIn">
+            <div className="absolute right-0 mt-2 w-52 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 shadow-2xl p-1.5 z-30 space-y-1 animate-fadeIn">
               <button
                 type="button"
                 onClick={() => handleExportPdf(false)}
                 disabled={isExportingPdf}
-                className="w-full flex items-center space-x-2 px-3 py-2 text-xs text-zinc-200 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors text-left"
+                className="w-full flex items-center space-x-2 px-3 py-2 text-xs text-slate-900 dark:text-zinc-200 hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition-colors text-left"
               >
                 <FileText className="w-4 h-4 text-rose-400 shrink-0" />
                 <span>Descargar PDF</span>
@@ -122,12 +128,12 @@ export const ReportExportToolbar: React.FC<ReportExportToolbarProps> = ({
                 type="button"
                 onClick={() => handleExportExcel(false)}
                 disabled={isExportingExcel}
-                className="w-full flex items-center space-x-2 px-3 py-2 text-xs text-zinc-200 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors text-left"
+                className="w-full flex items-center space-x-2 px-3 py-2 text-xs text-slate-900 dark:text-zinc-200 hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition-colors text-left"
               >
                 <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span>Descargar Excel</span>
               </button>
-              <div className="border-t border-zinc-800 my-1"></div>
+              <div className="border-t border-slate-200 dark:border-zinc-800 my-1"></div>
               <button
                 type="button"
                 onClick={() => {
@@ -146,9 +152,9 @@ export const ReportExportToolbar: React.FC<ReportExportToolbarProps> = ({
 
       {/* Report Customizer Modal */}
       {isCustomizeOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fadeIn">
-          <div className="w-full max-w-lg rounded-2xl bg-zinc-900 border border-zinc-700/80 shadow-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+        <div ref={customizeRef} role="dialog" aria-modal="true" aria-label="Personalizar informe" tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fadeIn">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700/80 shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-zinc-800">
               <div className="flex items-center space-x-2 text-white font-semibold text-sm">
                 <Sliders className="w-4 h-4 text-indigo-400" />
                 <span>Personalizar Informe Ejecutivo</span>
@@ -156,7 +162,7 @@ export const ReportExportToolbar: React.FC<ReportExportToolbarProps> = ({
               <button
                 type="button"
                 onClick={() => setIsCustomizeOpen(false)}
-                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                className="p-1 rounded-lg text-slate-600 dark:text-zinc-400 hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -164,23 +170,23 @@ export const ReportExportToolbar: React.FC<ReportExportToolbarProps> = ({
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Título del Reporte</label>
+                <label className="block text-slate-700 dark:text-zinc-300 font-medium mb-1">Título del Reporte</label>
                 <input
                   type="text"
                   value={customTitle}
                   onChange={(e) => setCustomTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white placeholder-zinc-500 focus:outline-hidden focus:border-indigo-500"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-white placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-hidden focus:border-indigo-500"
                   placeholder="Ej: Análisis Estratégico de Ventas Q3"
                 />
               </div>
 
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Notas Ejecutivas / Observaciones</label>
+                <label className="block text-slate-700 dark:text-zinc-300 font-medium mb-1">Notas Ejecutivas / Observaciones</label>
                 <textarea
                   rows={3}
                   value={customNotes}
                   onChange={(e) => setCustomNotes(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white placeholder-zinc-500 focus:outline-hidden focus:border-indigo-500 resize-none"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-white placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-hidden focus:border-indigo-500 resize-none"
                   placeholder="Agregue contexto para la junta directiva o instrucciones accionables..."
                 />
               </div>
@@ -191,19 +197,19 @@ export const ReportExportToolbar: React.FC<ReportExportToolbarProps> = ({
                   id="includeRawDataCheckbox"
                   checked={includeRawData}
                   onChange={(e) => setIncludeRawData(e.target.checked)}
-                  className="w-4 h-4 rounded-sm bg-zinc-950 border-zinc-700 text-indigo-600 focus:ring-indigo-500"
+                  className="w-4 h-4 rounded-sm bg-slate-50 dark:bg-zinc-950 border-slate-300 dark:border-zinc-700 text-indigo-600 focus:ring-indigo-500"
                 />
-                <label htmlFor="includeRawDataCheckbox" className="text-zinc-300 select-none cursor-pointer">
+                <label htmlFor="includeRawDataCheckbox" className="text-slate-700 dark:text-zinc-300 select-none cursor-pointer">
                   Incluir tabla detallada de datos crudos (Hoja Excel / Anexo PDF)
                 </label>
               </div>
             </div>
 
-            <div className="flex items-center justify-end space-x-2 pt-3 border-t border-zinc-800">
+            <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-200 dark:border-zinc-800">
               <button
                 type="button"
                 onClick={() => setIsCustomizeOpen(false)}
-                className="px-3 py-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors text-xs font-medium"
+                className="px-3 py-1.5 rounded-xl text-slate-600 dark:text-zinc-400 hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors text-xs font-medium"
               >
                 Cancelar
               </button>

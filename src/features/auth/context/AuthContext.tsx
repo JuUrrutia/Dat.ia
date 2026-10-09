@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { User, AppSettings } from '../../../types';
 import { authService } from '../services/auth_service';
-import { getAuthToken } from '../../../shared/api/api_client';
-import { MandatoryPasswordChangeModal } from '../../../components/auth/MandatoryPasswordChangeModal';
+import { getAuthToken, PASSWORD_CHANGE_PENDING_EVENT } from '../../../shared/api/api_client';
 import { useSettings } from '../../settings/context/SettingsContext';
 
 type PageView = 'login' | 'dashboard' | 'settings' | 'admin';
@@ -15,11 +14,13 @@ interface AuthContextType {
   error: string | null;
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string, roleId?: number, isAdmin?: boolean) => Promise<void>;
-  loginDemo: (username: string, role?: string, isAdmin?: boolean) => void;
+
   logout: () => void;
   setActivePage: (page: PageView) => void;
-  updateSettings: (newSettings: Partial<AppSettings>) => void;
+  updateSettings: (newSettings: Partial<AppSettings>) => boolean;
   clearError: () => void;
+  /** Limpia `must_change_password` en el estado tras un cambio confirmado. */
+  completePasswordChange: () => void;
 }
 
 const USER_KEY = 'datia_auth_user:v1';
@@ -76,8 +77,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.setItem(USER_KEY, JSON.stringify(profile));
           } catch { /* ignore */ }
           setActivePage(savedPage === 'login' ? 'dashboard' : savedPage);
-        } catch {
-          if (savedUser) {
+        } catch (err: any) {
+          // Un 401 significa que el token expiró o fue revocado: la sesión NO existe.
+          // Limpiamos token y usuario cacheado y mandamos a /login.
+          // Cualquier otro error (500, red caída) deja el token válido: usamos el
+          // usuario cacheado para no expulsar al usuario por un fallo del backend.
+          if (err?.response?.status === 401) {
+            authService.logout();
+            try {
+              localStorage.removeItem(USER_KEY);
+            } catch { /* ignore */ }
+            setUser(null);
+            setActivePage('login');
+          } else if (savedUser) {
             setUser(savedUser);
             setActivePage(savedPage === 'login' ? 'dashboard' : savedPage);
           } else {
@@ -141,25 +153,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [login]);
 
-  const loginDemo = useCallback((username: string, role: string = 'Analista Financiero & Comercial', isAdmin: boolean = false) => {
-    const demoUser: User = {
-      id: Date.now(),
-      username,
-      email: `${username.toLowerCase().replace(/\s+/g, '')}@empresa.com`,
-      is_admin: isAdmin,
-      role_name: role,
-    };
-    setUser(demoUser);
-    try {
-      localStorage.setItem(USER_KEY, JSON.stringify(demoUser));
-      localStorage.setItem(PAGE_KEY, 'dashboard');
-    } catch { /* ignore */ }
-    setActivePage('dashboard');
-  }, []);
+  // RETIRADO: `loginDemo` fabricaba una sesion local con is_admin:true y la guardaba
+  // en localStorage sin.token. LoginPage lo llamaba cuando el login real fallaba, de
+  // modo que un password incorrecto, una cuenta bloqueada o el backend caido
+  // entraban igual y el Header mostraba "Super Administrador". Se deja constancia
+  // porque el patron (fallar hacia algo que parece correcto) es tentador de
+  // reintroducir: si el login falla, el login falla.
 
   const logout = useCallback(() => {
     authService.logout();
     try {
+      // Cache de admin del usuario que sale: los conectores guardan host,
+      // database_name y username, y la matriz RBAC la lista de usuarios. Se
+      // borran antes de perder el id que los namespacea, o el siguiente usuario
+      // de la misma maquina los hereda.
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith('datia_corporate_connectors') || k.startsWith('datia_governance_users'))
+        .forEach((k) => localStorage.removeItem(k));
       localStorage.removeItem(USER_KEY);
       localStorage.removeItem(PAGE_KEY);
     } catch { /* ignore */ }
@@ -179,6 +189,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch { /* ignore storage errors */ }
   }, []);
 
+  // El 403 de cambio pendiente puede saltar en cualquier momento (un admin resetea
+  // la clave de una sesion ya abierta). El error igual sube al consumidor para que
+  // la pantalla lo muestre, pero ademas se abre el formulario: la causa es conocida
+  // y accionable, asi que no puede quedar solo como texto de error.
+  useEffect(() => {
+    const onPending = () => {
+      setUser((prev) => (prev ? { ...prev, must_change_password: true } : prev));
+    };
+    window.addEventListener(PASSWORD_CHANGE_PENDING_EVENT, onPending);
+    return () => window.removeEventListener(PASSWORD_CHANGE_PENDING_EVENT, onPending);
+  }, []);
+
   const contextValue = useMemo(
     () => ({
       user,
@@ -188,11 +210,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       error,
       login,
       register,
-      loginDemo,
       logout,
       setActivePage: handleSetActivePage,
       updateSettings,
       clearError,
+      completePasswordChange: handlePasswordChangeSuccess,
     }),
     [
       user,
@@ -202,25 +224,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       error,
       login,
       register,
-      loginDemo,
       logout,
       handleSetActivePage,
       updateSettings,
       clearError,
+      handlePasswordChangeSuccess,
     ]
   );
 
-  return (
-    <AuthContext.Provider value={contextValue}>
-      {children}
-      {user && user.must_change_password && (
-        <MandatoryPasswordChangeModal
-          isOpen={true}
-          onSuccess={handlePasswordChangeSuccess}
-        />
-      )}
-    </AuthContext.Provider>
-  );
+  // El modal de cambio forzado ya NO se monta como overlay acá. Con el flag
+  // activo el guard de rutas (ProtectedLayout) navega a /change-password, que es
+  // la unica pantalla permitida: el dashboard no llega a montarse y por lo tanto
+  // no dispara los requests que el backend responde con 403. Montarlo encima
+  // dejaba la app entera pidiendo datos que no podia tener.
+  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

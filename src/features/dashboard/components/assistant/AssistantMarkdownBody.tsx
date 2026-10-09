@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
+import { copyToClipboard } from '../../../../shared/clipboard';
 
 export interface TableData {
   headers: string[];
@@ -254,9 +255,11 @@ const MarkdownTableComponent: React.FC<MarkdownTableComponentProps> = ({ tableDa
   const handleCopy = () => {
     const headerLine = tableData.headers.join('\t');
     const rowLines = tableData.rows.map((r) => r.join('\t')).join('\n');
-    navigator.clipboard.writeText(`${headerLine}\n${rowLines}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    void copyToClipboard(`${headerLine}\n${rowLines}`).then((ok: boolean) => {
+      if (!ok) return;
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   };
 
   const isNullLike = (val: string) => {

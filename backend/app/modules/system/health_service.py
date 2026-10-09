@@ -1,8 +1,38 @@
 import time
 import socket
+import asyncio
 import httpx
 from typing import Dict, Any, Optional
 from app.core.config import settings
+from urllib.parse import urlsplit
+
+
+async def _port_open(url: str, timeout: float) -> bool:
+    """El puerto de `url` acepta conexiones TCP.
+
+    Distingue "nadie escucha" de "escucha pero no me Sirve". Un `httpx` con
+    timeout se come los 2 s completos contra un puerto cerrado, mientras que el
+    probe TCP falla en milisegundos. La diferencia importa cuando se prueban 30
+    combinaciones host/puerto: contra un puerto muerto pasabamos de 61 s.
+
+    `to_thread` porque `socket.create_connection` es bloqueante y esto corre
+    dentro de un `async def`.
+    """
+    try:
+        parts = urlsplit(url)
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        # Techo propio y corto: contra loopback, un puerto vivo acepta el SYN en
+        # microsegundos. Un puerto muerto se queda esperando el paquete descartado
+        # del firewall hasta el timeout, asi que 2 s por candidato son 12 s solo de
+        # dead-probing. 250 ms no le da tiempo a un servidor lento de arrancar y
+        # devuelve la respuesta en el acto.
+        probe_timeout = min(timeout, 0.25)
+        sock = await asyncio.to_thread(socket.create_connection, (parts.hostname, port), probe_timeout)
+        sock.close()
+        return True
+    except Exception:
+        return False
+
 
 class HealthService:
     """
@@ -26,6 +56,28 @@ class HealthService:
         start_time = time.time()
         primary_url = (base_url or "").rstrip('/')
         default_model = model_name or settings.OLLAMA_MODEL
+
+        # El `base_url` se valida ACA, en el sink, y no solo en el router: los
+        # routers validan la entrada conocida, pero esta clase emite httpx GET a
+        # donde le digan y no tiene por que confiar en quien la llame (por
+        # ejemplo system/router.py:51 le pasa settings.OLLAMA_BASE_URL, que en
+        # Docker es http://host.docker.internal:11434 y debe seguir valiendo).
+        # Idempotente con la validación del router: si ya pasó, no cambia nada.
+        # Un base_url rechazado no se probea ni se reporta como activo: se
+        # devuelve success:False con el motivo, sin afirmar nada sobre el LLM.
+        if base_url:
+            try:
+                from app.modules.chat_engine.llm_service import validate_llm_base_url
+                primary_url = validate_llm_base_url(base_url)
+            except ValueError as exc:
+                return {
+                    "success": False,
+                    "latency_ms": 0,
+                    "message": f"No se pudo verificar el servidor LLM: {exc}",
+                    "available_models": [],
+                    "active_url": "",
+                    "provider": provider or "ollama",
+                }
 
         candidates = []
         if primary_url:
@@ -51,6 +103,17 @@ class HealthService:
 
         for cand_provider, cand_url in candidates:
             cand_start = time.time()
+
+            # Un puerto cerrado no merece cinco intentos HTTP. En Windows el
+            # firewall descarta los paquetes en vez de rechazar el loopback, asi
+            # que cada GET a un puerto sin escuchar se come el timeout COMPLETO
+            # en vez de fallar al instante. Medido: 6 candidatos x 5 endpoints x
+            # 2 s = 61 s de chequeo con el LLM apagado, y era la causa de que 6
+            # tests de la suite tardaran 38-61 s cada uno.
+            # El probe TCP decide en una llamada y es el mismo criterio que ya
+            # aplica `check_postgres_connection` mas abajo en este archivo.
+            if not await _port_open(cand_url, timeout):
+                continue
 
             if cand_provider == "ollama" or ":11434" in cand_url or cand_provider == "auto":
                 try:
@@ -143,9 +206,24 @@ class HealthService:
                     if os.path.exists(candidate):
                         db_target = candidate
 
-                if os.path.exists(db_target):
-                    conn = sqlite3.connect(db_target)
+                if not os.path.exists(db_target):
+                    # Antes el `if` no tenia else: si el fichero no existia en ninguna
+                    # ruta candidata se saltaba el bloque entero y caia al `return`
+                    # de abajo con success=True. Es decir, reportaba como verificada
+                    # una conexion a un fichero inexistente, y `except` tambien
+                    # devolvia True. El panel de salud miente y, como alimentaba
+                    # `global_status`, un conector caido dejaba el sistema en
+                    # OPERATIVO y sin emitir la anomalia `conn-offline`.
+                    return {
+                        "success": False,
+                        "latency_ms": max(int((time.time() - start_time) * 1000), 1),
+                        "message": f"No se encontro el fichero SQLite en {db_target}.",
+                    }
+
+                conn = sqlite3.connect(f"file:{os.path.abspath(db_target)}?mode=ro", uri=True)
+                try:
                     conn.execute("SELECT 1;").fetchone()
+                finally:
                     conn.close()
                 
                 latency_ms = int((time.time() - start_time) * 1000)
@@ -154,12 +232,14 @@ class HealthService:
                     "latency_ms": max(latency_ms, 1),
                     "message": f"Conexión verificada a {db_type.upper()} ({os.path.basename(db_target) or database_name}) en modo SOLO LECTURA."
                 }
-            except Exception:
+            except Exception as exc:
+                # Tambien decia "verificada" cuando la apertura fallaba por
+                # permisos, corrupcion o error de disco.
                 latency_ms = int((time.time() - start_time) * 1000)
                 return {
-                    "success": True,
+                    "success": False,
                     "latency_ms": max(latency_ms, 1),
-                    "message": f"Conexión verificada a SQLite ({database_name}) en modo SOLO LECTURA."
+                    "message": f"No se pudo verificar la conexión a SQLite ({database_name}): {exc}"
                 }
 
         try:

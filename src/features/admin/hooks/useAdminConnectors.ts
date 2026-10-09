@@ -18,17 +18,9 @@ export function useAdminConnectors(connectors: CorporateConnection[]) {
       username: conn.username,
     });
 
-    let finalRes = result;
-    if (!result.success && (conn.db_type === 'sqlite' || conn.host === 'localhost')) {
-      finalRes = {
-        success: true,
-        message: `Conexión verificada a ${conn.database_name} (${conn.db_type.toUpperCase()}) en modo SOLO LECTURA.`,
-        latency_ms: Math.floor(Math.random() * 8) + 2,
-      };
-    }
-
+    // Resultado real del servidor. No se maquilla un fallo como verificado.
     setTestingId(null);
-    setTestResultsMap((prev) => ({ ...prev, [conn.id]: finalRes }));
+    setTestResultsMap((prev) => ({ ...prev, [conn.id]: result }));
   };
 
   const filteredConnectors = connectors.filter(

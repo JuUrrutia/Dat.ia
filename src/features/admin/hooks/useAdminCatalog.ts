@@ -27,6 +27,8 @@ export function useAdminCatalog() {
   const [isEnriching, setIsEnriching] = useState(false);
   const [enrichSuccessMsg, setEnrichSuccessMsg] = useState<string | null>(null);
   const [enrichErrorMsg, setEnrichErrorMsg] = useState<string | null>(null);
+  // Catalog CRUD errors (edit / create)
+  const [catalogErrorMsg, setCatalogErrorMsg] = useState<string | null>(null);
 
   // Technical Data Dictionary State
   const [dataDictionary, setDataDictionary] = useState<DataDictionaryResponse | null>(null);
@@ -137,12 +139,11 @@ export function useAdminCatalog() {
       });
       await fetchCatalogData(selectedConnectionId);
       await fetchDictionaryData(selectedConnectionId);
-    } catch {
-      setItems((prev) =>
-        prev.map((i) => (i.id === editingItem.id ? { ...i, description: desc, business_formula: formula } : i))
-      );
+      setEditingItem(null);
+    } catch (err: any) {
+      // No se parchea el estado local: el catalogo en la BD no cambio.
+      setCatalogErrorMsg(err.response?.data?.detail || err.message || 'No se pudo guardar la edición del catálogo.');
     }
-    setEditingItem(null);
   };
 
   const handleAddItem = async (newItem: {
@@ -152,7 +153,7 @@ export function useAdminCatalog() {
     formula: string;
     is_ai: boolean;
     connection_id?: number;
-  }) => {
+  }): Promise<boolean> => {
     try {
       await catalogService.createCatalogItem({
         connection_id: newItem.connection_id || selectedConnectionId || 1,
@@ -164,10 +165,13 @@ export function useAdminCatalog() {
       });
       await fetchCatalogData(selectedConnectionId);
       await fetchDictionaryData(selectedConnectionId);
-    } catch {
-      // Fallback
+      setIsAddModalOpen(false);
+      return true;
+    } catch (err: any) {
+      // Sin exito visual: la regla no se creo.
+      setCatalogErrorMsg(err.response?.data?.detail || err.message || 'No se pudo crear la regla del catálogo.');
+      return false;
     }
-    setIsAddModalOpen(false);
   };
 
   const handleDeleteItem = async (id: number, table: string, column?: string) => {
@@ -208,6 +212,7 @@ export function useAdminCatalog() {
     isEnriching,
     enrichSuccessMsg,
     enrichErrorMsg,
+    catalogErrorMsg,
     dataDictionary,
     isLoadingDictionary,
     expandedTables,

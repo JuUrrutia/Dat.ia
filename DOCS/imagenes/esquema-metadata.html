@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Datia — Esquema de la base de metadatos</title>
+<style>
+  html,body{margin:0;padding:0;background:#eef2f6;
+    font-family:"Segoe UI",Inter,system-ui,sans-serif;}
+  #wrap{position:relative;width:1480px;height:1010px;}
+  svg{position:absolute;inset:0;}
+  .box{position:absolute;border-radius:9px;background:#fff;border:1.5px solid #cbd5e1;
+       box-shadow:0 1px 3px rgba(15,23,42,.10);overflow:hidden;}
+  .bar{height:29px;display:flex;align-items:center;padding:0 11px;
+       font-size:13px;font-weight:700;color:#fff;letter-spacing:.1px;}
+  .rows{padding:6px 11px 7px;}
+  .r{font-size:11.5px;color:#475569;line-height:22px;height:22px;
+     display:flex;justify-content:space-between;align-items:center;white-space:nowrap;}
+  .r .k{font-family:Consolas,monospace;color:#334155;}
+  .r .t{font-size:9.5px;font-weight:700;letter-spacing:.4px;padding:1px 5px;border-radius:3px;}
+  .pk{background:#dbeafe;color:#1d4ed8;}
+  .fk{background:#ede9fe;color:#6d28d9;}
+  .soft{background:#fef3c7;color:#92400e;}
+  h1{position:absolute;left:40px;top:26px;margin:0;font-size:25px;color:#0f172a;}
+  .sub{position:absolute;left:40px;top:60px;font-size:13px;color:#64748b;}
+  .note{position:absolute;font-size:11.5px;color:#64748b;line-height:18px;}
+  .lg{position:absolute;font-size:11.5px;color:#334155;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>Datia — Esquema de la base de metadatos</h1>
+  <div class="sub">13 tablas SQLAlchemy sobre <b>PostgreSQL 16</b> · se muestran PK y FK, no las columnas · generado desde <b>backend/app/**/models.py</b></div>
+  <svg id="layer"></svg>
+</div>
+
+<script>
+// ── módulo -> color ────────────────────────────────────────────────
+const MOD = {
+  ident: {n:'Identidad y acceso',      c:'#0ea5e9'},
+  cat:   {n:'Conectores y catálogo',   c:'#f59e0b'},
+  rbac:  {n:'Gobernanza RBAC',         c:'#8b5cf6'},
+  chat:  {n:'Chat, widgets y memoria', c:'#10b981'},
+  audit: {n:'Auditoría',               c:'#ef4444'},
+};
+
+// ── definición de tablas ───────────────────────────────────────────
+const T = [
+  ['users','ident',50,150,[['id','pk'],['role_id','fk:roles']]],
+  ['roles','ident',50,290,[['id','pk']]],
+  ['domains','ident',50,420,[['id','pk']]],
+  ['corporate_connections','cat',50,550,[['id','pk']]],
+
+  ['user_sessions','ident',470,150,[['id','pk'],['user_id','fk:users']]],
+  ['chat_conversations','chat',470,290,[['id','pk'],['user_id','fk:users'],['connection_id','soft']]],
+  ['dashboard_widgets','chat',470,450,[['id','pk'],['user_id','fk:users'],['connection_id','soft']]],
+  ['audit_logs','audit',470,610,[['id','pk'],['user_id','fk:users']]],
+  ['query_learning_memories','chat',470,750,[['id','pk'],['connection_id','soft']]],
+
+  ['role_domain_links','rbac',930,150,[['id','pk'],['role_id','fk:roles'],['domain_id','fk:domains']]],
+  ['semantic_catalog','cat',930,290,[['id','pk'],['connection_id','fk:corporate_connections'],['domain_id','fk:domains']]],
+  ['role_table_permissions','rbac',930,430,[['id','pk'],['role_id','fk:roles'],['connection_id','fk:corporate_connections']]],
+  ['role_column_permissions','rbac',930,570,[['id','pk'],['role_id','fk:roles'],['connection_id','fk:corporate_connections']]],
+];
+
+const W = 300, BAR = 29, RH = 22, PAD = 13;
+const rowY = (y,i) => y + BAR + 6 + i*RH + RH/2;      // centro de la fila i
+const boxH = r => BAR + PAD + r*RH + 7;
+
+const G = {};   // nombre -> {x,y,w,h,cy,rows}
+T.forEach(([name,mod,x,y,rows]) => {
+  G[name] = {name,mod,x,y,w:W,h:boxH(rows.length),cy:y+boxH(rows.length)/2,rows};
+});
+
+// ── aristas:  poly = [ ...puntos ]  ·  bez = bezier → se dibuja una curva ──
+const E = [
+  {p:'roles',t:'users',             lbl:'role_id · SET NULL',  poly:[[G.roles.x+G.roles.w,G.roles.y+22],[175,290-22],[175,G.users.y+G.users.h]], cascade:false},
+  {p:'users',t:'user_sessions',     lbl:'user_id · CASCADE',   bez:[300,160, 470,190]},
+  {p:'users',t:'chat_conversations',lbl:'user_id · CASCADE',   bez:[300,180, 470,345]},
+  {p:'users',t:'dashboard_widgets', lbl:'user_id · CASCADE',   bez:[300,205, 470,505]},
+  {p:'users',t:'audit_logs',        lbl:'user_id · SET NULL',  bez:[300,232, 470,655], cascade:false},
+
+  {p:'roles',t:'role_domain_links',    lbl:'role_id · CASCADE',   poly:[[300,300],[340,300],[340,120],[900,120],[900,190],[930,190]]},
+  {p:'domains',t:'role_domain_links',  lbl:'domain_id · CASCADE', poly:[[300,430],[360,430],[360,138],[890,138],[890,220],[930,220]]},
+  {p:'domains',t:'semantic_catalog',   lbl:'domain_id · SET NULL',poly:[[300,455],[400,455],[400,268],[900,268],[900,320],[930,320]], cascade:false},
+  {p:'corporate_connections',t:'semantic_catalog', lbl:'connection_id · CASCADE', poly:[[300,565],[430,565],[430,278],[890,278],[890,350],[930,350]]},
+
+  {p:'roles',t:'role_table_permissions', lbl:'role_id · CASCADE',  poly:[[300,320],[335,320],[335,412],[920,412],[920,470],[930,470]]},
+  {p:'corporate_connections',t:'role_table_permissions', lbl:'connection_id · CASCADE', poly:[[300,590],[370,590],[370,422],[915,422],[915,500],[930,500]]},
+
+  {p:'roles',t:'role_column_permissions', lbl:'role_id · CASCADE', poly:[[300,340],[315,340],[315,552],[925,552],[925,610],[930,610]]},
+  {p:'corporate_connections',t:'role_column_permissions', lbl:'connection_id · CASCADE', poly:[[300,600],[308,600],[308,700],[905,700],[905,640],[930,640]]},
+];
+
+const SOFT = [
+  ['chat_conversations', 1],
+  ['dashboard_widgets',  1],
+  ['query_learning_memories', 1],
+];
+
+// ══ SVG ═══════════════════════════════════════════════════════════
+const NS='http://www.w3.org/2000/svg', svg=document.getElementById('layer');
+svg.setAttribute('width',1480); svg.setAttribute('height',1010);
+
+const defs=document.createElementNS(NS,'defs');
+[['ah','#64748b'],['ahs','#d97706']].forEach(([id,f])=>{
+  const m=document.createElementNS(NS,'marker');
+  m.setAttribute('id',id); m.setAttribute('markerWidth','8'); m.setAttribute('markerHeight','8');
+  m.setAttribute('refX','7'); m.setAttribute('refY','2.8'); m.setAttribute('orient','auto');
+  const p=document.createElementNS(NS,'path');
+  p.setAttribute('d','M0,0 L7,2.8 L0,5.6 z'); p.setAttribute('fill',f);
+  m.appendChild(p); defs.appendChild(m);
+});
+svg.appendChild(defs);
+
+const mk=(t,a)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;};
+
+// aristas primero (quedan detrás de las cajas)
+E.forEach(e=>{
+  const soft = e.cascade === false;
+  const d = e.poly ? 'M'+e.poly.map(p=>p.join(',')).join(' L')
+                   : 'M'+e.bez[0]+','+e.bez[1]+' C'+(e.bez[0]+180)+','+e.bez[1]+' '+
+                     (e.bez[2]-180)+','+e.bez[3]+' '+e.bez[2]+','+e.bez[3];
+  svg.appendChild(mk('path',{d,fill:'none',stroke:soft?'#d97706':'#64748b','stroke-width':2,
+    'stroke-dasharray':soft?'7 4':'',  'marker-end':'url(#'+(soft?'ahs':'ah')+')',
+    opacity:soft?0.95:0.9}));
+  // etiqueta: punto medio del tramo más largo en horizontal
+  let lx,ly;
+  if (e.poly){
+    let best=null;
+    for (let i=0;i<e.poly.length-1;i++){
+      const a=e.poly[i], b=e.poly[i+1];
+      if (Math.abs(a[1]-b[1])<1){ const L=Math.abs(b[0]-a[0]); if(!best||L>best.L) best={a,b,L}; }
+    }
+    lx=(best.a[0]+best.b[0])/2; ly=best.a[1]-6;
+  } else { lx=(e.bez[0]+e.bez[2])/2-30; ly=(e.bez[1]+e.bez[3])/2-4; }
+
+  const t=mk('text',{x:lx,y:ly,'font-size':10.5,'font-weight':600,
+    fill:soft?'#b45309':'#475569','text-anchor':'middle',
+    stroke:'#eef2f6','stroke-width':3.5,'paint-order':'stroke'});
+  t.textContent=e.lbl; svg.appendChild(t);
+});
+
+// referencias blandas (sin FK): stubs punteados a la derecha
+SOFT.forEach(([name,i])=>{
+  const b=G[name], y=rowY(b.y,i);
+  svg.appendChild(mk('line',{x1:b.x+b.w+2,y1:y,x2:b.x+b.w+40,y2:y,stroke:'#d97706',
+    'stroke-width':2,'stroke-dasharray':'4 3'}));
+  const t=mk('text',{x:b.x+b.w+46,y:y+4,'font-size':10.5,fill:'#b45309','font-weight':600,
+    stroke:'#eef2f6','stroke-width':3.5,'paint-order':'stroke'});
+  t.textContent='connection_id → corporate_connections'; svg.appendChild(t);
+});
+
+// ══ cajas ════════════════════════════════════════════════════════
+const wrap=document.getElementById('wrap');
+Object.values(G).forEach(b=>{
+  const d=document.createElement('div');
+  d.className='box'; d.style.left=b.x+'px'; d.style.top=b.y+'px';
+  d.style.width=b.w+'px'; d.style.height=b.h+'px';
+  d.style.borderColor=MOD[b.mod].c;
+  const bar=document.createElement('div');
+  bar.className='bar'; bar.style.background=MOD[b.mod].c;
+  bar.style.fontSize=(b.name.length>22?12:13)+'px';
+  bar.textContent=b.name;
+  const rows=document.createElement('div'); rows.className='rows';
+  b.rows.forEach(([c,kind])=>{
+    const r=document.createElement('div'); r.className='r';
+    const real = kind.split(':')[1] || kind;
+    r.innerHTML='<span class="k">'+c+'</span>';
+    const tag=document.createElement('span');
+    tag.className='t '+(kind.startsWith('fk')?'fk':kind==='pk'?'pk':'soft');
+    tag.textContent = kind.startsWith('fk') ? ('FK → '+real) : kind==='pk' ? 'PK' : 'sin FK';
+    r.appendChild(tag); rows.appendChild(r);
+  });
+  d.appendChild(bar); d.appendChild(rows); wrap.appendChild(d);
+});
+
+// ══ notas al pie ══════════════════════════════════════════════════
+const foot=document.createElement('div');
+foot.className='note'; foot.style.left='40px'; foot.style.top='862px';
+foot.innerHTML='<b>Referencias blandas:</b> los tres <span style="font-family:Consolas,monospace">connection_id</span> de arriba son <span style="font-family:Consolas,monospace">Integer</span> sin <span style="font-family:Consolas,monospace">ForeignKey</span>: apuntan a <b>corporate_connections</b> por convención y nada impide que apunten a un id inexistente.';
+wrap.appendChild(foot);
+
+const foot2=document.createElement('div');
+foot2.className='note'; foot2.style.left='40px'; foot2.style.top='908px';
+foot2.innerHTML='<b>Las 3 flechas naranjas punteadas</b> son los <span style="font-family:Consolas,monospace">SET NULL</span>: borrar el padre deja el hijo huérfano en vez de borrarlo en cascada. <b>Sin ellos</b> el resto son <span style="font-family:Consolas,monospace">CASCADE</span>.';
+wrap.appendChild(foot2);
+
+const foot3=document.createElement('div');
+foot3.className='note'; foot3.style.left='40px'; foot3.style.top='954px';
+foot3.innerHTML='<b>Dos motores, un solo esquema:</b> los mismos 13 modelos corren en PostgreSQL 16 (<span style="font-family:Consolas,monospace">docker-compose.yml</span>) y, si el backend no logra conectarse, caen a <span style="font-family:Consolas,monospace">sqlite:///datia_metadata.db</span> — ver <span style="font-family:Consolas,monospace">backend/app/core/database.py:23-38</span>. Las bases corporativas que consulta el chat son <b>otra</b> base distinta, registrada en <b>corporate_connections</b>.';
+wrap.appendChild(foot3);
+</script>
+</body>
+</html>

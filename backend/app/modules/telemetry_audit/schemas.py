@@ -10,7 +10,10 @@ class AuditLogOut(BaseModel):
     user_role: Optional[str] = None
     question_prompt: str
     sql_generated: Optional[str] = None
-    validation_status: str
+    # Optional: la columna admite NULL desde la migracion de core/database.py, asi
+    # que hay registros sin validacion registrada. Con `str` required, uno solo de
+    # esos registros hacia fallar el listado de auditoria del admin con un 500.
+    validation_status: Optional[str] = None
     target_database: Optional[str] = None
     execution_time_ms: int = 0
     rows_returned: int = 0
