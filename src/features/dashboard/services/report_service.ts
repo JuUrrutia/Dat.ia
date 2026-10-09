@@ -109,7 +109,7 @@ async captureChartAsBase64(scope?: ParentNode | null): Promise<string | undefine
       const link = document.createElement('a');
       link.href = url;
       const nowStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      link.setAttribute('download', `informe_ejecutivo_datia_${nowStr}.pdf`);
+      link.setAttribute('download', `informe_ejecutivo_dat.ia_${nowStr}.pdf`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -146,7 +146,7 @@ async captureChartAsBase64(scope?: ParentNode | null): Promise<string | undefine
       const link = document.createElement('a');
       link.href = url;
       const nowStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      link.setAttribute('download', `datos_datia_${nowStr}.xlsx`);
+      link.setAttribute('download', `datos_dat.ia_${nowStr}.xlsx`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

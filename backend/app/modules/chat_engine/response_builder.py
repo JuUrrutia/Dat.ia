@@ -126,7 +126,7 @@ class ResponseBuilder:
                 )
             conversational = (
                 "🔌 **No hay ninguna conexión de datos activa**\n\n"
-                "Ningún administrador ha activado una base de datos en DATIA. "
+                "Ningún administrador ha activado una base de datos en Dat.ia. "
                 "Por eso el chat no tiene nada que mostrar: **no es que la consulta "
                 "no tenga resultados, es que no hay ninguna fuente de datos encendida**."
                 f"{action_text}"
@@ -141,7 +141,7 @@ class ResponseBuilder:
             # inexistente.
             conversational = (
                 "🗄️ **No hay ninguna base de datos registrada**\n\n"
-                "DATIA no tiene ninguna conexión dada de alta todavía, así que no hay "
+                "Dat.ia no tiene ninguna conexión dada de alta todavía, así que no hay "
                 "nada que consultar. No es que la consulta no tenga resultados: es que "
                 "**aún no se ha conectado ninguna fuente de datos**."
                 "\n\nUn administrador tiene que registrar una conexión en el panel de "
@@ -264,7 +264,7 @@ class ResponseBuilder:
         suggested_questions: Optional[List[str]] = None,
         clarification_options: Optional[List[str]] = None
     ) -> QueryResponse:
-        summary_text = "Asistente DATIA listo para responder tus consultas sobre la base de datos activa."
+        summary_text = "Asistente de Dat.ia listo para responder tus consultas sobre la base de datos activa."
         default_suggs = [
             f"¿Qué datos contiene la tabla {t}?" for t in sorted(list(allowed_tables))[:3]
         ] if allowed_tables else [
@@ -336,11 +336,11 @@ class ResponseBuilder:
 
         return QueryResponse(
             question=question,
-            summary_text="Solicitud fuera de las funciones de analítica de datos corporativos de DATIA.",
+            summary_text="Solicitud fuera de las funciones de analítica de datos corporativos de Dat.ia.",
             executive_report=None,
             kpis=[
                 KPICard(
-                    title="Alcance DATIA",
+                    title="Alcance de Dat.ia",
                     value="Analítica de Datos",
                     subtitle="Inteligencia Corporativa",
                     change_direction="neutral"
@@ -485,4 +485,3 @@ class ResponseBuilder:
                 explanation=f"Consulta generada y validada con IA Local ({'Qwen2.5-Coder' if is_llm_active else 'Modo Determinístico'}). Tablas autorizadas: {', '.join(allowed_tables)}."
             )
         )
-

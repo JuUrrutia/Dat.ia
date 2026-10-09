@@ -64,7 +64,7 @@ export const useSystemHealth = (pollingIntervalMs: number = DEFAULT_POLLING_INTE
       // Persistent (duration 0): it was the only record of the outage and it
       // used to self-erase in 5s.
       if (prevStatusRef.current !== fallbackStatus) {
-        notify('error', 'No se pudo contactar al servidor Backend de Datia.', { duration: 0 });
+        notify('error', 'No se pudo contactar al servidor backend de Dat.ia.', { duration: 0 });
       }
       prevStatusRef.current = fallbackStatus;
     } finally {

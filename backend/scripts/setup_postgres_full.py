@@ -1,5 +1,5 @@
 """
-DATIA - Setup & Full Migration to PostgreSQL
+Dat.ia - Setup & Full Migration to PostgreSQL
 Creates databases, initializes corporate enterprise schema with rich business data,
 migrates/seeds metadata, configures PostgreSQL CorporateConnection, RBAC, and Catalog.
 """
@@ -598,7 +598,7 @@ def check_postgres_alive() -> bool:
 
 def run() -> bool:
     logger.info("==================================================")
-    logger.info("DATIA POSTGRESQL AUTO-BOOTSTRAP & HEALTH CHECK")
+    logger.info("Dat.ia POSTGRESQL AUTO-BOOTSTRAP & HEALTH CHECK")
     logger.info("==================================================")
     logger.info(f"Host: {PG_HOST}:{PG_PORT} | Usuario: {PG_USER}")
 
