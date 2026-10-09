@@ -47,13 +47,20 @@ export function useAdminAudit() {
     }
   }, [startDate, endDate, filterUsername, filterDatabase, filterStatus]);
 
+  // `fetchLogs` cambia de identidad en cada tecla del filtro (depende de los
+  // estados), asi que este efecto disparaba una request por pulsacion. El
+  // debounce deja la ultima tecla ganar.
   useEffect(() => {
-    fetchLogs(1);
+    const id = setTimeout(() => fetchLogs(1), 350);
+    return () => clearTimeout(id);
   }, [fetchLogs]);
 
   const handleFilterSubmit = (e: React.FormEvent) => {
+    // No fetch here: the debounced effect above already refetches 350ms after
+    // the last keystroke, so calling fetchLogs(1) fired a second request per
+    // click — and an admin who typed a username then clicked "Filtrar" could get
+    // the pre-keystroke page on the compliance screen.
     e.preventDefault();
-    fetchLogs(1);
   };
 
   const handleClearFilters = () => {

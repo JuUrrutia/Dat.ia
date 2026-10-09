@@ -7,6 +7,10 @@ export type ChartType =
   | 'area'
   | 'donut'
   | 'pie'
+  | 'radial'
+  | 'scatter'
+  | 'gauge'
+  | 'treemap'
   | 'none';
 
 export type ColorTheme = 'amber' | 'cyan' | 'emerald' | 'indigo' | 'rose';
@@ -57,6 +61,17 @@ export const THEME_COLORS: Record<
     gradient: ['#F43F5E', '#E11D48', '#BE123C', '#FB7185', '#FDA4AF', '#881337'],
   },
 };
+
+/**
+ * globals.css kills CSS animations for prefers-reduced-motion, but ECharts
+ * animates on canvas from JS, so it was never covered: WCAG 2.3.3.
+ * ponytail: read once per call. Cheap enough; a subscription is only worth it
+ * if the app starts honouring a live OS setting change.
+ */
+export function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
 
 export interface ChartStats {
   total: number;

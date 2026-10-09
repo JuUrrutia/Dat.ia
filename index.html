@@ -5,11 +5,23 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dat.ia</title>
+    <script>
+      // Apply the persisted theme before first paint. Without this, index.html
+      // ships class="dark" while Header.tsx defaults to 'light', so every load
+      // of a light-mode user paints dark first. Also covers deep links to
+      // /login and /change-password, where Header never mounts to correct it.
+      // Keep the 'light' default in sync with Header.tsx.
+      try {
+        var t = localStorage.getItem('datia-theme') || 'light';
+        document.documentElement.classList.remove('light', 'dark');
+        document.documentElement.classList.add(t);
+      } catch (e) {}
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet">
   </head>
-  <body class="bg-dark-base text-gray-100 font-sans antialiased overflow-hidden">
+  <body class="bg-dark-base font-sans antialiased overflow-hidden">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

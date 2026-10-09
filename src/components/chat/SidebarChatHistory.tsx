@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, MessageSquare, History, Trash2, X, Database, Search } from 'lucide-react';
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 export interface ChatThread {
   id: string;
@@ -31,6 +32,9 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
   onDeleteThread,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Dialog semantics, Escape, focus containment and focus restore.
+  const drawerRef = useModalA11y<HTMLDivElement>(isOpenMobile, onCloseMobile);
 
   const filteredThreads = threads.filter((t) =>
     t.title.toLowerCase().includes(searchQuery.toLowerCase().trim())
@@ -136,7 +140,7 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
                     type="button"
                     onClick={(e) => onDeleteThread(t.id, e)}
                     aria-label={`Eliminar conversación ${t.title}`}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 dark:text-gray-400 dark:hover:text-rose-400 transition-opacity absolute right-2"
+                    className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1 text-slate-400 hover:text-rose-600 dark:text-gray-400 dark:hover:text-rose-400 transition-opacity absolute right-2"
                     title="Eliminar conversación"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -188,11 +192,12 @@ export const SidebarChatHistory: React.FC<SidebarChatHistoryProps> = ({
 
       {/* Mobile Drawer Slide-over */}
       {isOpenMobile && (
-        <div className="fixed inset-0 z-40 md:hidden flex">
+        <div ref={drawerRef} role="dialog" aria-modal="true" aria-label="Historial de conversaciones" tabIndex={-1} className="fixed inset-0 z-40 md:hidden flex">
           {/* Backdrop */}
           <button
             type="button"
             aria-label="Cerrar barra lateral"
+            tabIndex={-1}
             className="fixed inset-0 w-full h-full bg-black/70 backdrop-blur-xs transition-opacity animate-fadeIn cursor-default focus:outline-none"
             onClick={onCloseMobile}
           />

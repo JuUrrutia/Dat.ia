@@ -11,7 +11,7 @@ Plataforma empresarial de analítica conversacional y **Executive Analytics Stud
 * 📑 **Informes Ejecutivos Cuantitativos:** Generación automática de diagnósticos estratégicos C-Level con cifras exactas, márgenes porcentuales, hallazgos clave, recomendaciones accionables y dictamen de nivel de riesgo.
 * 🛡️ **Gobernanza & AST Guardrail (`sqlglot`):** Análisis del árbol de sintaxis abstracta para forzar consultas de solo lectura (`SELECT` único), bloqueando cualquier comando destructivo (`DROP`, `DELETE`, `UPDATE`, `INSERT`).
 * 🔐 **Seguridad por Rol (RBAC) & Column-Level Security:** Enmascaramiento y bloqueo de columnas confidenciales (tokens de pago, API keys, RUTs, IBANs) según el perfil del usuario (`Economista`, `TI`, `Administrador`).
-* ⚡ **Arquitectura Standalone Híbrida:** Frontend de alta gama desarrollado en **React 18 + TypeScript + Vite + TailwindCSS + Apache ECharts** conectado a un backend de alto rendimiento en **Python FastAPI + SQLAlchemy + SQLite/PostgreSQL**.
+* ⚡ **Arquitectura Web Monorepo:** Frontend de alta gama desarrollado en **React 18 + TypeScript + Vite + TailwindCSS + Apache ECharts** conectado a un backend de alto rendimiento en **Python FastAPI + SQLAlchemy + SQLite/PostgreSQL**, empaquetado para despliegue con Docker (Nginx como servidor de estáticos y proxy inverso al backend).
 
 ---
 
@@ -19,11 +19,22 @@ Plataforma empresarial de analítica conversacional y **Executive Analytics Stud
 
 | Capa | Tecnologías |
 | :--- | :--- |
-| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons, Framer Motion, Apache ECharts (`echarts-for-react`) |
+| **Frontend** | React 18, React Router 7, TypeScript, Vite, Tailwind CSS, Lucide Icons, Apache ECharts (`echarts-for-react`) |
 | **Backend** | Python 3.10+, FastAPI, Uvicorn, SQLAlchemy, Pydantic v2, sqlglot (AST Security), SQLite3 |
-| **Bases de Datos** | PostgreSQL (`psycopg[binary]`), SQLite3, MySQL/MariaDB (`pymysql`), Microsoft SQL Server *(ver ADR-001 en DOCS 06)* |
-| **IA Local** | llama.cpp / Ollama, `Qwen2.5-Coder-7B-Instruct-GGUF` |
-| **Escritorio** | Electron 33 (Empaquetado Standalone Offline) |
+| **Bases de Datos** | PostgreSQL (`psycopg[binary]`) y SQLite3 |
+| **IA Local** | llama.cpp / Ollama / LM Studio (API compatible con OpenAI), `Qwen2.5-Coder-7B-Instruct-GGUF` |
+| **Despliegue** | Docker + Docker Compose, Nginx como servidor de estáticos y proxy inverso |
+
+### Fuentes de datos: implementado vs. planificado
+
+`CorporateConnection.db_type` solo admite **PostgreSQL** y **SQLite** (`backend/app/modules/admin_catalog/models.py:7`), y `backend/requirements.txt` solo trae `psycopg[binary]`. Los siguientes motores aparecen en la documentación de visión (DOCS 01/02/06) pero **no están implementados**: no hay driver en `requirements.txt` ni rama que los construya en `core/database.py:build_engine_for_connector`.
+
+| Motor | Estado |
+| :--- | :--- |
+| PostgreSQL | ✅ Implementado |
+| SQLite | ✅ Implementado |
+| MySQL / MariaDB (`pymysql`) | ❌ No implementado |
+| Microsoft SQL Server (`pymssql` / `pyodbc`) | ❌ No implementado |
 
 ---
 
@@ -56,10 +67,26 @@ npm run dev
 
 > [!NOTE]
 > **Generación Local de Base de Datos Demo:**
-> Las bases de datos SQLite (`demo_corporativa.db` y `mental_health.sqlite`) **no vienen incluidas en el repositorio** para mantener el control de versiones limpio y ligero. Al ejecutar `npm run dev` por primera vez (o manualmente con `python backend/setup_demo_db.py`), el sistema las genera e inicializa automáticamente con el esquema corporativo, tablas de hechos/dimensiones, catálogo semántico y perfiles RBAC.
+> `backend/demo_corporativa.db` **no viene incluida en el repositorio** (`.gitignore` excluye `*.db`). `app/db/init_db.py` la genera en el primer arranque si no existe, **solo cuando el motor activo no es PostgreSQL** (con PostgreSQL arriba, `scripts/setup_postgres_full.py` provisiona los datos base). También se puede generar a mano con `python backend/setup_demo_db.py`.
+>
+> `backend/setup_mental_health_db.py` existe, pero escribe sobre la misma `SQLITE_DB_PATH` (`demo_corporativa.db`): no hay ningún `mental_health.sqlite` en el proyecto.
 
 * **Frontend:** `http://localhost:5173/`
 * **Backend API Docs:** `http://localhost:8000/docs`
+
+### 4. Alternativa: Docker Compose
+
+```bash
+cp .env.example .env
+# Rellenar FERNET_KEY y POSTGRES_PASSWORD antes de continuar (docker-compose.yml
+# los exige con `:?` y se niega a arrancar si faltan o vienen vacíos).
+# Además hay que cambiar SECRET_KEY: compose arranca con ENVIRONMENT=production y
+# el backend rechaza arrancar con la clave de desarrollo del repositorio.
+docker compose up -d
+```
+
+El frontend queda en `http://localhost/` y Nginx hace de proxy inverso hacia el
+backend en `http://backend:8000`.
 
 ---
 

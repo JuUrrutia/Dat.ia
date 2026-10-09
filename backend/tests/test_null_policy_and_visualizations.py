@@ -280,6 +280,101 @@ class TestNullPolicyAndVisualizations(unittest.TestCase):
         self.assertIn("Tratamiento de nulos", response.conversational_response)
         self.assertIn("Eliminación de registros con nulos", response.conversational_response)
 
+    def _mock_conn_and_db(self):
+        mock_conn = MagicMock()
+        mock_conn.id = 1
+        mock_conn.db_type = DatabaseType.SQLITE
+        mock_conn.host = self.db_path
+        mock_conn.database_name = self.db_path
+        mock_conn.null_policy = "strict"
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_conn
+        mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_conn
+        mock_db.query.return_value.order_by.return_value.first.return_value = mock_conn
+        return mock_db
+
+    def test_query_without_matching_rows_does_not_crash(self):
+        """Un filtro que no matchea filas no crashea y no afirma que encontro datos.
+
+        Este test NO puede afirmar la frase exacta del resumen. `summary_text` sale
+        del LLM (`engine.py` toma el primer bloque de `conversational`), asi que
+        la frase cambia entre corridas -- con un 7B local decimos "con el ID 99999"
+        un dia y "con el ID proporcionado (99999)" al otro. Afirmar la cadena
+        convertia un modelo no determinista en un test flaky PARA SIEMPRE, y peor:
+        invitaba a tocar produccion para que el modelo dijera la frase, en vez de
+        arreglar el test. Lo que se verifica aca es el comportamiento: cero filas,
+        respuesta completa, y un resumen que no afirme un resultado.
+        """
+        import asyncio
+        response = asyncio.run(
+            QueryEngine.execute_query(
+                question="SELECT * FROM test_sales WHERE id = 99999",
+                user_role="Administrador",
+                is_admin=True,
+                db=self._mock_conn_and_db(),
+                connection_id=1
+            )
+        )
+        # 1. Cero filas, contadas por el motor y no por el texto.
+        self.assertEqual(response.traceability.rows_returned, 0)
+        self.assertEqual(response.data_rows, [])
+
+        # 2. La respuesta esta completa y es parseable: no un None ni un string vacio.
+        self.assertIsInstance(response.summary_text, str)
+        self.assertTrue(response.summary_text.strip(), "el resumen quedo vacio")
+
+        # 3. Y no declara exito sobre una consulta que no trajo nada. Esta es la
+        #    garantia honesta del test, y no depende de como lo diga el modelo:
+        #    "No se encontraron ...", "0 registros", "sin coincidencias" dan igual.
+        self.assertNotIn("99999 filas", response.summary_text)
+        for afirmacion in ("se encontraron 99999", "99999 resultados", "se obtuvieron 99999"):
+            self.assertNotIn(afirmacion, response.summary_text.lower())
+
+        # Contrato del retorno: siempre 5 elementos, con el KPI de cero registros.
+        # Aca si se puede afirmar el valor exacto del KPI: lo produce
+        # `KPICalculator`, que es codigo, no el modelo.
+        kpis, chart_type, chart_option, summary, exec_rep = KPICalculator.build_dynamic_visualization(
+            "ventas del cliente 99999", ["cliente", "monto"], []
+        )
+        self.assertEqual(len(kpis), 1)
+        self.assertEqual(kpis[0].value, "0 Registros")
+        self.assertEqual(chart_type, "bar")
+        self.assertEqual(chart_option["series"], [], "un grafico sin datos no dibuja series")
+        # El resumen determinista tiene que ser parseable y no una afirmacion de exito.
+        self.assertIsInstance(summary, str)
+        self.assertTrue(summary.strip())
+        self.assertIsNotNone(exec_rep)
+        self.assertTrue(
+            any("0" in str(f) or "Cero" in str(f) for f in exec_rep.key_findings),
+            f"el informe ejecutivo no registra que no hubo coincidencias: {exec_rep.key_findings}",
+        )
+
+    def test_conversational_branch_survives_non_ast_exception(self):
+        """Una excepción no-AST en la rama conversacional no debe dejar secured_sql/meta sin definir."""
+        import asyncio
+        from unittest.mock import patch, AsyncMock
+        from app.modules.chat_engine.ast_validator import ASTValidator
+        from app.modules.chat_engine.intent_classifier import IntentClassifier
+        from app.modules.chat_engine.sql_executor import SQLExecutor
+
+        with patch.object(IntentClassifier, "classify_intent", new=AsyncMock(return_value="conversational")), \
+             patch.object(SQLExecutor, "get_grounding_query", return_value="SELECT 1"), \
+             patch.object(ASTValidator, "validate_and_secure_sql", side_effect=RuntimeError("sqlglot blew up")), \
+             patch.object(IntentClassifier, "generate_conversational_response", new=AsyncMock(return_value="respuesta ok")):
+            response = asyncio.run(
+                QueryEngine.execute_query(
+                    question="¿Cómo va el panorama de ventas?",
+                    user_role="Administrador",
+                    is_admin=True,
+                    db=self._mock_conn_and_db(),
+                    connection_id=1
+                )
+            )
+
+        self.assertEqual(response.traceability.rows_returned, 0)
+        self.assertEqual(response.conversational_response, "respuesta ok")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,4 +1,4 @@
-import React, { useState, useId } from 'react';
+import React, { useState } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { QueryResult, KPICard } from '../../../types';
 import { formatMetricNumber } from './charts/theme';
+import { copyToClipboard } from '../../../shared/clipboard';
 
 interface KPISectionProps {
   kpis?: QueryResult['kpis'];
@@ -343,95 +344,6 @@ const PercentageTrack: React.FC<{ percent: number }> = ({ percent }) => {
     </div>
   );
 };
-
-const VolumeWaveSparkline: React.FC<{ uniqueId: string }> = ({ uniqueId }) => {
-  const gradId = `vol-grad-${uniqueId}`;
-  return (
-    <div className="w-full h-7 mt-2 overflow-hidden flex items-end" aria-hidden="true">
-      <svg
-        viewBox="0 0 100 24"
-        preserveAspectRatio="none"
-        className="w-full h-6 overflow-visible"
-      >
-        <defs>
-          <linearGradient id={gradId} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#06B6D4" stopOpacity="0.4" />
-            <stop offset="100%" stopColor="#06B6D4" stopOpacity="0.0" />
-          </linearGradient>
-        </defs>
-        {/* Subtle filled area */}
-        <path
-          d="M 0 18 Q 18 10, 35 15 T 70 8 T 100 12 L 100 24 L 0 24 Z"
-          fill={`url(#${gradId})`}
-        />
-        {/* Main curve */}
-        <path
-          d="M 0 18 Q 18 10, 35 15 T 70 8 T 100 12"
-          fill="none"
-          stroke="#06B6D4"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-        {/* Glowing end node */}
-        <circle cx="100" cy="12" r="2.5" fill="#22D3EE" />
-      </svg>
-    </div>
-  );
-};
-
-const DensityEqualizer: React.FC = () => {
-  const bars = [40, 75, 100, 55, 85];
-  return (
-    <div className="w-full mt-2.5 flex items-center justify-between" aria-hidden="true">
-      <span className="text-[10px] font-mono text-slate-500 dark:text-gray-400 flex items-center gap-1">
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-        Perfil Muestral
-      </span>
-      <div className="flex items-end gap-1 h-5">
-        {bars.map((h, i) => (
-          <div
-            key={i}
-            className="w-1.5 rounded-full bg-gradient-to-t from-amber-600 to-amber-400 dark:from-amber-500 dark:to-yellow-300 transition-all duration-500 group-hover:scale-y-110"
-            style={{ height: `${h}%` }}
-          />
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const CurrencyTrajectory: React.FC<{ uniqueId: string }> = ({ uniqueId }) => {
-  const gradId = `cur-grad-${uniqueId}`;
-  return (
-    <div className="w-full h-7 mt-2 overflow-hidden flex items-end" aria-hidden="true">
-      <svg
-        viewBox="0 0 100 24"
-        preserveAspectRatio="none"
-        className="w-full h-6 overflow-visible"
-      >
-        <defs>
-          <linearGradient id={gradId} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#10B981" stopOpacity="0.4" />
-            <stop offset="100%" stopColor="#10B981" stopOpacity="0.0" />
-          </linearGradient>
-        </defs>
-        <path
-          d="M 0 20 C 30 18, 55 12, 100 4 L 100 24 L 0 24 Z"
-          fill={`url(#${gradId})`}
-        />
-        <path
-          d="M 0 20 C 30 18, 55 12, 100 4"
-          fill="none"
-          stroke="#10B981"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-        <circle cx="100" cy="4" r="2.5" fill="#34D399" />
-      </svg>
-    </div>
-  );
-};
-
 // -------------------------------------------------------------
 // Single KPI Card Component with High-Interactivity & Polish
 // -------------------------------------------------------------
@@ -443,8 +355,6 @@ interface SingleCardProps {
 
 const SingleKPICard: React.FC<SingleCardProps> = ({ kpi, idx }) => {
   const [copied, setCopied] = useState(false);
-  const baseId = useId();
-  const cardId = `${baseId}-${idx}`.replace(/[:]/g, '_');
 
   const archetypeId = detectArchetype(kpi.title, kpi.value, kpi.subtitle);
   const theme = ARCHETYPE_THEMES[archetypeId];
@@ -458,16 +368,18 @@ const SingleKPICard: React.FC<SingleCardProps> = ({ kpi, idx }) => {
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     const copyText = `${cleanTitle}: ${prefix}${numberPart}${suffix}${filterTag ? ` (${filterTag})` : ''} - ${cleanSubtitle}`;
-    navigator.clipboard.writeText(copyText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
+    void copyToClipboard(copyText).then((ok: boolean) => {
+      if (!ok) return;
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    });
   };
 
   const IconComponent = theme.icon;
 
   return (
     <div
-      className={`relative group rounded-2xl p-4.5 bg-white/90 dark:bg-dark-card/90 backdrop-blur-md border border-slate-200/90 dark:border-dark-border/80 shadow-md flex flex-col justify-between transition-all duration-200 ease-out hover:-translate-y-1 ${theme.glowHover}`}
+      className={`relative group rounded-2xl p-4 bg-white/90 dark:bg-dark-card/90 backdrop-blur-md border border-slate-200/90 dark:border-dark-border/80 shadow-md flex flex-col justify-between transition-all duration-200 ease-out hover:-translate-y-1 ${theme.glowHover}`}
       title={fullTitle}
     >
       {/* Top Header: Icon + Title + Status Pill */}
@@ -577,9 +489,6 @@ const SingleKPICard: React.FC<SingleCardProps> = ({ kpi, idx }) => {
         {archetypeId === 'percentage' && (
           <PercentageTrack percent={rawPercentNum ?? (parseFloat(numberPart) || 24)} />
         )}
-        {archetypeId === 'volume' && <VolumeWaveSparkline uniqueId={cardId} />}
-        {archetypeId === 'density' && <DensityEqualizer />}
-        {archetypeId === 'currency' && <CurrencyTrajectory uniqueId={cardId} />}
       </div>
     </div>
   );

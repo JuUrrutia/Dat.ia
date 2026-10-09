@@ -3,11 +3,17 @@
 **Commit de referencia:** `c5f1af4`  
 **Prioridad:** Alta (Fase 1 - Blindaje de Seguridad, Rendimiento y Fugas de Conexiones)  
 **Complejidad:** M (Patrón Registry y descarte controlado de pools)  
-**Riesgo:** MEDIO
+**Riesgo:** MEDIO  
+
+> **Estado: ✅ IMPLEMENTADO con otro diseño.** El plan pedía un
+> `ConnectorEngineRegistry` con caché de engines. Lo que hay es
+> `connector_engine()` (`backend/app/core/database.py:276-292`), un
+> contextmanager que hace `dispose()` al salir del bloque, usado por
+> `sql_executor.py:39-41`. Sin caché, a propósito: reconectar cuesta ~100 ms
+> contra un LLM de 8-25 s, así que un registro sería complejidad sin beneficio
+> (ver el docstring). La fuga de pools que motiva el plan está resuelta.
 
 ---
-
-## 🎯 Contexto y Problema
 
 En [`backend/app/modules/chat_engine/sql_executor.py#L38-L60`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/sql_executor.py#L38-L60), la ejecución de consultas relacionales contra PostgreSQL invoca:
 ```python

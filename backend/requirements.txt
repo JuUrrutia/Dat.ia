@@ -24,6 +24,10 @@ httpx>=0.28.0
 # Testing
 pytest>=8.3.0
 pytest-asyncio>=0.24.0
+# Properties sobre el calculo de forecast: la banda siempre contiene el punto,
+# el cuantil es monótono, y Decimal/int/float dan el mismo numero. Un test con
+# una serie fija no alcanza para esas reglas; ver tests/test_forecast_properties.py.
+hypothesis>=6.100.0
 
 # Report Generation & Data Export (PDF & Excel)
 reportlab>=4.2.0

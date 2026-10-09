@@ -9,3 +9,18 @@ release
 backend
 DOCS
 *.log
+
+# Secrets: 'COPY . .' would otherwise bake .env into the builder layer.
+# .env.example stays: it holds placeholders, not credentials.
+.env
+.env.*
+!.env.example
+
+# Local-only agent tooling, plans and customer databases.
+.agents/
+.opencode/
+plans/
+data_sources/
+*.db
+*.sqlite
+*.sqlite3
