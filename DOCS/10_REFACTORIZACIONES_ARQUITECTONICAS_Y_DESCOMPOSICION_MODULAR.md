@@ -65,11 +65,11 @@ backend/app/
 
 El archivo original `query_engine.py` (1,281 líneas) concentraba clasificación de preguntas, ejecución SQL, cálculo métrico, generación de ECharts y autoreparación con LLM. Fue dividido en:
 
-1. **[engine.py](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/engine.py)** (Orquestador ligero Facade).
-2. **[intent_classifier.py](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/intent_classifier.py)**: Clasificación conversacional y detecciones por Regex.
-3. **[sql_executor.py](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/sql_executor.py)**: Conexión SQLite segura en modo Solo Lectura y manejo de excepciones relacionales.
-4. **[kpi_calculator.py](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/kpi_calculator.py)**: Cálculo de totales, máximos, mínimos y tarjetas KPI.
-5. **[echarts_formatter.py](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/echarts_formatter.py)**: Construcción de opciones Apache ECharts (Barra, Línea, Donas, Gauges).
+1. **[engine.py](../backend/app/modules/chat_engine/engine.py)** (Orquestador ligero Facade).
+2. **[intent_classifier.py](../backend/app/modules/chat_engine/intent_classifier.py)**: Clasificación conversacional y detecciones por Regex.
+3. **[sql_executor.py](../backend/app/modules/chat_engine/sql_executor.py)**: Conexión SQLite segura en modo Solo Lectura y manejo de excepciones relacionales.
+4. **[kpi_calculator.py](../backend/app/modules/chat_engine/kpi_calculator.py)**: Cálculo de totales, máximos, mínimos y tarjetas KPI.
+5. **`backend/app/modules/chat_engine/echarts_formatter.py`**: Construcción de opciones Apache ECharts (Barra, Línea, Donas, Gauges).
 
 ---
 
@@ -77,11 +77,11 @@ El archivo original `query_engine.py` (1,281 líneas) concentraba clasificación
 
 El módulo `tabular_importer.py` (297 líneas) gestionaba el procesamiento de 4 formatos distintos en una sola clase. Se modularizó en el paquete `backend/app/modules/admin_catalog/importers/`:
 
-- **[base.py](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/admin_catalog/importers/base.py)**: Funciones agnósticas de sanitización de identificadores SQLite e inferencia de tipos (`INTEGER`, `REAL`, `TEXT`).
-- **[csv_importer.py](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/admin_catalog/importers/csv_importer.py)**: Detección automática de delimitadores (`,`, `;`, `\t`, `|`) y fallbacks de codificación (`UTF-8`, `Latin-1`, `CP1252`).
-- **[excel_importer.py](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/admin_catalog/importers/excel_importer.py)**: Conversión multi-hoja de libros de Excel (`.xlsx`, `.xlsm`).
-- **[sqlite_importer.py](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/admin_catalog/importers/sqlite_importer.py)**: Introspección de bases de datos SQLite `.db` y ejecutor de scripts `.sql`.
-- **[tabular_importer.py](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/admin_catalog/tabular_importer.py)**: Fachada limpia que exporta `convert_uploaded_file_to_sqlite`.
+- **[base.py](../backend/app/modules/admin_catalog/importers/base.py)**: Funciones agnósticas de sanitización de identificadores SQLite e inferencia de tipos (`INTEGER`, `REAL`, `TEXT`).
+- **`backend/app/modules/admin_catalog/importers/csv_importer.py`**: Detección automática de delimitadores (`,`, `;`, `\t`, `|`) y fallbacks de codificación (`UTF-8`, `Latin-1`, `CP1252`).
+- **`backend/app/modules/admin_catalog/importers/excel_importer.py`**: Conversión multi-hoja de libros de Excel (`.xlsx`, `.xlsm`).
+- **`backend/app/modules/admin_catalog/importers/sqlite_importer.py`**: Introspección de bases de datos SQLite `.db` y ejecutor de scripts `.sql`.
+- **[tabular_importer.py](../backend/app/modules/admin_catalog/tabular_importer.py)**: Fachada limpia que exporta `convert_uploaded_file_to_sqlite`.
 
 ---
 
@@ -90,20 +90,20 @@ El módulo `tabular_importer.py` (297 líneas) gestionaba el procesamiento de 4 
 El Frontend de React fue reestructurado para desacoplar componentes UI de la lógica de estado y llamadas API mediante **Custom Hooks**:
 
 #### 1. Separación de Autenticación y Configuración:
-- **[SettingsContext.tsx](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/settings/context/SettingsContext.tsx)**: Manejo dedicado de `AppSettings` (endpoints LLM, Ollama, PostgreSQL).
-- **[AuthContext.tsx](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/auth/context/AuthContext.tsx)**: Enfocado estrictamente en la identidad del usuario, tokens JWT y modal de clave obligatoria.
+- **[SettingsContext.tsx](../src/features/settings/context/SettingsContext.tsx)**: Manejo dedicado de `AppSettings` (endpoints LLM, Ollama, PostgreSQL).
+- **[AuthContext.tsx](../src/features/auth/context/AuthContext.tsx)**: Enfocado estrictamente en la identidad del usuario, tokens JWT y modal de clave obligatoria.
 
 #### 2. Vistas Ejecutivas en Componentes Livianos:
-- **`ExecutiveDashboardView.tsx`** (471 -> 175 líneas): Refactorizado delegando a [KPISection.tsx](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/dashboard/components/KPISection.tsx), [ChartSection.tsx](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/dashboard/components/ChartSection.tsx) y [OfflineAlertView.tsx](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/dashboard/components/OfflineAlertView.tsx).
-- **`ExecutiveAssistantView.tsx`** (428 -> 90 líneas): Refactorizado delegando a [AssistantMarkdownBody.tsx](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/dashboard/components/assistant/AssistantMarkdownBody.tsx), [AssistantSupportData.tsx](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/dashboard/components/assistant/AssistantSupportData.tsx) y [AssistantHeader.tsx](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/dashboard/components/assistant/AssistantHeader.tsx).
+- **`ExecutiveDashboardView.tsx`** (471 -> 175 líneas): Refactorizado delegando a [KPISection.tsx](../src/features/dashboard/components/KPISection.tsx), [ChartSection.tsx](../src/features/dashboard/components/ChartSection.tsx) y [OfflineAlertView.tsx](../src/features/dashboard/components/OfflineAlertView.tsx).
+- **`ExecutiveAssistantView.tsx`** (428 -> 90 líneas): Refactorizado delegando a [AssistantMarkdownBody.tsx](../src/features/dashboard/components/assistant/AssistantMarkdownBody.tsx), `src/features/dashboard/components/assistant/AssistantSupportData.tsx` y [AssistantHeader.tsx](../src/features/dashboard/components/assistant/AssistantHeader.tsx).
 
 #### 3. Pestañas y Modales de Administración (`src/features/admin/hooks/`):
-- **[useAdminUsers.ts](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/admin/hooks/useAdminUsers.ts)**: Estado de usuarios y matriz RBAC para `AdminUsersTab.tsx`.
-- **[useAdminConnectors.ts](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/admin/hooks/useAdminConnectors.ts)**: Pruebas de conectividad TCP y filtros para `AdminConnectorsTab.tsx`.
-- **[useAdminCatalog.ts](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/admin/hooks/useAdminCatalog.ts)**: Reglas semánticas y auto-enriquecimiento para `AdminCatalogTab.tsx`.
-- **[useAdminAudit.ts](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/admin/hooks/useAdminAudit.ts)**: Paginación, filtros y exportación CSV para `AdminAuditTab.tsx`.
-- **[useDatabaseUpload.ts](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/admin/hooks/useDatabaseUpload.ts)**: Drag & Drop y carga Multipart para `DatabaseUploadModal.tsx`.
-- **[useConnectorForm.ts](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/admin/hooks/useConnectorForm.ts)**: Reducer de formulario y tests de red para `ConnectorModal.tsx`.
+- **[useAdminUsers.ts](../src/features/admin/hooks/useAdminUsers.ts)**: Estado de usuarios y matriz RBAC para `AdminUsersTab.tsx`.
+- **[useAdminConnectors.ts](../src/features/admin/hooks/useAdminConnectors.ts)**: Pruebas de conectividad TCP y filtros para `AdminConnectorsTab.tsx`.
+- **[useAdminCatalog.ts](../src/features/admin/hooks/useAdminCatalog.ts)**: Reglas semánticas y auto-enriquecimiento para `AdminCatalogTab.tsx`.
+- **[useAdminAudit.ts](../src/features/admin/hooks/useAdminAudit.ts)**: Paginación, filtros y exportación CSV para `AdminAuditTab.tsx`.
+- **`src/features/admin/hooks/useDatabaseUpload.ts`**: Drag & Drop y carga Multipart para `DatabaseUploadModal.tsx`.
+- **[useConnectorForm.ts](../src/features/admin/hooks/useConnectorForm.ts)**: Reducer de formulario y tests de red para `ConnectorModal.tsx`.
 
 ---
 

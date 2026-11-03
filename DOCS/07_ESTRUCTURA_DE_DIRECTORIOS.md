@@ -3,6 +3,7 @@
 > **Documento:** 07 - Arquitectura de Carpetas y Organización del Código  
 > **Estado:** Aprobado tras Alineación Técnica y Migración DDD  
 > **Área:** Ingeniería de Software y Estructura Monorepo  
+> **Última actualización:** 30 de octubre de 2026  
 
 > **Árbol verificado contra el filesystem.** No describe estructura planeada ni
 > directorios de una versión anterior (Electron, `alembic/`, `app/models/`,
@@ -12,7 +13,7 @@
 
 ## 1. Principios de Organización
 
-1. **Arquitectura Orientada al Dominio (Backend Domain-Driven Design):** el código Python dentro de `backend/app/modules/` agrupa las responsabilidades por dominios de negocio autosuficientes (`auth`, `chat_engine`, `admin_catalog`, `catalog`, `reports`, `telemetry_audit`, `system`).
+1. **Arquitectura Orientada al Dominio (Backend Domain-Driven Design):** el código Python dentro de `backend/app/modules/` agrupa las responsabilidades por dominios de negocio autosuficientes (`auth`, `chat_engine`, `admin_catalog`, `catalog`, `ml_forecast`, `reports`, `telemetry_audit`, `system`).
 2. **Escalabilidad Modular en Frontend (Feature-Based Architecture):** React separa páginas en `src/pages/`, componentes presentacionales en `src/components/` y estado/hooks/servicios por característica en `src/features/` (`auth`, `settings`, `admin`, `dashboard`, `chat`).
 3. **Un solo proceso Python por ejecución:** no hay proceso de escritorio. El backend es un servicio FastAPI que se sirve por HTTP (`:8000`) y el frontend se sirve como SPA con Vite en dev o Nginx en Docker. No existe directorio `electron/`.
 
@@ -22,19 +23,23 @@
 
 ```
 democratizacion-de-datos/
-├── .github/workflows/ci.yml     # pytest + tsc + npm run build
-├── DOCS/                        # Documentación técnica y funcional (01 a 11)
-├── plans/                       # Planes de implementación (001-003) + README
+├── .github/workflows/ci.yml     # pytest + npm test + tsc + build
+├── DOCS/                        # Documentación técnica y funcional (01 a 26)
+├── plans/                       # Planes de implementación (001-005) + README
+├── deploy/                      # Bundle on-prem: compose, setup, backup, restore, upgrade, Caddy
 ├── data_sources/                # Bases de datos subidas por el usuario (NO versionado)
 ├── public/                      # Assets estáticos copiados tal cual por Vite
 ├── scripts/                     # Utilidades Node de dev (run-backend, init-db, checks)
+├── DOCKER-RAPIDO.md             # Instalación con Docker sin Node ni Python
+├── docker-compose.partner.yml   # Stack con imágenes publicadas (demo/partner)
+├── docker-compose.yml           # Stack de desarrollo (build local)
 │
 ├── src/                         # APLICACIÓN FRONTEND (React 18 + Vite + TS)
 │   ├── App.tsx                  # Proveedores raíz y rutas
 │   ├── main.tsx                 # Punto de entrada de React
 │   ├── vite-env.d.ts
 │   ├── app/router/              # AppRouter.tsx (tabla de rutas)
-│   ├── pages/                   # Login, ChatDashboard, Admin, Settings (+ logos)
+│   ├── pages/                   # Login, ChatDashboard, Projections, Admin, Settings (+ logos)
 │   ├── components/              # Presentacionales por área
 │   │   ├── admin/               # Tabs de usuarios, permisos, catálogo, conectores, auditoría
 │   │   │   ├── catalog/         # SemanticCatalogSection, DataDictionarySection
@@ -51,12 +56,15 @@ democratizacion-de-datos/
 │   │   ├── admin/services/      # audit, catalog, connector, permission
 │   │   ├── auth/context/        # AuthContext.tsx
 │   │   ├── auth/services/       # auth_service.ts
-│   │   ├── chat/hooks/          # useChatEngine.ts
+│   │   ├── chat/components/     # ProjectionSuggestionCard (oferta "Abrir en Proyecciones")
+│   │   ├── chat/hooks/          # useChatEngine.tsx
 │   │   ├── chat/services/       # llm_service, query_service
-│   │   ├── dashboard/components/# KPISection, ChartSection, OfflineAlertView, PredictionPanel
+│   │   ├── dashboard/components/# KPISection, ChartSection, OfflineAlertView
 │   │   │   ├── assistant/       # AssistantHeader, AssistantMarkdownBody, AssistantSupportData
 │   │   │   └── charts/          # Configuraciones bar/line/pie/extra + theme
-│   │   ├── dashboard/services/  # report_service.ts
+│   │   ├── dashboard/services/  # report_service.ts (export PDF/Excel del Informe)
+│   │   ├── projections/components/ # ProjectionResults, ProjectionChart
+│   │   ├── projections/services/   # projection_service.ts (estimate/run)
 │   │   ├── settings/context/    # SettingsContext.tsx
 │   │   └── settings/hooks/      # useSettingsDiagnostics.ts
 │   ├── shared/                  # api/api_client.ts, layout/, clipboard.ts
@@ -82,17 +90,18 @@ democratizacion-de-datos/
 │   │       │                    # response_builder, narrative_stream, suggestions_service,
 │   │       │                    # models, schemas, router
 │   │       ├── admin_catalog/   # models, schemas, router, tabular_importer
-│   │       │   └── importers/   # base, csv, excel, postgres, sqlite
+│   │       │   └── importers/   # base, postgres (ingesta csv/excel/sqlite/sql)
 │   │       ├── catalog/services/# catalog_service, catalog_enricher, connector_service,
 │   │       │                    # null_manager, schema_inspector
+│   │       ├── ml_forecast/     # ml_models (candidatos + backtest walk-forward),
+│   │       │                    # ml_service (contexto, narrativa, estimación),
+│   │       │                    # schemas, router (proyecciones)
 │   │       ├── reports/         # generator, data_compiler, pdf_exporter, excel_exporter, schemas
 │   │       ├── telemetry_audit/ # models, schemas, router (auditoría y compliance)
 │   │       └── system/          # health_service, router, schemas
-│   ├── tests/                   # Suite pytest (~500 tests, cambia casi cada semana)
+│   ├── tests/                   # Suite pytest (91 archivos, 844 tests al 30/10/2026)
 │   ├── scripts/                 # Utilidades de operación (PostgreSQL, credenciales, RBAC)
 │   ├── main.py                  # Punto de entrada FastAPI (app, CORS, startup, /health)
-│   ├── setup_demo_db.py         # Genera demo_corporativa.db
-│   ├── setup_mental_health_db.py
 │   ├── Dockerfile
 │   ├── pyproject.toml
 │   └── requirements.txt
@@ -122,20 +131,36 @@ Lógica de inferencia y ejecución Text-to-SQL descompuesta:
 
 ### 3.2. `backend/app/modules/admin_catalog/importers/`
 Conversión e ingesta de datos tabulares:
-- `base.py`: Sanitización e inferencia de tipos SQLite.
-- `csv_importer.py`, `excel_importer.py`, `sqlite_importer.py`, `postgres_importer.py`.
+- `base.py`: Sanitización de identificadores SQL.
+- `postgres_importer.py`: `import_csv_to_postgres`, `import_excel_to_postgres`, `import_sqlite_to_postgres`, `import_sql_script_to_postgres`, inferencia de tipos y cast de valores.
 
 ### 3.3. `backend/app/core/database.py`
-Motor de metadatos (PostgreSQL con fallback a SQLite), `ensure_schema_migrations()` para
+Motor de metadatos (PostgreSQL), `ensure_schema_migrations()` para
 migraciones incrementales de columnas, y el contextmanager `connector_engine()` que
 libera el pool del conector al salir del bloque.
 
 ### 3.4. `src/features/` (Hooks & Contexts)
 - `auth/context/AuthContext.tsx`: identidad y JWT.
 - `settings/context/SettingsContext.tsx`: preferencias de LLM y PostgreSQL.
-- `dashboard/components/`: KPIs, gráficos, panel de predicción y asistente ejecutivo.
+- `dashboard/components/`: KPIs, gráficos y asistente ejecutivo.
+- `projections/`: página de Proyecciones ML — `components/` (formulario,
+  resultados, gráfico) y `services/projection_service.ts` (estimate/run).
+- `chat/components/ProjectionSuggestionCard.tsx`: oferta "Abrir en Proyecciones"
+  cuando el chat detecta una pregunta de tipo proyección.
 - `*/services/`: clientes HTTP de la API. El cliente base es `src/shared/api/api_client.ts`.
 
 ### 3.5. `src/pages/` vs `src/components/`
-`pages/` enruta (Login, Chat, Admin, Settings). `components/` es presentacional y no
+`pages/` enruta (Login, Chat, Proyecciones, Admin, Settings). `components/` es presentacional y no
 conoce el router. Los hooks que hablan con el backend viven en `src/features/`.
+
+### 3.6. `backend/app/modules/ml_forecast/`
+Motor de proyecciones ML sobre la serie de una tabla de hechos:
+- `ml_models.py`: métodos `naive`, `mean` y `ols_trend`; backtest walk-forward
+  que mide el error por paso; `build_projection` dictamina método, banda, MAPE y
+  `beats_naive`. Holt amortiguado se retiró en el plan 004: un modelo más
+  complejo que empata no es una mejora.
+- `ml_service.py`: `run_projection` (carga el contexto de la tabla, arma SQL de
+  la serie, ejecuta y proyecta), narrativa (plantilla del servidor o modelo
+  local) y `estimate_seconds` para la barra de progreso.
+- `schemas.py` / `router.py`: contratos Pydantic y endpoints
+  `/ml/projections/estimate` y `/ml/projections/run`.
