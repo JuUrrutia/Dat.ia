@@ -168,17 +168,25 @@ class TestCatalogAndConnectors(unittest.TestCase):
             conn_id = upload_data["id"]
             self.assertTrue(upload_data["is_uploaded"])
 
-            # Verify tables in SQLite
+            # Verify tables in database (PostgreSQL or SQLite)
             conn_record = self.db.query(CorporateConnection).filter(CorporateConnection.id == conn_id).first()
             self.assertIsNotNone(conn_record)
-            sqlite_file = conn_record.host
-            self.assertTrue(os.path.exists(sqlite_file))
-
-            sq_conn = sqlite3.connect(sqlite_file)
-            cur = sq_conn.cursor()
-            rows = cur.execute("SELECT * FROM ventas_importadas;").fetchall()
-            self.assertEqual(len(rows), 3)
-            sq_conn.close()
+            if conn_record.db_type == DatabaseType.POSTGRESQL or str(conn_record.db_type).lower() == "postgresql":
+                from app.core.database import build_engine_for_connector
+                from sqlalchemy import text
+                eng = build_engine_for_connector(conn_record)
+                with eng.connect() as pg_c:
+                    rows = pg_c.execute(text("SELECT * FROM ventas_importadas;")).fetchall()
+                    self.assertEqual(len(rows), 3)
+                eng.dispose()
+            else:
+                sqlite_file = conn_record.host
+                self.assertTrue(os.path.exists(sqlite_file))
+                sq_conn = sqlite3.connect(sqlite_file)
+                cur = sq_conn.cursor()
+                rows = cur.execute("SELECT * FROM ventas_importadas;").fetchall()
+                self.assertEqual(len(rows), 3)
+                sq_conn.close()
         finally:
             if conn_id:
                 self.client.delete(f"/api/v1/connectors/{conn_id}", headers=self.headers)
@@ -224,16 +232,26 @@ class TestCatalogAndConnectors(unittest.TestCase):
 
             conn_record = self.db.query(CorporateConnection).filter(CorporateConnection.id == conn_id).first()
             self.assertIsNotNone(conn_record)
-            sqlite_file = conn_record.host
-            self.assertTrue(os.path.exists(sqlite_file))
-
-            sq_conn = sqlite3.connect(sqlite_file)
-            cur = sq_conn.cursor()
-            fact_rows = cur.execute("SELECT * FROM facturas;").fetchall()
-            client_rows = cur.execute("SELECT * FROM clientes;").fetchall()
-            self.assertEqual(len(fact_rows), 2)
-            self.assertEqual(len(client_rows), 2)
-            sq_conn.close()
+            if conn_record.db_type == DatabaseType.POSTGRESQL or str(conn_record.db_type).lower() == "postgresql":
+                from app.core.database import build_engine_for_connector
+                from sqlalchemy import text
+                eng = build_engine_for_connector(conn_record)
+                with eng.connect() as pg_c:
+                    fact_rows = pg_c.execute(text("SELECT * FROM facturas;")).fetchall()
+                    client_rows = pg_c.execute(text("SELECT * FROM clientes;")).fetchall()
+                    self.assertEqual(len(fact_rows), 2)
+                    self.assertEqual(len(client_rows), 2)
+                eng.dispose()
+            else:
+                sqlite_file = conn_record.host
+                self.assertTrue(os.path.exists(sqlite_file))
+                sq_conn = sqlite3.connect(sqlite_file)
+                cur = sq_conn.cursor()
+                fact_rows = cur.execute("SELECT * FROM facturas;").fetchall()
+                client_rows = cur.execute("SELECT * FROM clientes;").fetchall()
+                self.assertEqual(len(fact_rows), 2)
+                self.assertEqual(len(client_rows), 2)
+                sq_conn.close()
         finally:
             if conn_id:
                 self.client.delete(f"/api/v1/connectors/{conn_id}", headers=self.headers)
@@ -245,12 +263,17 @@ class TestCatalogAndConnectors(unittest.TestCase):
 
     def test_upload_database_closed_by_default_permissions(self):
         """
-        Uploading a new database grants access to operational roles (Admin, Economista, TI, etc.)
-        while strictly keeping unassigned/restricted roles ('Usuario', 'Usuario Consultor') with 0 permissions.
-        Response includes requires_permission_review: True and detected_tables list.
+        Uploading a new database grants access to NOBODY.
+
+        Antes este test afirmaba lo contrario ("permisos > 0 para roles
+        operacionales"): el upload creaba un RoleTablePermission(is_allowed=True)
+        por cada (rol, tabla) y solo se saltaba unas tablas de la demo SAP por
+        substring sobre el nombre del rol. En cualquier dataset real la exclusion
+        no excluye nada, o sea que casi todos los roles quedaban con todas las
+        tablas. Default-deny: sin decision explicita no hay acceso. El admin
+        concede con PUT /api/v1/permissions.
         """
         from app.modules.admin_catalog.models import RoleTablePermission
-        from app.core.constants import ADMIN_ROLES
 
         csv_content = b"id_sensor,ubicacion,temperatura\n1,Servidor-01,23.5\n2,Servidor-02,28.1\n"
         file_obj = io.BytesIO(csv_content)
@@ -270,15 +293,19 @@ class TestCatalogAndConnectors(unittest.TestCase):
             self.assertTrue(data.get("requires_permission_review"))
             self.assertIn("sensores_iot", data.get("detected_tables", []))
 
-            # Query all permissions for this connection
+            # La tabla entra declarada, pero sin ninguna fila de permiso: el
+            # dataset existe y aun asi nadie puede consultarlo.
             perms = self.db.query(RoleTablePermission).filter(
                 RoleTablePermission.connection_id == conn_id
             ).all()
+            self.assertEqual(
+                len(perms), 0,
+                "Subir un dataset no concede acceso a ningun rol. Un permiso "
+                "creado sin decision de nadie es un over-grant, no un default.",
+            )
 
-            # Verify permissions exist for operational roles
-            self.assertGreater(len(perms), 0)
-
-            # Check that unassigned/restricted roles have 0 permissions for this connection
+            # Y el rol restringido tampoco, que era la unica garantia que este
+            # test sostenia antes y ahora es trivial.
             restricted_roles = self.db.query(Role).filter(
                 Role.name.in_(["Usuario", "Usuario Consultor"])
             ).all()
@@ -324,8 +351,15 @@ class TestCatalogAndConnectors(unittest.TestCase):
                 data={"name": "Base de Datos Clientes Nuevos"},
                 headers=self.headers
             )
-            self.assertEqual(res_upload.status_code, 201)
+            self.assertEqual(res_upload.status_code, 201, res_upload.text)
             conn_id = res_upload.json()["id"]
+            # El nombre que REALMENTE quedo guardado, no el que se pidio. El
+            # servicio deduplica nombres globalmente ("_1", "_2", ...), asi que
+            # afirmar el literal exacto ataba este test al estado de la base:
+            # alcanzaba con que una corrida anterior dejara una fila y el test
+            # ya no podia volver a pasar. Lo que importa es que el diccionario
+            # reporte el nombre del conector que se acaba de crear.
+            uploaded_name = res_upload.json()["name"]
 
             # 1. Verify that semantic catalog was automatically seeded on upload for connection 2
             res_cat_conn2 = self.client.get(f"/api/v1/catalog/?connection_id={conn_id}", headers=self.headers)
@@ -340,7 +374,7 @@ class TestCatalogAndConnectors(unittest.TestCase):
             self.assertEqual(res_dict_conn2.status_code, 200)
             dict_data_conn2 = res_dict_conn2.json()
             self.assertEqual(dict_data_conn2["connection_id"], conn_id)
-            self.assertEqual(dict_data_conn2["connection_name"], "Base de Datos Clientes Nuevos")
+            self.assertEqual(dict_data_conn2["connection_name"], uploaded_name)
             tbl_names = [t["table_name"] for t in dict_data_conn2["tables"]]
             self.assertIn("clientes_nuevos", tbl_names)
 
@@ -353,8 +387,10 @@ class TestCatalogAndConnectors(unittest.TestCase):
             self.assertEqual(res_enrich.status_code, 200)
             self.assertTrue(res_enrich.json()["success"])
 
-            # 4. Verify connection 1's dictionary is distinct from connection 2
-            res_dict_conn1 = self.client.get("/api/v1/catalog/data-dictionary?connection_id=1", headers=self.headers)
+            # 4. Verify main connection's dictionary is distinct from connection 2
+            main_conn = self.db.query(CorporateConnection).filter(CorporateConnection.is_uploaded == False).first()
+            main_conn_id = main_conn.id if main_conn else 1
+            res_dict_conn1 = self.client.get(f"/api/v1/catalog/data-dictionary?connection_id={main_conn_id}", headers=self.headers)
             self.assertEqual(res_dict_conn1.status_code, 200)
             tbl_names_conn1 = [t["table_name"] for t in res_dict_conn1.json()["tables"]]
             self.assertNotIn("clientes_nuevos", tbl_names_conn1)
@@ -368,5 +404,38 @@ class TestCatalogAndConnectors(unittest.TestCase):
                 except Exception:
                     pass
 
+    def test_sap_enrichment_and_join_detection(self):
+        from app.modules.catalog.services.catalog_enricher import CatalogEnricher
+        from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
 
+        # 1. Test SAP heuristic enrichment for typical SAP acronyms
+        res_wrbtr = CatalogEnricher.heuristic_enrich("BSEG", "WRBTR", "DECIMAL", ["1500.00"])
+        self.assertIn("Importe", res_wrbtr["friendly_name"])
+        self.assertIn("SUM(wrbtr)", res_wrbtr["business_formula"])
 
+        res_bukrs = CatalogEnricher.heuristic_enrich("BKPF", "BUKRS", "VARCHAR", ["1000"])
+        self.assertIn("Sociedad", res_bukrs["friendly_name"])
+
+        res_matnr = CatalogEnricher.heuristic_enrich("MARA", "MATNR", "VARCHAR", ["MAT-01"])
+        self.assertIn("Material", res_matnr["friendly_name"])
+
+        # 2. Test join relationship detection on SAP keys
+        table_cols = {
+            "BKPF": ["BUKRS", "BELNR", "GJAHR", "BLART"],
+            "BSEG": ["BUKRS", "BELNR", "GJAHR", "BUZEI", "WRBTR"]
+        }
+        # Simulate relationship detection logic directly
+        tables_list = list(table_cols.keys())
+        relationships = []
+        for i in range(len(tables_list)):
+            for j in range(i + 1, len(tables_list)):
+                t1, t2 = tables_list[i], tables_list[j]
+                cols1 = {c.lower(): c for c in table_cols[t1]}
+                cols2 = {c.lower(): c for c in table_cols[t2]}
+                common = set(cols1.keys()).intersection(set(cols2.keys()))
+                for c in common:
+                    if c.endswith("id") or c == "id" or "key" in c or c in {"belnr", "vbeln", "ebeln", "matnr", "kunnr", "lifnr", "bukrs", "posnr"}:
+                        relationships.append(f"{t1}.{cols1[c]} = {t2}.{cols2[c]}")
+
+        self.assertTrue(any("BELNR" in r for r in relationships))
+        self.assertTrue(any("BUKRS" in r for r in relationships))

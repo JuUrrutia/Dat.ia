@@ -32,30 +32,26 @@ export const authService = {
     return res.data;
   },
 
+  // Sin fallback: si /auth/roles falla (ej. 403 por rol no-admin), el error sube.
+  // Devolver roles ficticios hacía creer al usuario que tenía permisos que no tiene.
   async getAvailableRoles(): Promise<{ id: number; name: string; description: string }[]> {
-    try {
-      const res = await apiClient.get('/auth/roles');
-      return res.data;
-    } catch {
-      return [
-        { id: 1, name: 'Economista', description: 'Acceso a información económica, financiera, facturación y costos' },
-        { id: 2, name: 'TI', description: 'Acceso a métricas de infraestructura, rendimiento de servidores e incidentes' },
-        { id: 3, name: 'Usuario', description: 'Perfil inicial por defecto sin asignación de dominios' },
-      ];
-    }
+    const res = await apiClient.get<{ id: number; name: string; description: string }[]>('/auth/roles');
+    return res.data;
   },
 
+  // Sin fallback: /auth/users exige rol admin. Un 403 debe llegar visible al
+  // consumidor, no disfrazarse de "hay 3 usuarios y uno es Super Admin".
   async getUsers(): Promise<User[]> {
-    try {
-      const res = await apiClient.get<User[]>('/auth/users');
-      return res.data;
-    } catch {
-      return [
-        { id: 1, username: 'admin', email: 'admin@empresa.com', role_name: 'Administrador', is_admin: true },
-        { id: 2, username: 'economista', email: 'economista@empresa.com', role_name: 'Economista', is_admin: false },
-        { id: 3, username: 'ti', email: 'ti@empresa.com', role_name: 'TI', is_admin: false }
-      ];
-    }
+    const res = await apiClient.get<User[]>('/auth/users');
+    return res.data;
+  },
+
+  // Sin catch: si el servidor no confirma, el error sube. Un "Guardar Rol" que
+  // escribe en localStorage y anuncia exito es exactamente el bug que se
+  // elimino de la UI; con este metodo la UI tiene algo real que esperar.
+  async updateUserRole(userId: number, data: { role?: string; is_admin?: boolean }): Promise<User> {
+    const res = await apiClient.patch<User>(`/auth/users/${userId}`, data);
+    return res.data;
   },
 
   async getUserSessions(userId?: number): Promise<UserSession[]> {

@@ -46,17 +46,17 @@ DOMAIN_OPERACIONES = "Operaciones & Comercial"
 # Default Local LLM Model
 DEFAULT_LLM_MODEL = settings.OLLAMA_MODEL
 
-# ECharts Theme Colors
-CHART_COLOR_RED = "#EF4444"
-CHART_COLOR_AMBER = "#F59E0B"
-CHART_COLOR_EMERALD = "#10B981"
-CHART_COLOR_CYAN = "#06B6D4"
-CHART_COLOR_BLUE = "#3B82F6"
-CHART_COLOR_PURPLE = "#8B5CF6"
-CHART_COLOR_TEXT_MUTED = "#9CA3AF"
-CHART_COLOR_TEXT_LIGHT = "#F3F4F6"
 
 # Intent Classification Keywords Taxonomy
+UNSUPPORTED_CAPABILITY_PATTERNS = [
+    r'\b(genera|generar|crea|crear|haz|hazme|hacer|dame|puedes\s+generar|puedes\s+crear|puedes\s+hacer)\s+(un[ao]?\s+)?(imagen|im[aá]genes|foto|fotos|fotograf[íi]a|dibujo|dibujos|logo|logos|video|videos|audio|audios|m[uú]sica|canci[oó]n|poema|poemas|chiste|chistes)\b',
+    r'\b(puedes|podes|haces|generas|creas)\s+(hacer\s+|generar\s+|crear\s+)?(un[ao]?\s+)?(imagen|im[aá]genes|foto|fotos|video|videos|audio|audios)\b',
+    r'\b(dibuja|dibujar|grabar\s+voz|dise[ñn]o\s+gr[aá]fico)\b',
+    r'\b(juguemos|jugar\s+a|contar\s+un\s+chiste|cu[eé]ntame\s+un\s+chiste)\b',
+    r'\b(busca(r)?\s+en\s+(google|internet)|noticias\s+de\s+hoy|clima\s+(de\s+hoy|actual))\b',
+    r'\b(qu[eé]\s+(cosas\s+)?no\s+puedes\s+hacer|cu[aá]les\s+son\s+tus\s+limitaciones|qu[eé]\s+no\s+(sabes|puedes)\s+hacer)\b'
+]
+
 DATA_REQUEST_KEYWORDS = [
     "resumen", "resumen de datos", "resumen general", "resumen de", 
     "datos", "registros", "cuántos", "cuantos", "cuántas", "cuantas", 
@@ -70,7 +70,8 @@ GREETING_KEYWORDS = [
     "hola", "buenos dias", "buenos días", "buenas tardes", "buenas noches", 
     "hey", "saludos", "quien eres", "quién eres", "que eres", "qué eres", 
     "que haces", "qué haces", "como estas", "cómo estás", "gracias", 
-    "ayuda general", "qué puedes hacer", "que puedes hacer", "cómo funciona", "como funciona"
+    "ayuda general", "qué puedes hacer", "que puedes hacer", "cómo funciona", "como funciona",
+    "perfecto", "excelente", "genial", "listo"
 ]
 
 ADVISORY_KEYWORDS = [

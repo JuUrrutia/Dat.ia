@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAuth } from '../features/auth/context/AuthContext';
 import { useSettingsDiagnostics } from '../features/settings/hooks/useSettingsDiagnostics';
-import { Settings, CheckCircle2, Save, Cpu, Database, ShieldCheck, Activity } from 'lucide-react';
+import { Settings, CheckCircle2, AlertCircle, Save, Cpu, Database, ShieldCheck, Activity } from 'lucide-react';
 import { SettingsLLMSection } from '../components/settings/SettingsLLMSection';
 import { SettingsInferenceSection } from '../components/settings/SettingsInferenceSection';
 import { SettingsPostgresSection } from '../components/settings/SettingsPostgresSection';
@@ -29,14 +29,31 @@ export const SettingsPage: React.FC = () => {
     testingPG,
     pgStatus,
     savedSuccess,
+    saveError,
+    dirty,
     detectedModels,
+    detectedEndpoint,
     elapsedSeconds,
     handleProviderChange,
     handleTestLLMConnection,
+    handleApplyDetected,
     handleRunInferenceTest,
     handleTestPG,
     handleSave,
   } = useSettingsDiagnostics(settings, updateSettings);
+
+  // Covers reload/close. HashRouter navigations cannot be blocked from here:
+  // react-router's useBlocker requires a data router and this app uses
+  // HashRouter, so the always-visible amber warning is what covers that case.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
 
   const providerLabel =
     provider === 'llama_cpp' ? 'llama.cpp' : provider === 'ollama' ? 'Ollama' : 'OpenAI Compatible';
@@ -46,23 +63,30 @@ export const SettingsPage: React.FC = () => {
       {/* Top Banner Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 glass-panel p-5 rounded-2xl border border-white/10 shadow-2xl">
         <div className="flex items-center space-x-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-brand-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-brand-500/25 shrink-0">
-            <Settings className="w-6 h-6 text-white" />
+          <div className="w-11 h-11 rounded-xl bg-brand-600 flex items-center justify-center text-white shadow-sm shrink-0">
+            <Settings className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-lg sm:text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
+            <h1 className="text-lg sm:text-xl font-extrabold text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
               <span>Studio de Opciones & Diagnóstico del Sistema</span>
             </h1>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-600 dark:text-gray-400">
               Configuración del Motor IA Local, Base de Metadatos y Playground de Inferencia en Tiempo Real
             </p>
           </div>
         </div>
 
         {savedSuccess && (
-          <div className="flex items-center space-x-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3.5 py-2 rounded-xl animate-fadeIn shadow-sm">
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+          <div className="flex items-center space-x-2 text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3.5 py-2 rounded-xl animate-fadeIn shadow-sm">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
             <span className="font-semibold">Configuración guardada correctamente</span>
+          </div>
+        )}
+
+        {saveError && (
+          <div className="flex items-center space-x-2 text-xs text-rose-700 dark:text-rose-400 bg-rose-500/10 border border-rose-500/30 px-3.5 py-2 rounded-xl animate-fadeIn shadow-sm" role="alert">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span className="font-semibold">{saveError}</span>
           </div>
         )}
       </div>
@@ -77,12 +101,14 @@ export const SettingsPage: React.FC = () => {
             ollamaUrl={ollamaUrl}
             modelName={modelName}
             detectedModels={detectedModels}
+            detectedEndpoint={detectedEndpoint}
             testingLLM={testingLLM}
             llmTestResult={llmTestResult}
             onProviderChange={handleProviderChange}
             onOllamaUrlChange={setOllamaUrl}
             onModelNameChange={setModelName}
             onTestLLMConnection={handleTestLLMConnection}
+            onApplyDetected={handleApplyDetected}
           />
 
           {/* Section 2: PostgreSQL Metadata DB */}
@@ -100,14 +126,26 @@ export const SettingsPage: React.FC = () => {
 
           {/* Floating Action Bar */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 glass-panel rounded-2xl border border-white/10 shadow-xl">
-            <div className="text-xs text-gray-400 flex items-center space-x-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>Los parámetros guardados tomarán efecto inmediatamente en las siguientes consultas.</span>
+            <div className="text-xs text-gray-600 dark:text-gray-400 flex items-center space-x-2">
+              {dirty ? (
+                <>
+                  <AlertCircle className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" />
+                  <span className="font-semibold text-amber-700 dark:text-amber-300">
+                    Tienes cambios sin guardar. Se perderán si sales de esta página sin pulsar Guardar.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>Los parámetros guardados tomarán efecto inmediatamente en las siguientes consultas.</span>
+                </>
+              )}
             </div>
 
             <button
               type="submit"
-              className="w-full sm:w-auto flex items-center justify-center space-x-2 text-xs bg-brand-600 hover:bg-brand-500 text-white font-bold px-6 py-3 rounded-xl shadow-lg shadow-brand-600/30 transition-all glow-brand hover:scale-105 shrink-0 focus-visible:ring-2 focus-visible:ring-brand-500"
+              disabled={!dirty}
+              className="w-full sm:w-auto flex items-center justify-center space-x-2 text-xs bg-brand-600 hover:bg-brand-500 active:scale-[0.99] text-white font-bold px-6 py-3 rounded-xl shadow-sm transition-all shrink-0 focus-visible:ring-2 focus-visible:ring-brand-500 cursor-pointer disabled:opacity-40 disabled:pointer-events-none disabled:cursor-default"
             >
               <Save className="w-4 h-4" />
               <span>Guardar Configuración</span>
@@ -129,40 +167,40 @@ export const SettingsPage: React.FC = () => {
 
           {/* Section 4: Live System Status Summary */}
           <div className="glass-panel rounded-2xl p-5 border border-white/10 space-y-4 shadow-xl">
-            <div className="flex items-center space-x-2 border-b border-dark-border/80 pb-3">
-              <Activity className="w-4 h-4 text-cyan-400" />
-              <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                Estado Actual del Servidor
+            <div className="flex items-center space-x-2 border-b border-slate-200 dark:border-dark-border/80 pb-3">
+              <Activity className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+              <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider">
+                Configuración del Servidor de Metadatos
               </h3>
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-dark-base/60 border border-dark-border/60">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-dark-base/60 border border-slate-200 dark:border-dark-border/60">
                 <div className="flex items-center space-x-2">
-                  <Cpu className="w-4 h-4 text-purple-400" />
-                  <span className="text-gray-300 font-medium">Motor Text-to-SQL</span>
+                  <Cpu className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <span className="text-gray-800 dark:text-gray-300 font-medium">Motor Text-to-SQL</span>
                 </div>
-                <span className="font-mono text-[11px] text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                <span className="font-mono text-[11px] text-purple-700 dark:text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
                   {providerLabel}
                 </span>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-xl bg-dark-base/60 border border-dark-border/60">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-dark-base/60 border border-slate-200 dark:border-dark-border/60">
                 <div className="flex items-center space-x-2">
-                  <Database className="w-4 h-4 text-blue-400" />
-                  <span className="text-gray-300 font-medium">Base de Metadatos</span>
+                  <Database className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <span className="text-gray-800 dark:text-gray-300 font-medium">Base de Metadatos</span>
                 </div>
-                <span className="font-mono text-[11px] text-blue-300 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 truncate max-w-[160px]">
+                <span className="font-mono text-[11px] text-blue-700 dark:text-blue-300 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 truncate max-w-[160px]">
                   {pgDb}@{pgHost}:{pgPort}
                 </span>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-xl bg-dark-base/60 border border-dark-border/60">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-dark-base/60 border border-slate-200 dark:border-dark-border/60">
                 <div className="flex items-center space-x-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span className="text-gray-300 font-medium">Modo de Privacidad</span>
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span className="text-gray-800 dark:text-gray-300 font-medium">Modo de Privacidad</span>
                 </div>
-                <span className="font-semibold text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                <span className="font-semibold text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                   0 Exfiltración (Local)
                 </span>
               </div>

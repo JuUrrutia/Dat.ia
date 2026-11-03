@@ -68,14 +68,6 @@ export interface KPICard {
   change_direction?: 'positive' | 'negative' | 'neutral';
 }
 
-export interface MetricGauge {
-  title: string;
-  percentage: number;
-  value_label: string;
-  target_label: string;
-  color?: string;
-}
-
 export interface ExecutiveReport {
   overview: string;
   key_findings: string[];
@@ -92,15 +84,15 @@ export interface TraceabilityAudit {
   schema_tables_used: string[];
   explanation: string;
   audit_log_id?: number;
+  target_database?: string | null;
 }
 
 export interface PresentationHints {
-  show_executive_report: boolean;
-  show_kpis: boolean;
-  show_gauges: boolean;
-  show_chart: boolean;
-  preferred_view: 'studio' | 'report' | 'table' | 'assistant';
-  summary_style: 'concise' | 'detailed' | 'executive';
+  show_executive_report?: boolean;
+  show_kpis?: boolean;
+  show_chart?: boolean;
+  preferred_view?: 'assistant' | 'report' | 'table';
+  summary_style?: 'concise' | 'detailed' | 'executive';
 }
 
 export interface QueryResult {
@@ -110,18 +102,142 @@ export interface QueryResult {
   summary_text: string;
   executive_report?: ExecutiveReport;
   kpis: KPICard[];
-  gauges?: MetricGauge[];
-  chart_type: 'bar' | 'line' | 'area' | 'pie' | 'donut' | 'radar' | 'gauge' | 'none';
+  chart_type: 'bar' | 'line' | 'area' | 'pie' | 'donut' | 'none';
   chart_option: any; // ECharts option
   data_columns: string[];
   data_rows: Record<string, any>[];
   traceability: TraceabilityAudit;
   pipeline_source?: 'backend' | 'llm_direct' | 'fallback';
-  response_type?: 'data_analysis' | 'advisory' | 'explanation' | 'report' | 'hybrid' | 'greeting' | 'error';
+  response_type?: 'data_analysis' | 'advisory' | 'explanation' | 'report' | 'hybrid' | 'greeting' | 'error' | 'out_of_scope';
   conversational_response?: string; // Respuesta conversacional estructurada
   grounding_info?: string; // Información de las tablas o registros reales de la BD consultados
   presentation_hints?: PresentationHints;
+  thinking_process?: string;
+  suggested_questions?: string[];
+  clarification_options?: string[];
+  anomalies_detected?: Array<{
+    column: string;
+    row_index: number;
+    entity: string;
+    value: number;
+    mean: number;
+    stdev: number;
+    z_score: number;
+    direction: 'spike' | 'drop';
+    description: string;
+    probable_cause: string;
+  }>;
+  sql_explanation?: string;
   audit_log_id?: number;
+  nulls_detected?: {
+    has_nulls: boolean;
+    table_name: string;
+    columns_with_nulls: string[];
+    null_rows_count: number;
+    total_rows: number;
+    options: Array<{
+      action: string;
+      label: string;
+      prompt: string;
+    }>;
+  };
+  /**
+   * Modulo C: el chat no tiene tablas que consultar.
+   *
+   * `true` = no hay ninguna conexion activa (nadie encendio una base).
+   * `null` = no se pudo comprobar el estado. Ausente en cualquier otra
+   * respuesta, incluido el rechazo de RBAC, que es otro diagnostico.
+   *
+   * El boton de activar se lee de esta clave, no del texto del mensaje.
+   */
+  no_active_connection?: boolean | null;
+  activate_connection_action?: {
+    connection_id: number;
+    connection_name: string;
+    endpoint?: string;
+  } | null;
+}
+
+/**
+ * Prediccion del proximo periodo.
+ *
+ * `mape` y `band_pct` NO son opcionales ni decorativos: son el error historico
+ * medido por replay sobre la serie real. Un forecast sin ellos es un numero sin
+ * informacion, asi que la UI esta obligada a mostrarlos.
+ */
+export interface ForecastCard {
+  available: boolean;
+  period?: string | null;
+  point?: number | null;
+  lower?: number | null;
+  upper?: number | null;
+  band_pct?: number | null;
+  mape?: number | null;
+  method?: string | null;
+  n_periods: number;
+  n_backtests: number;
+  reliable: boolean;
+  has_gaps: boolean;
+  reason?: string | null;
+  table?: string | null;
+  metric_column?: string | null;
+  date_column?: string | null;
+  income_only: boolean;
+  series: Record<string, any>[];
+  sql?: string | null;
+}
+
+export interface RetentionTier {
+  tier: string;
+  casos: number;
+  retornaron: number;
+  /** `null` = evidencia insuficiente. NO es 0%: `0%` es una afirmacion, `null` es "no se". */
+  prob?: number | null;
+  evidence_sufficient: boolean;
+}
+
+export interface RetentionClient {
+  entity: string;
+  months_active: number;
+  last_purchase: string;
+  months_since_last: number;
+  revenue: number;
+  revenue_share: number;
+  tier: string;
+  return_prob?: number | null;
+  evidence_sufficient: boolean;
+}
+
+export interface RetentionReport {
+  total_clients: number;
+  total_revenue: number;
+  last_period?: string | null;
+  tiers: RetentionTier[];
+  top: RetentionClient[];
+  truncated_by_limit: boolean;
+  entity_column?: string | null;
+  metric_column?: string | null;
+  date_column?: string | null;
+  income_only: boolean;
+  sql?: string | null;
+  reason?: string | null;
+}
+
+export interface DataQualityFinding {
+  check: string;
+  severity: 'ALTO' | 'MEDIO' | 'BAJO';
+  detail: string;
+  count?: number | null;
+}
+
+export interface PredictionResult {
+  question?: string | null;
+  forecast?: ForecastCard | null;
+  retention?: RetentionReport | null;
+  /** Fallos parciales: son dos predicciones independientes y una puede fallar sin que la otra importe. */
+  errors?: string[];
+  data_quality: DataQualityFinding[];
+  audit_log_id?: number | null;
 }
 
 export interface AppSettings {
