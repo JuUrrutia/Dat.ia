@@ -22,21 +22,6 @@ if (process.platform === 'win32') {
   } catch (_) {}
 }
 
-console.log(`[DB-BOOTSTRAP] Verificando bases de datos PostgreSQL y datos base...`);
-const setupScript = path.join(backendDir, 'scripts', 'setup_postgres_full.py');
-try {
-  spawnSync(pythonCmd, [setupScript], {
-    cwd: path.join(__dirname, '..'),
-    stdio: 'inherit',
-    env: findPython.pythonEnv({
-      PYTHONPATH: backendDir,
-      PYTHONUNBUFFERED: '1',
-    }),
-  });
-} catch (err) {
-  console.warn(`[DB-BOOTSTRAP] Aviso durante la verificación de base de datos: ${err.message}`);
-}
-
 console.log(`\n[BACKEND-RUNNER] Ejecutando backend FastAPI con: ${pythonCmd}`);
 
 const child = spawn(pythonCmd, ['main.py'], {
