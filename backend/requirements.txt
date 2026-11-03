@@ -1,7 +1,7 @@
 # Core API Framework
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
-pydantic>=2.10.0
+pydantic[email]>=2.10.0
 pydantic-settings>=2.6.0
 email-validator>=2.0.0
 python-multipart>=0.0.19
@@ -9,11 +9,9 @@ python-multipart>=0.0.19
 # Database ORM & SQL AST Parsing
 sqlalchemy>=2.0.36
 sqlglot>=25.30.0
-alembic>=1.14.0
 
 # Database Drivers (Pre-compiled Universal Binary Wheels)
 psycopg[binary]>=3.2.3
-pymysql>=1.1.1
 
 # Security & Authentication
 cryptography>=44.0.0
@@ -26,6 +24,10 @@ httpx>=0.28.0
 # Testing
 pytest>=8.3.0
 pytest-asyncio>=0.24.0
+# Properties sobre el calculo de forecast: la banda siempre contiene el punto,
+# el cuantil es monótono, y Decimal/int/float dan el mismo numero. Un test con
+# una serie fija no alcanza para esas reglas; ver tests/test_forecast_properties.py.
+hypothesis>=6.100.0
 
 # Report Generation & Data Export (PDF & Excel)
 reportlab>=4.2.0

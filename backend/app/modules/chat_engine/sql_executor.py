@@ -3,6 +3,8 @@ import json
 import re
 from typing import List, Dict, Any, Optional, Set, Tuple
 from sqlalchemy.orm import Session
+from app.core.constants import ADMIN_ROLES
+from app.core.database import discard_failed_transaction
 from app.modules.chat_engine.ast_validator import ASTValidator, ASTValidationError
 from app.modules.chat_engine.llm_service import LLMService
 
@@ -13,6 +15,20 @@ class SQLExecutor:
     """
 
     @classmethod
+    def _clean_row(cls, row_mapping: Any) -> Dict[str, Any]:
+        import decimal
+        from datetime import date, datetime
+        cleaned = {}
+        for k, v in row_mapping.items():
+            if isinstance(v, decimal.Decimal):
+                cleaned[k] = float(v) if (v % 1) else int(v)
+            elif isinstance(v, (date, datetime)):
+                cleaned[k] = v.isoformat()
+            else:
+                cleaned[k] = v
+        return cleaned
+
+    @classmethod
     def execute_raw_sql(cls, target_db: Any, sql: str, dialect: str = "sqlite") -> List[Dict[str, Any]]:
         """
         Safely executes a SELECT query on SQLite or PostgreSQL using try...finally to ensure connection closure.
@@ -20,27 +36,46 @@ class SQLExecutor:
         # If target_db is a CorporateConnection model object
         if hasattr(target_db, "db_type"):
             from sqlalchemy import text
-            from app.core.database import build_engine_for_connector
-            eng = build_engine_for_connector(target_db)
-            with eng.connect() as conn:
+            from app.core.database import connector_engine
+            from app.modules.admin_catalog.models import DatabaseType
+            with connector_engine(target_db) as eng, eng.connect() as conn:
+                if getattr(target_db, "db_type", None) == DatabaseType.POSTGRESQL or "postgres" in str(getattr(target_db, "db_type", "")).lower():
+                    try:
+                        conn.execute(text("SET TRANSACTION READ ONLY;"))
+                        conn.execute(text("SET statement_timeout = 15000;"))
+                    except Exception:
+                        pass
                 res = conn.execute(text(sql))
-                return [dict(r._mapping) for r in res.fetchall()]
+                return [cls._clean_row(dict(r._mapping)) for r in res.fetchall()]
 
         # If target_db is a PostgreSQL connection string
         if isinstance(target_db, str) and (target_db.startswith("postgresql://") or target_db.startswith("postgresql+psycopg://")):
             from sqlalchemy import create_engine, text
             eng = create_engine(target_db)
-            with eng.connect() as conn:
-                res = conn.execute(text(sql))
-                return [dict(r._mapping) for r in res.fetchall()]
+            try:
+                with eng.connect() as conn:
+                    try:
+                        conn.execute(text("SET TRANSACTION READ ONLY;"))
+                        conn.execute(text("SET statement_timeout = 15000;"))
+                    except Exception:
+                        pass
+                    res = conn.execute(text(sql))
+                    return [cls._clean_row(dict(r._mapping)) for r in res.fetchall()]
+            finally:
+                eng.dispose()
 
-        # SQLite connection
-        conn = sqlite3.connect(str(target_db))
+        # SQLite connection (using native read-only URI mode when file exists)
+        import os
+        db_path = str(target_db)
+        if os.path.isfile(db_path):
+            conn = sqlite3.connect(f"file:{os.path.abspath(db_path)}?mode=ro", uri=True)
+        else:
+            conn = sqlite3.connect(db_path)
         try:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute(sql)
-            return [dict(r) for r in cursor.fetchall()]
+            return [cls._clean_row(dict(r)) for r in cursor.fetchall()]
         finally:
             try:
                 conn.close()
@@ -79,7 +114,8 @@ class SQLExecutor:
         table_columns_map: Dict[str, List[str]],
         schema_context: str = "",
         is_llm_active: bool = True,
-        dialect: str = "sqlite"
+        dialect: str = "sqlite",
+        is_admin: bool = False
     ) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any], bool, str]:
         """
         Executes query on SQLite or PostgreSQL and automatically invokes LLM self-healing if an exception occurs.
@@ -88,24 +124,60 @@ class SQLExecutor:
         secured_sql = initial_sql
         meta = {"tables_used": list(allowed_tables)}
 
-        try:
-            _, secured_sql, meta = ASTValidator.validate_and_secure_sql(
-                initial_sql,
-                dialect=dialect,
-                allowed_tables=allowed_tables,
-                blocked_columns=blocked_columns,
-                table_columns=table_columns_map
-            )
-        except ASTValidationError:
-            pass
+        # Validate and secure SQL through ASTValidator (fails closed if RBAC rules are violated)
+        _, secured_sql, meta = ASTValidator.validate_and_secure_sql(
+            initial_sql,
+            dialect=dialect,
+            allowed_tables=allowed_tables,
+            blocked_columns=blocked_columns,
+            table_columns=table_columns_map,
+            is_admin=is_admin
+        )
+
+        # Contra que base se ejecuto esto. Va en `meta` (y no como argumento
+        # suelto) porque `meta` ya viaja hasta la trazabilidad y de ahi al
+        # portapapeles: sin esto, "copiar SQL" entrega un texto que no se puede
+        # reproducir, porque las mismas tablas existen en varias bases.
+        # `validate_and_secure_sql` devuelve un `meta` nuevo, asi que esto va
+        # DESPUES de esa llamada, no en el dict literal de arriba.
+        meta["target_database"] = (
+            getattr(target_db_path, "database_name", None)
+            or getattr(target_db_path, "name", None)
+            or getattr(target_db_path, "host", None)
+        )
 
         was_self_healed = False
         validation_label = "APROBADO"
+
+        # Pre-flight Physical Table Existence Check (< 1ms)
+        from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
+        phys_tables = DynamicSchemaPruningService.get_physical_db_tables(target_db_path)
+        if phys_tables:
+            missing_tables = [t for t in meta.get("tables_used", []) if t.lower() not in phys_tables]
+            if missing_tables:
+                db_name = getattr(target_db_path, "name", None) or getattr(target_db_path, "database_name", "la fuente seleccionada")
+                missing_str = ", ".join(f"'{t}'" for t in missing_tables)
+                avail_str = ", ".join(f"'{t}'" for t in sorted(phys_tables))
+                raise RuntimeError(
+                    f"La tabla {missing_str} no existe en {db_name}. "
+                    f"Tablas disponibles: [{avail_str}]. Faltan datos para realizar esta consulta en la fuente activa."
+                )
 
         try:
             rows = cls.execute_raw_sql(target_db_path, secured_sql, dialect=dialect)
             return rows, secured_sql, meta, was_self_healed, validation_label
         except Exception as err:
+            err_str = str(err).lower()
+            is_fatal_missing_table = (
+                "no such table" in err_str
+                or "does not exist" in err_str
+                or "relation" in err_str
+                or "undefinedtable" in type(err).__name__.lower()
+            )
+            if is_fatal_missing_table:
+                # Fatal schema mismatch: Do NOT waste 3-5 minutes in LLM healing or fallbacks
+                raise RuntimeError(f"Error al ejecutar consulta en la BD: {str(err)}")
+
             healed_sql = None
             if is_llm_active:
                 try:
@@ -144,17 +216,14 @@ Genera la consulta SQL corregida y funcional para {engine_label}:"""
 
             if healed_sql:
                 try:
-                    try:
-                        _, healed_secured_sql, healed_meta = ASTValidator.validate_and_secure_sql(
-                            healed_sql,
-                            dialect=dialect,
-                            allowed_tables=allowed_tables,
-                            blocked_columns=blocked_columns,
-                            table_columns=table_columns_map
-                        )
-                    except Exception:
-                        healed_secured_sql, healed_meta = healed_sql, {"tables_used": list(allowed_tables)}
-
+                    _, healed_secured_sql, healed_meta = ASTValidator.validate_and_secure_sql(
+                        healed_sql,
+                        dialect=dialect,
+                        allowed_tables=allowed_tables,
+                        blocked_columns=blocked_columns,
+                        table_columns=table_columns_map,
+                        is_admin=is_admin
+                    )
                     rows = cls.execute_raw_sql(target_db_path, healed_secured_sql, dialect=dialect)
                     return rows, healed_secured_sql, healed_meta, True, "APROBADO (Auto-Corregido)"
                 except Exception:
@@ -166,13 +235,14 @@ Genera la consulta SQL corregida y funcional para {engine_label}:"""
             try:
                 _, secured_fb_sql, fb_meta = ASTValidator.validate_and_secure_sql(
                     raw_fb_sql,
-                    dialect="sqlite",
+                    dialect=dialect,
                     allowed_tables=allowed_tables,
                     blocked_columns=blocked_columns,
                     table_columns=table_columns_map,
-                    max_limit=20
+                    max_limit=20,
+                    is_admin=is_admin
                 )
-                rows = cls.execute_raw_sql(target_db_path, secured_fb_sql)
+                rows = cls.execute_raw_sql(target_db_path, secured_fb_sql, dialect=dialect)
                 return rows, secured_fb_sql, fb_meta, False, "APROBADO (Fallback de Emergencia)"
             except Exception:
                 raise RuntimeError(f"Error al ejecutar consulta en la BD: {str(err)}")
@@ -224,21 +294,57 @@ Genera la consulta SQL corregida y funcional para {engine_label}:"""
                 pass
 
     @classmethod
-    def retrieve_few_shot_memories(cls, db: Optional[Session], question: str, connection_id: int) -> str:
+    def retrieve_few_shot_memories(
+        cls,
+        db: Optional[Session],
+        question: str,
+        connection_id: int,
+        user_role: Optional[str] = None,
+    ) -> str:
+        """Ejemplos few-shot del prompt.
+
+        Se filtran por `user_role` ademas de por conexion. Antes trailing solo por
+        `connection_id`: cualquier usuario podia marcar un SQL arbitrario como
+        "consulta maestra verificada" y ese SQL entraba al prompt de TODOS los roles
+        de esa conexion, sesgando al modelo hacia tablas y columnas prohibidas para
+        quien lo leia.
+        """
         if not db:
             return ""
         try:
             from app.modules.chat_engine.models import QueryLearningMemory
-            memories = db.query(QueryLearningMemory).filter(
+            query = db.query(QueryLearningMemory).filter(
                 QueryLearningMemory.connection_id == connection_id
-            ).order_by(QueryLearningMemory.execution_count.desc(), QueryLearningMemory.id.desc()).limit(3).all()
+            )
+            if user_role:
+                # Un admin ve todas (incluidas las sin rol); para el resto solo las
+                # de su propio rol.
+                if str(user_role).lower() in ADMIN_ROLES:
+                    pass
+                else:
+                    query = query.filter(
+                        (QueryLearningMemory.user_role == user_role)
+                        | (QueryLearningMemory.user_role.is_(None))
+                    )
+            memories = query.order_by(
+                QueryLearningMemory.is_golden.desc(),
+                QueryLearningMemory.execution_count.desc(),
+                QueryLearningMemory.id.desc()
+            ).limit(3).all()
 
             if not memories:
                 return ""
 
             examples = []
             for m in memories:
-                examples.append(f"- Pregunta similar: \"{m.question_pattern}\" -> SQL: {m.successful_sql}")
+                tag = "[Consulta Maestra Verificada]" if getattr(m, "is_golden", False) else "Pregunta similar"
+                examples.append(f"- {tag}: \"{m.question_pattern}\" -> SQL: {m.successful_sql}")
             return "Ejemplos de consultas previamente aprendidas y verificadas:\n" + "\n".join(examples)
         except Exception:
+            # Memoria de aprendizaje ausente = prompt sin ejemplos. Ese es el
+            # best-effort de siempre. Lo que NO era best-effort era devolver la
+            # sesion del caller con la transaccion abortada: el siguiente query de
+            # la request (la ejecucion del SQL, el audit log) moria con
+            # `InFailedSqlTransaction`, blaming a la memoria de aprendizaje.
+            discard_failed_transaction(db)
             return ""

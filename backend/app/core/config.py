@@ -2,6 +2,20 @@ import os
 from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+def _backend_dir() -> str:
+    """Directory holding the backend package (…/backend)."""
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+def _root_dir() -> str:
+    """Project root holding data_sources/ and the metadata DB.
+
+    Derived from the checkout layout normally, so a fresh clone works with no
+    configuration. In Docker the backend is copied to /app, whose parent is /,
+    which would put data_sources outside the mounted volume and lose every
+    uploaded database on recreate — so the image pins DATIA_ROOT=/app.
+    """
+    return os.environ.get("DATIA_ROOT") or os.path.dirname(_backend_dir())
+
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Democratización de Datos Corporativos con IA Local"
     API_V1_STR: str = "/api/v1"
@@ -32,49 +46,37 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "qwen2.5-coder:7b"
     OPENAI_COMPATIBLE_URL: str = "http://localhost:8000/v1"
     OPENAI_COMPATIBLE_API_KEY: str = "lm-studio"
+
+    # Ventana de contexto por request. Antes era el literal 16384 repetido en
+    # tres lugares de `llm_service.py`. Qwen2.5-Coder-7B tiene 32K nativos
+    # (131K con YaRN), asi que 16K desperdiciaba la mitad sin motivo.
+    #
+    # Honesto sobre el alcance: solo lo aplica el servidor que lo acepta por
+    # request. llama.cpp lo fija al arrancar (`llama-server -c 32768`) y LM
+    # Studio lo ignora; en ambos hace falta arrancar el servidor con la
+    # ventana que se quiera de verdad.
+    LLM_NUM_CTX: int = 32768
     
     # Security Defaults
-    DEFAULT_ROW_LIMIT: int = 1000
+    DEFAULT_ROW_LIMIT: int = 500
     QUERY_TIMEOUT_SECONDS: int = 15
-    ALLOW_OPEN_DEMO_ENDPOINT: bool = False  # If True, enables unauthenticated /chat/query-open forced to least-privileged role
-
-    SQLITE_DB_NAME: str = "mental_health.sqlite"
 
     # Path to Dedicated Metadata Database (Users, Roles, Connectors, Sessions, Audit, Catalog)
     @property
     def METADATA_DB_PATH(self) -> str:
-        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        root_dir = os.path.dirname(backend_dir)
-        return os.path.join(root_dir, "datia_metadata.db")
+        return os.path.join(_root_dir(), "datia_metadata.db")
 
     # Path to Uploaded and Structured Data Sources
     @property
     def DATA_SOURCES_DIR(self) -> str:
-        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        root_dir = os.path.dirname(backend_dir)
-        p = os.path.join(root_dir, "data_sources")
+        p = os.path.join(_root_dir(), "data_sources")
         os.makedirs(p, exist_ok=True)
         return p
 
     # Path to SQLite Demo Database (Centralized)
     @property
     def SQLITE_DB_PATH(self) -> str:
-        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        root_dir = os.path.dirname(backend_dir)
-        
-        # Check root and backend directory for target SQLITE_DB_NAME
-        for target_dir in [root_dir, backend_dir]:
-            p = os.path.join(target_dir, self.SQLITE_DB_NAME)
-            if os.path.exists(p):
-                return p
-
-        # Fallback to demo_corporativa.db
-        for target_dir in [backend_dir, root_dir]:
-            p = os.path.join(target_dir, "demo_corporativa.db")
-            if os.path.exists(p):
-                return p
-
-        return os.path.join(backend_dir, "demo_corporativa.db")
+        return os.path.join(_backend_dir(), "demo_corporativa.db")
 
 
     model_config = SettingsConfigDict(

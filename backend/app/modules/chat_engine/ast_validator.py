@@ -1,7 +1,5 @@
-import logging
 from typing import List, Set, Dict, Tuple, Optional, Any
-import sqlglot
-from sqlglot import exp, parse_one, transpile
+from sqlglot import exp, parse_one
 from app.core.config import settings
 from app.core.logging import logger
 
@@ -27,7 +25,8 @@ class ASTValidator:
         allowed_tables: Optional[Set[str]] = None,
         blocked_columns: Optional[Set[str]] = None,
         table_columns: Optional[Dict[str, List[str]]] = None,
-        max_limit: int = settings.DEFAULT_ROW_LIMIT
+        max_limit: int = 500,
+        is_admin: bool = False
     ) -> Tuple[bool, str, Dict[str, Any]]:
         """
         Validates raw_sql against strict security rules and returns:
@@ -82,15 +81,36 @@ class ASTValidator:
             if table_name:
                 extracted_tables.add(table_name)
 
-        if allowed_tables is not None:
+        # Exclude CTE (Common Table Expression) alias names so subqueries/CTEs are not flagged as missing tables
+        cte_names = {cte.alias_or_name.lower() for cte in expression.find_all(exp.CTE) if cte.alias_or_name}
+        physical_extracted = extracted_tables - cte_names
+
+        # Administrators have total visibility over all data tables in the database
+        if not is_admin and allowed_tables is not None:
             allowed_set = {t.lower() for t in allowed_tables}
-            unauthorized_tables = extracted_tables - allowed_set
+            unauthorized_tables = physical_extracted - allowed_set
             if unauthorized_tables:
                 raise ASTValidationError(
-                    "Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos."
+                    f"Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos. Tablas no autorizadas: {', '.join(sorted(unauthorized_tables))}."
                 )
 
         # Rule 4.5: Expand SELECT * / table.* to explicit allowed columns
+        # A projection star (SELECT * / tabla.*) cannot be filtered without column metadata,
+        # so without table_columns we fail CLOSED instead of letting the star through untouched.
+        # COUNT(*) is an aggregate, not a projection star, and reveals no column.
+        projection_star = any(
+            isinstance(item, exp.Star)
+            or (isinstance(item, exp.Column) and isinstance(item.this, exp.Star))
+            for select_node in expression.find_all(exp.Select)
+            for item in select_node.expressions
+        )
+        if projection_star and not table_columns:
+            raise ASTValidationError(
+                "Seguridad: No se puede expandir 'SELECT *' porque no hay información de columnas "
+                "disponible para esta conexión. Escribe las columnas explícitas "
+                "(ej. SELECT id, monto FROM fact_ventas) o pide al administrador que publique el catálogo."
+            )
+
         has_star = expression.find(exp.Star) is not None
         if has_star:
             if table_columns:
@@ -195,33 +215,141 @@ class ASTValidator:
                 if col_name:
                     extracted_columns.add(col_name)
 
-        if blocked_columns is not None:
+        if not is_admin and blocked_columns is not None:
             blocked_set = {c.lower() for c in blocked_columns}
             attempted_blocked = extracted_columns & blocked_set
             if attempted_blocked:
                 raise ASTValidationError(
-                    "Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos."
+                    f"Gobernanza RBAC: Acceso denegado. No tienes permisos para acceder ni manejar estos datos. Columnas bloqueadas: {', '.join(sorted(attempted_blocked))}."
                 )
 
-        # Rule 6: Inject LIMIT / TOP if not present or exceeds max_limit
-        existing_limit = expression.args.get("limit")
-        if existing_limit is None:
-            expression = expression.limit(max_limit)
-        else:
+        # Rule 6: Inject LIMIT / TOP if not present or exceeds max_limit.
+        # Clamp every Limit in the tree (root and subqueries): the clamp is a ceiling, never a floor.
+        # sqlglot >=30 exposes Literal.this as a read-only property, so nodes are replaced, not mutated.
+        for limit_node in expression.find_all(exp.Limit):
             try:
-                current_val = int(existing_limit.expression.this)
-                if current_val > max_limit:
-                    expression.args["limit"].expression.this = str(max_limit)
+                current_val = int(limit_node.expression.this)
             except Exception:
-                expression.args["limit"].expression.this = str(max_limit)
+                current_val = None
+            if current_val is None or current_val > max_limit:
+                limit_node.set("expression", exp.Literal.number(max_limit))
+
+        if expression.args.get("limit") is None:
+            expression = expression.limit(max_limit)
 
         sanitized_sql = expression.sql(dialect=sqlglot_dialect)
 
+        # sqlglot emite la sentencia SIN terminador, y eso hace que el SQL que el
+        # producto muestra y deja copiar no sea ejecutable tal cual: pegado en un
+        # psql interactivo queda en bucle esperando `;` y no imprime nada — ni
+        # filas, ni `(0 rows)`, ni error, solo el prompt de vuelta. Se lee como
+        # "no hay datos" cuando en realidad la consulta nunca corrio.
+        #
+        # Se termina aqui, y no en el boton de copiar, para que tambien quede
+        # bien en `audit_logs`, en la trazabilidad y en los exports PDF/Excel: la
+        # verificacion a mano es justamente el caso de uso.
+        #
+        # Verificado que no rompe la ejecucion: PostgreSQL (psycopg) y SQLite
+        # (sqlite3) aceptan igual un `;` final en un SELECT.
+        if not sanitized_sql.rstrip().endswith(";"):
+            sanitized_sql = sanitized_sql.rstrip() + ";"
+
         metadata = {
-            "tables_used": list(extracted_tables),
-            "columns_used": list(extracted_columns),
+            "tables_used": sorted(list(physical_extracted)),
+            "columns_used": sorted(list(extracted_columns)),
             "limit_applied": max_limit,
             "dialect": sqlglot_dialect
         }
 
         return True, sanitized_sql, metadata
+
+    @classmethod
+    def extract_tables_from_query(cls, sql: str, dialect: str = "postgres") -> Set[str]:
+        """
+        Extracts physical table names from a SQL query using sqlglot AST,
+        excluding CTE aliases. Fails safe and returns an empty set on parse error.
+        """
+        if not sql or not sql.strip():
+            return set()
+        sqlglot_dialect = dialect.lower() if dialect.lower() in cls.ALLOWED_DIALECTS else "postgres"
+        try:
+            expr = parse_one(sql.strip().rstrip(";"), read=sqlglot_dialect)
+            if not expr:
+                return set()
+            tables = {t.name.lower() for t in expr.find_all(exp.Table) if t.name}
+            ctes = {cte.alias_or_name.lower() for cte in expr.find_all(exp.CTE) if cte.alias_or_name}
+            return tables - ctes
+        except Exception:
+            return set()
+
+    @classmethod
+    def generate_sql_explanation(cls, sql: str, dialect: str = "sqlite") -> str:
+        """
+        Generates a human-friendly, plain-Spanish explanation of what the SQL query does
+        using AST inspection without calling an LLM (Idea #39).
+        """
+        if not sql or not sql.strip():
+            return "No se especificó ninguna consulta SQL."
+
+        try:
+            sqlglot_dialect = dialect.lower() if dialect.lower() in cls.ALLOWED_DIALECTS else "postgres"
+            expr = parse_one(sql.strip().rstrip(";"), read=sqlglot_dialect)
+            if not expr:
+                return "Consulta analítica sobre la base de datos corporativa."
+
+            parts = []
+
+            # 1. Tables
+            tables = sorted(list({t.name for t in expr.find_all(exp.Table) if t.name}))
+            if tables:
+                if len(tables) == 1:
+                    parts.append(f"Consulta registros de la tabla **{tables[0]}**.")
+                else:
+                    joined_tables = ", ".join(f"**{t}**" for t in tables)
+                    parts.append(f"Cruza información de las tablas {joined_tables}.")
+
+            # 2. Aggregates & Projections
+            aggregates = []
+            for agg_cls, name in [
+                (exp.Sum, "suma"),
+                (exp.Avg, "promedio"),
+                (exp.Count, "conteo"),
+                (exp.Min, "mínimo"),
+                (exp.Max, "máximo"),
+            ]:
+                for node in expr.find_all(agg_cls):
+                    arg_str = node.this.sql() if hasattr(node, "this") else ""
+                    aggregates.append(f"{name} de `{arg_str}`" if arg_str else name)
+
+            if aggregates:
+                parts.append(f"Calcula {', '.join(aggregates[:3])}.")
+
+            # 3. Filters (WHERE)
+            where_node = expr.args.get("where")
+            if where_node:
+                cond_sql = where_node.this.sql()
+                if len(cond_sql) > 80:
+                    cond_sql = cond_sql[:77] + "..."
+                parts.append(f"Filtra por: `{cond_sql}`.")
+
+            # 4. Grouping (GROUP BY)
+            group_node = expr.args.get("group")
+            if group_node and group_node.expressions:
+                group_cols = [g.sql() for g in group_node.expressions]
+                parts.append(f"Agrupa por `{', '.join(group_cols)}`.")
+
+            # 5. Ordering (ORDER BY)
+            order_node = expr.args.get("order")
+            if order_node and order_node.expressions:
+                order_cols = [o.sql() for o in order_node.expressions]
+                parts.append(f"Ordena por `{', '.join(order_cols)}`.")
+
+            # 6. Limit
+            limit_node = expr.args.get("limit")
+            if limit_node:
+                parts.append(f"Limitado a {limit_node.expression.sql()} resultados.")
+
+            return " ".join(parts) if parts else "Consulta de lectura directa sobre los registros corporativos."
+        except Exception:
+            return "Consulta estructurada de lectura ejecutada sobre la base de datos corporativa."
+

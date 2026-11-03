@@ -69,6 +69,10 @@ Punto de entrada único a la documentación del proyecto. Todos los enlaces son 
 4. [`17_DEFINITION_OF_DONE.md`](17_DEFINITION_OF_DONE.md) — criterio de terminado.
 5. [`18_RETROSPECTIVAS.md`](18_RETROSPECTIVAS.md) — qué se aprendió.
 
+11. **[11 - Auditoría Integral y Plan de Trabajo](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/DOCS/11_AUDITORIA_INTEGRAL_Y_PLAN_DE_TRABAJO.md)**  
+     *Auditoría por dimensiones (bugs, seguridad, fugas de recursos, honestidad del dato, mocks, coherencia documental) con los 5 hallazgos críticos que originaron los planes 001-003 de `plans/`. Sus cifras de verificación base corresponden al commit `c5f1af4` y quedaron desactualizadas.*  
+     `Estado: ⚠️ Publicado — cifras de línea base desactualizadas`
+
 ---
 
 ## 3. Índice completo

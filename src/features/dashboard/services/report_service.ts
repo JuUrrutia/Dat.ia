@@ -1,10 +1,39 @@
 import { apiClient } from '../../../shared/api/api_client';
 import { QueryResult } from '../../../types';
 
+export interface ExportReportOptions {
+  chartBase64?: string;
+  custom_title?: string;
+  custom_notes?: string;
+  include_raw_data?: boolean;
+}
+
 export const reportService = {
-  async captureChartAsBase64(): Promise<string | undefined> {
+  // `scope` narrows the search to one container. Pass it whenever possible.
+//
+// Without it we can only fall back to the whole document, which silently
+// exported the FIRST chart on the page: a question #7 report could embed
+// question #2's chart. All charts render on the canvas renderer, so the SVG
+// branch below never matched in practice.
+async captureChartAsBase64(scope?: ParentNode | null): Promise<string | undefined> {
     try {
-      const svgEl = document.querySelector('.echarts-for-react svg') as SVGElement | null;
+      let root: ParentNode = scope ?? document;
+
+      if (!scope) {
+        const charts = document.querySelectorAll('.echarts-for-react');
+        // More than one chart and no way to tell them apart: refuse rather
+        // than embed a figure that belongs to another message.
+        if (charts.length > 1) {
+          console.warn(
+            `[report] ${charts.length} charts en pantalla y sin scope: se omite el gráfico para no exportar el de otro mensaje.`
+          );
+          return undefined;
+        }
+        if (charts.length === 0) return undefined;
+        root = charts[0];
+      }
+
+      const svgEl = root.querySelector('.echarts-for-react svg') as SVGElement | null;
       if (svgEl) {
         const svgString = new XMLSerializer().serializeToString(svgEl);
         const dataUri = 'data:image/svg+xml;base64,' + window.btoa(unescape(encodeURIComponent(svgString)));
@@ -37,7 +66,7 @@ export const reportService = {
         });
       }
 
-      const canvasEl = document.querySelector('.echarts-for-react canvas') as HTMLCanvasElement | null;
+      const canvasEl = root.querySelector('.echarts-for-react canvas') as HTMLCanvasElement | null;
       if (canvasEl) {
         return canvasEl.toDataURL('image/png');
       }
@@ -48,15 +77,26 @@ export const reportService = {
     }
   },
 
-  async exportExecutiveReportPdf(result: QueryResult | { audit_log_id?: number }, chartBase64?: string): Promise<void> {
+  async exportExecutiveReportPdf(
+    result: QueryResult | { audit_log_id?: number },
+    optionsOrChartBase64?: string | ExportReportOptions
+  ): Promise<void> {
     const auditId = (result as any).audit_log_id || (result as QueryResult).traceability?.audit_log_id;
     if (!auditId) {
       throw new Error('No se encontró el identificador de auditoría para generar la exportación.');
     }
 
+    const options: ExportReportOptions =
+      typeof optionsOrChartBase64 === 'string'
+        ? { chartBase64: optionsOrChartBase64 }
+        : optionsOrChartBase64 || {};
+
     const payload = {
       audit_log_id: auditId,
-      chart_image_base64: chartBase64,
+      chart_image_base64: options.chartBase64,
+      custom_title: options.custom_title || undefined,
+      custom_notes: options.custom_notes || undefined,
+      include_raw_data: options.include_raw_data ?? true,
     };
 
     const res = await apiClient.post('/reports/export/pdf', payload, {
@@ -78,7 +118,10 @@ export const reportService = {
     }
   },
 
-  async exportExecutiveReportExcel(result: QueryResult | { audit_log_id?: number }): Promise<void> {
+  async exportExecutiveReportExcel(
+    result: QueryResult | { audit_log_id?: number },
+    options?: ExportReportOptions
+  ): Promise<void> {
     const auditId = (result as any).audit_log_id || (result as QueryResult).traceability?.audit_log_id;
     if (!auditId) {
       throw new Error('No se encontró el identificador de auditoría para generar la exportación.');
@@ -86,6 +129,9 @@ export const reportService = {
 
     const payload = {
       audit_log_id: auditId,
+      custom_title: options?.custom_title || undefined,
+      custom_notes: options?.custom_notes || undefined,
+      include_raw_data: options?.include_raw_data ?? true,
     };
 
     const res = await apiClient.post('/reports/export/excel', payload, {
