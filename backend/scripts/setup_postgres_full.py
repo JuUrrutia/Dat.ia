@@ -586,6 +586,7 @@ def setup_metadata_database():
 
 def check_postgres_alive() -> bool:
     """Verifies that PostgreSQL server is reachable before attempting bootstrap."""
+<<<<<<< HEAD
     m_engine = None
     try:
         m_engine = create_engine(
@@ -596,13 +597,23 @@ def check_postgres_alive() -> bool:
         )
         with m_engine.connect() as conn:
             conn.execute(text("SELECT 1;"))
+=======
+    try:
+        m_engine = create_engine(MAINTENANCE_URL, isolation_level="AUTOCOMMIT", pool_pre_ping=True)
+        with m_engine.connect() as conn:
+            conn.execute(text("SELECT 1;"))
+        m_engine.dispose()
+>>>>>>> 6e6a577a49a3ff502ef922f1acb5dfc4e1a0bc3a
         return True
     except Exception as e:
         logger.warning(f"PostgreSQL server ({PG_HOST}:{PG_PORT}) is not reachable: {e}")
         return False
+<<<<<<< HEAD
     finally:
         if m_engine is not None:
             m_engine.dispose()
+=======
+>>>>>>> 6e6a577a49a3ff502ef922f1acb5dfc4e1a0bc3a
 
 def run() -> bool:
     logger.info("==================================================")

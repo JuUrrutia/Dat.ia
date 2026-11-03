@@ -21,8 +21,8 @@ El sistema se ha diseñado bajo la premisa no negociable de **operación 100% of
 │                                      │                                      │
 ├──────────────────────────────────────┬──────────────────────────────────────┤
 │ MOTOR DE IA & CONECTORES BD          │ BASE DE DATOS DE METADATOS           │
-│ • Conector HTTP (Ollama / Local API) │ • PostgreSQL / SQLite (Persistencia) │
-│ • Drivers: psycopg[binary], sqlite3  │ • bcrypt (Hashing Auth)              │
+│ • Conector HTTP (Ollama / Local API) │ • PostgreSQL (Persistencia)          │
+│ • Drivers: psycopg[binary]           │ • bcrypt (Hashing Auth)              │
 │                                      │                                      │
 └──────────────────────────────────────┴──────────────────────────────────────┘
 ```
@@ -92,7 +92,7 @@ El sistema se ha diseñado bajo la premisa no negociable de **operación 100% of
 ### 3.2. `sqlglot` (SQL AST Guardrail & Parser)
 - **¿Qué es?:** Analizador sintáctico (AST Parser), transpilador y evaluador de expresiones SQL en Python.
 - **¿Por qué se eligió?:**
-  - Es infinitamente superior a las expresiones regulares (Regex) frágiles. Comprende la gramática real de múltiples dialectos SQL (aunque hoy solo se usan PostgreSQL y SQLite, ver 3.4).
+  - Es infinitamente superior a las expresiones regulares (Regex) frágiles. Comprende la gramática real de múltiples dialectos SQL (aunque hoy solo se usa PostgreSQL, ver 3.4).
   - Permite manipular programáticamente el árbol de sintaxis abstracta (AST) para validar o alterar consultas antes de su ejecución.
 - **¿Para qué se usa en el proyecto?:**
   - **Inspección de Seguridad:** Verifica que la consulta generada por el LLM sea estrictamente de tipo `SELECT`.
@@ -109,12 +109,12 @@ El sistema se ha diseñado bajo la premisa no negociable de **operación 100% of
 ### 3.4. Drivers Nativos de Base de Datos Corporativas
 - **Librerías implementadas** (`backend/requirements.txt`):
   - **PostgreSQL:** `psycopg[binary]` (v3)
-  - **SQLite:** `sqlite3` (Librería estándar nativa de Python)
+  - **SQLite:** sin conector de conexión; `sqlite3` se usa solo para importar archivos `.sqlite` a PostgreSQL.
 - **Librerías planificadas, NO implementadas:**
   - **MySQL / MariaDB:** `pymysql`
   - **Microsoft SQL Server:** `pymssql` / `pyodbc`
 
-  *Motivo:* no existe el driver en `requirements.txt`, no hay ningún `import` de ellos en `backend/app/`, `DatabaseType` (`backend/app/modules/admin_catalog/models.py`) solo declara `POSTGRESQL` y `SQLITE`, y `core/database.py:build_engine_for_connector` solo tiene ramas para esos dos motores. Añadirlos requiere el driver + el valor del enum + la rama en el builder.
+  *Motivo:* no existe el driver en `requirements.txt`, no hay ningún `import` de ellos en `backend/app/`, `DatabaseType` (`backend/app/modules/admin_catalog/models.py`) solo declara `POSTGRESQL`, y `core/database.py:build_engine_for_connector` solo construye ese motor. Añadirlos requiere el driver + el valor del enum + la rama en el builder.
 - **¿Por qué se eligieron?:**
   - Son los conectores certificados de mejor rendimiento y máxima portabilidad multiplataforma aprobados para cada motor relacional soportado.
 - **¿Para qué se usan en el proyecto?:**
@@ -129,8 +129,8 @@ El sistema se ha diseñado bajo la premisa no negociable de **operación 100% of
 > * **Decisión:** Excluir intencionalmente `python-oracledb` de `requirements.txt` y del scope de drivers activos.
 > * **Justificación Técnica:**
 >   1. **Portabilidad y Despliegue Zero-Config:** `python-oracledb` y Oracle Instant Client requieren librerías de enlace dinámico nativas (`.dll`, `.so`, `.dylib`) y configuraciones de entorno (`ORACLE_HOME`, `PATH`) que frecuentemente provocan fallos de instalación en entornos desktop sin privilegios de administrador.
->   2. **Garantía de Binarios Universales (Universal Wheels):** Los motores efectivamente soportados hoy (**PostgreSQL**, **SQLite**) cuentan con ruedas precompiladas autónomas (`psycopg[binary]`, `sqlite3`) que no requieren compiladores C++ ni runtimes externos. MySQL/MariaDB y SQL Server figuran en la visión pero no están implementados (ver 3.4).
->   3. **Costo de Mantenimiento y Cobertura de Mercado:** El 95%+ de las necesidades de democratización de datos analíticos se satisfacen con PostgreSQL y SQLite, manteniendo la base de código ligera y libre de librerías propietarias pesadas.
+>   2. **Garantía de Binarios Universales (Universal Wheels):** El motor efectivamente soportado hoy (**PostgreSQL**) cuenta con rueda precompilada autónoma (`psycopg[binary]`) que no requiere compiladores C++ ni runtimes externos. MySQL/MariaDB y SQL Server figuran en la visión pero no están implementados (ver 3.4).
+>   3. **Costo de Mantenimiento y Cobertura de Mercado:** El 95%+ de las necesidades de democratización de datos analíticos se satisfacen con PostgreSQL, manteniendo la base de código ligera y libre de librerías propietarias pesadas.
 
 ### 3.6. Cryptography (Fernet AES-256) & bcrypt
 - **¿Qué es?:** Módulos estándar de ciberseguridad para cifrado simétrico y hashing seguro de contraseñas.
@@ -141,11 +141,20 @@ El sistema se ha diseñado bajo la premisa no negociable de **operación 100% of
   - **Fernet (AES-256):** Cifrado de contraseñas de conexión almacenadas en la base de metadatos. La clave viene de `FERNET_KEY` o, si no se define, de un SHA-256 de `SECRET_KEY`.
   - **python-jose:** Emisión/validación de JWT de sesión (`python-jose[cryptography]` en `requirements.txt`).
 
+### 3.7. Motor Estadístico de Proyecciones (`numpy`, `statsmodels`)
+
+- **¿Qué son?:** Librerías estándar de cálculo numérico y series de tiempo en Python, con wheels precompilados (sin binarios externos ni compiladores).
+- **¿Por qué se eligieron?:** El módulo `ml_forecast` necesita ajustar suavizado exponencial (Holt amortiguado) y operar numéricamente sobre la serie sin depender de servicios externos, GPU ni internet.
+- **¿Para qué se usan en el proyecto?:**
+  - `statsmodels` (`ExponentialSmoothing`): método Holt amortiguado de `ml_models.py`, uno de los candidatos del backtest walk-forward junto a naive, media y tendencia OLS (estos últimos con `numpy` y stdlib).
+  - `numpy`: conversión numérica de la serie y estabilidad de los cálculos de banda de error y MAPE por paso.
+  - La banda y el error **no** salen de estas librerías por sí mismas: salen del error medido por backtest sobre la serie real (ver Documento 01 §6.1).
+
 ---
 
 ## 4. Persistencia Interna y Motor de IA Local
 
-### 4.1. Base de Datos PostgreSQL / SQLite (Persistencia de Metadatos)
+### 4.1. Base de Datos PostgreSQL (Persistencia de Metadatos)
 - **¿Qué es?:** Sistema de gestión de bases de datos relacional robusto y de alta confiabilidad.
 - **¿Por qué se eligió?:**
   - Ofrece soporte avanzado para tipos de datos JSON, excelente rendimiento en concurrencia y estricto cumplimiento ACID.
@@ -181,8 +190,10 @@ El sistema se ha diseñado bajo la premisa no negociable de **operación 100% of
 | **ECharts** | Visualización | 100% offline, alto rendimiento, animaciones y exportación a PNG/SVG. | Renderizado interactivo de gráficos analíticos y KPIs. |
 | **Tailwind CSS**| Estilos UI | Clases utilitarias modernas, soporte nativo de Dark Mode y glassmorphism. | Diseño visual premium, responsive y ejecutivo. |
 | **FastAPI** | Backend Core | Asíncrono, ultra-rápido, validación Pydantic e integración Python. | Servidor API local para el procesamiento de negocio. |
-| **`sqlglot`** | Seguridad | Parser AST real de múltiples dialectos SQL (Postgres, SQLite). | Validador AST (SQL Guardrail), filtrado RBAC e inyección de LIMIT. |
+| **`sqlglot`** | Seguridad | Parser AST real de múltiples dialectos SQL (PostgreSQL). | Validador AST (SQL Guardrail), filtrado RBAC e inyección de LIMIT. |
 | **SQLAlchemy** | ORM | Estándar de acceso tipado y seguro a bases de datos relacionales en Python. | Gestión y consultas sobre la base de metadatos del sistema. |
-| **Drivers BD** | Conectividad | `psycopg[binary]` y `sqlite3`. MySQL/MSSQL planificados, sin driver ni rama en el builder. | Conexiones `READ ONLY` (`SET TRANSACTION READ ONLY`) a bases de datos corporativas. |
-| **PostgreSQL / SQLite**| Persistencia | Robusto, ACID, manejo eficiente de JSON y registros de auditoría. | Almacenamiento interno de usuarios, RBAC, catálogo y logs. |
+| **Drivers BD** | Conectividad | `psycopg[binary]` (la ingesta de archivos usa `sqlite3`, de la stdlib). MySQL/MSSQL planificados, sin driver ni rama en el builder. | Conexiones `READ ONLY` (`SET TRANSACTION READ ONLY`) a bases de datos corporativas. |
+| **PostgreSQL** | Persistencia | Robusto, ACID, manejo eficiente de JSON y registros de auditoría. | Almacenamiento interno de usuarios, RBAC, catálogo y logs. |
 | **Ollama API** | IA Local | API HTTP local estándar en `localhost:11434` 100% offline. | Inferencia Text-to-SQL, síntesis de negocio y auto-enriquecimiento. |
+| **numpy / statsmodels** | Proyecciones ML | Series de tiempo con wheels precompilados, 100% offline. | Holt amortiguado y cálculo numérico del backtest walk-forward en `ml_forecast`. |
+| **reportlab / openpyxl** | Informe ejecutivo | Generación local de PDF/XLSX sin servicios externos. | Export del Informe (consulta o proyección) compilado desde el snapshot de auditoría. |

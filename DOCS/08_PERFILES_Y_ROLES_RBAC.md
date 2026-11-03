@@ -46,7 +46,7 @@ Todo usuario recién registrado recibe automáticamente el perfil **Usuario Cons
 - **Dominio:** Total. Es el único rol con bypass de la matriz de permisos.
 - **Capacidades Exclusivas:**
   1. Asignar y modificar roles a usuarios registrados.
-  2. Registrar, editar y probar conexiones a fuentes de datos (PostgreSQL, MSSQL, MySQL, SQLite).
+  2. Registrar, editar y probar conexiones a fuentes de datos (hoy solo PostgreSQL).
   3. Configurar llaves de cifrado Fernet AES-256 para cadenas de conexión.
   4. Ejecutar el **auto-enriquecimiento con IA** sobre el Catálogo Semántico.
   5. Consultar la auditoría global y la trazabilidad de todas las consultas.
@@ -194,6 +194,8 @@ Cada capa frena por su cuenta. El aislamiento no depende de ninguna en particula
 
 **Por qué las tres hacen falta.** La capa 2 es la que da el mensaje útil ("su perfil no tiene autorización para información financiera"), pero es la más débil: es coincidencia de palabras. Si un rol nuevo no matchea ninguna rama, la pregunta sigue de largo — y ahí siguen las capas 1 y 3, que no dependen de vocabulario. Verificado: el Gerente de Talento tiene bypass del guard para preguntas de negocio, pero su SQL contra `fact_ventas` lo rechaza el AST con `Gobernanza RBAC: Acceso denegado`.
 
+**Proyecciones ML no agrega una cuarta capa.** Los endpoints de proyecciones corren las mismas barreras sobre la tabla elegida: verificación de rol asignado, guard de dominio y validador AST sobre el SQL de la serie. Si el guard corta, la corrida se audita como `RECHAZADO_RBAC` sin tocar la base. El Informe exportado desde la sección Proyecciones se compila del snapshot ya auditado, así que hereda los mismos cortes.
+
 ---
 
 ## 5. Origen de los Datos
@@ -227,7 +229,7 @@ Aplicadas a **todos** los roles salvo el **Administrador de Plataforma**. El Dir
 | `dim_empleados.sueldo_mensual`, `salario`, `salario_bruto`, `bono_anual` | `BLOCKED` | Remuneración individual. El único rol que los ve es el Gerente de Talento, por necesidad legítima. |
 | `dim_empleados.cuenta_bancaria_iban` | `BLOCKED` | Cuenta bancaria. |
 
-Se siembran **todos** los nombres de columna que usan las demos: las dos demos no coinciden entre sí (`sueldo_mensual` en PostgreSQL, `salario_bruto` en SQLite), y una lista por motor dejaba la columna sin clasificar en la otra — es decir, servida en claro a cualquier rol.
+Se siembran **todos** los nombres de columna que usaron las demos (`sueldo_mensual`, `salario`, `salario_bruto`, `bono_anual`): una lista incompleta deja la columna sin clasificar — es decir, servida en claro a cualquier rol.
 
 ---
 
