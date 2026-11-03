@@ -200,6 +200,15 @@ class TestPredictRbac(unittest.TestCase):
         self.assertEqual(len(vistos), 3, "los tres bloques deben correr")
         self.assertEqual(len({b for _, b in vistos}), 1, "los tres deben compartir el budget")
 
+    def test_perfil_usuario_sin_rol_denegado(self):
+        """Mismo corte que `engine.py:155`: sin rol asignado no hay acceso."""
+        user = _usuario(ROLE_USUARIO, role_id=None)
+        with self.assertRaises(Exception) as ctx:
+            self._correr(user, {"fact_ventas"})
+        self.assertEqual(getattr(ctx.exception, "status_code", None), 403)
+        self.assertIn("perfil inicial", str(ctx.exception.detail).lower())
+
+
 
 class TestTablaDeHechosSeResuelveUnaVez(unittest.TestCase):
     """`_load_fact_table` no puede re-escanear la fact table por bloque."""

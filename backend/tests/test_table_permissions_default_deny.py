@@ -42,6 +42,11 @@ DEMO_TECH_TABLES = {
 }
 
 
+
+from app.modules.admin_catalog.models import (
+    CorporateConnection, DatabaseType, RoleTablePermission,
+)
+
 class TestDefaultDenyPermissions(unittest.TestCase):
     """Base: sesión real contra la metadata, como corre el producto."""
 

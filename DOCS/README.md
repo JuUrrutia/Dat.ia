@@ -68,6 +68,7 @@ Punto de entrada único a la documentación del proyecto. Todos los enlaces son 
 3. [`16_SPRINT_BACKLOG.md`](16_SPRINT_BACKLOG.md) — iteraciones reconstruidas.
 4. [`17_DEFINITION_OF_DONE.md`](17_DEFINITION_OF_DONE.md) — criterio de terminado.
 5. [`18_RETROSPECTIVAS.md`](18_RETROSPECTIVAS.md) — qué se aprendió.
+6. [Auditoría Integral y Plan de Trabajo](11_AUDITORIA_INTEGRAL_Y_PLAN_DE_TRABAJO.md) — auditoría por dimensiones y planes de mejora.
 
 ---
 

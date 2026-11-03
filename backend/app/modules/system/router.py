@@ -14,8 +14,6 @@ from app.core.constants import (
     SYSTEM_STATUS_OPERATIONAL,
     SYSTEM_STATUS_DEGRADED,
     SYSTEM_STATUS_CRITICAL,
-    ADMIN_ROLES,
-    ROLE_ADMINISTRADOR,
 )
 from app.modules.system.schemas import ComponentHealth, SystemHealthResponse
 from app.modules.system.health_service import HealthService
@@ -171,6 +169,8 @@ async def get_system_anomalies(
     """
     from app.modules.telemetry_audit.models import AuditLog
     from app.modules.admin_catalog.models import SemanticCatalog, DatabaseType
+    from app.core.constants import ADMIN_ROLES
+    from app.modules.chat_engine.governance_guard import GovernanceGuard
     from sqlalchemy import func
 
     anomalies = []
@@ -195,10 +195,19 @@ async def get_system_anomalies(
     # indistinguible de "no hay anomalias". Un corte que no se ve no es un corte.
     # Antes de las anomalias de auditoria por la misma razon: si la cuenta no tiene
     # perfil, tampoco es un lector valido del registro.
-    require_assigned_role(
+    role_name = require_assigned_role(
         current_user, db, "Anomalias del sistema: GET /system/anomalies",
         target_conn.name if target_conn else "sin_conexion",
     )
+    is_admin = current_user.is_admin or role_name in ADMIN_ROLES
+    allowed_tables = GovernanceGuard.get_allowed_tables_for_role(
+        role_name,
+        is_admin,
+        db=db,
+        role_id=current_user.role_id,
+        connection_id=target_conn.id if target_conn else connection_id,
+    )
+    allowed_lower = {table.lower() for table in (allowed_tables or set())}
 
     is_reachable = True
     if target_conn:
@@ -272,21 +281,6 @@ async def get_system_anomalies(
             is_pg = (target_conn.db_type == DatabaseType.POSTGRESQL or str(target_conn.db_type).lower() == "postgresql")
             engine_dialect = "postgres" if is_pg else "sqlite"
             target_exec = target_conn if is_pg else DynamicSchemaPruningService.resolve_db_path(db, target_conn.id)
-
-            # El escaneo no puede mirar una tabla que el perfil no puede ver. Antes
-            # elegia la primera tabla fact_ alfabetica del servidor y hacia SELECT *,
-            # devolviendo en crudo columnas BLOCKED y MASKED a cualquier usuario
-            # autenticado, sin importar su rol.
-            #
-            # El nombre llega resuelto desde el gate de mas arriba: la cuenta sin
-            # rol ya fue cortada y no llega aca. Este bloque solo recalcula
-            # `is_admin` porque el guard lo necesita como parametro.
-            role_name = current_user.role.name if current_user.role else ROLE_ADMINISTRADOR
-            is_admin = current_user.is_admin or role_name in ADMIN_ROLES
-            allowed_tables = GovernanceGuard.get_allowed_tables_for_role(
-                role_name, is_admin, db=db, role_id=current_user.role_id, connection_id=target_conn.id
-            )
-            allowed_lower = {t.lower() for t in (allowed_tables or set())}
 
             physical_tables = DynamicSchemaPruningService.get_physical_db_tables(target_exec)
             visible_tables = sorted(

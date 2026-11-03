@@ -7,7 +7,7 @@ from app.core.database import Base, engine, ensure_schema_migrations
 from app.core.constants import (
     ROLE_ADMINISTRADOR, ROLE_DIRECTOR_EJECUTIVO, ROLE_ANALISTA_FINANCIERO,
     ROLE_GERENTE_TALENTO, ROLE_ANALISTA_BI, ROLE_INGENIERO_TI,
-    ROLE_OFICIAL_SEGURIDAD, ROLE_USUARIO,
+    ROLE_OFICIAL_SEGURIDAD, ROLE_USUARIO, ROLE_ALIASES,
 )
 from app.core.security import get_password_hash
 from app.modules.auth.models import User, Role, Domain
@@ -30,12 +30,7 @@ _COLUMN_SEVERITY = {
 # Literal y no constante: a esta migracion le toca justamente porque van a
 # dejar de existir. El destino si se lee de la constante, que es la unica
 # fuente de verdad.
-_ALIAS_ROLES = {
-    "Administrador": ROLE_ADMINISTRADOR,
-    "Economista": ROLE_ANALISTA_FINANCIERO,
-    "TI": ROLE_INGENIERO_TI,
-    "Usuario": ROLE_USUARIO,
-}
+_ALIAS_ROLES = ROLE_ALIASES
 
 
 def _role(db: Session, name: str):
