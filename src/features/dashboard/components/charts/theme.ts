@@ -7,13 +7,13 @@ export type ChartType =
   | 'area'
   | 'donut'
   | 'pie'
-  | 'radar'
+  | 'radial'
   | 'scatter'
-  | 'funnel'
   | 'gauge'
-  | 'treemap';
+  | 'treemap'
+  | 'none';
 
-export type ColorTheme = 'amber' | 'cyan' | 'emerald' | 'indigo' | 'rose' | 'ocean' | 'rainbow';
+export type ColorTheme = 'amber' | 'cyan' | 'emerald' | 'indigo' | 'rose';
 
 export const THEME_COLORS: Record<
   ColorTheme,
@@ -47,7 +47,7 @@ export const THEME_COLORS: Record<
     gradient: ['#10B981', '#059669', '#047857', '#34D399', '#6EE7B7', '#064E3B'],
   },
   indigo: {
-    name: 'Púrpura Dat.ia IA',
+    name: 'Púrpura Datia IA',
     primary: '#8B5CF6',
     secondary: '#A78BFA',
     glow: 'rgba(139, 92, 246, 0.35)',
@@ -60,21 +60,18 @@ export const THEME_COLORS: Record<
     glow: 'rgba(244, 63, 94, 0.35)',
     gradient: ['#F43F5E', '#E11D48', '#BE123C', '#FB7185', '#FDA4AF', '#881337'],
   },
-  ocean: {
-    name: 'Azul Océano',
-    primary: '#3B82F6',
-    secondary: '#60A5FA',
-    glow: 'rgba(59, 130, 246, 0.35)',
-    gradient: ['#3B82F6', '#2563EB', '#1D4ED8', '#60A5FA', '#93C5FD', '#1E3A8A'],
-  },
-  rainbow: {
-    name: 'Espectro Multicolor',
-    primary: '#6366F1',
-    secondary: '#EC4899',
-    glow: 'rgba(99, 102, 241, 0.35)',
-    gradient: ['#6366F1', '#EC4899', '#F59E0B', '#10B981', '#06B6D4', '#8B5CF6', '#F43F5E', '#14B8A6'],
-  },
 };
+
+/**
+ * globals.css kills CSS animations for prefers-reduced-motion, but ECharts
+ * animates on canvas from JS, so it was never covered: WCAG 2.3.3.
+ * ponytail: read once per call. Cheap enough; a subscription is only worth it
+ * if the app starts honouring a live OS setting change.
+ */
+export function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
 
 export interface ChartStats {
   total: number;
@@ -138,21 +135,36 @@ export function deriveProcessedRows(
   }
 
   const columns = result.data_columns || Object.keys(result.data_rows[0]);
+
+  const isColNumeric = (col: string): boolean => {
+    let numericCount = 0;
+    for (const r of result.data_rows.slice(0, 10)) {
+      const v = r[col];
+      if (typeof v === 'number' && !isNaN(v)) numericCount++;
+      else if (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) numericCount++;
+    }
+    return numericCount > 0;
+  };
+
   let nCol = columns.find(
     (c) =>
-      typeof result.data_rows[0][c] === 'number' &&
-      !c.startsWith('id_')
-  );
-  let cCol = columns.find(
-    (c) =>
-      typeof result.data_rows[0][c] === 'string' &&
-      !c.startsWith('id_') &&
-      !c.includes('token') &&
-      !c.includes('iban') &&
-      !c.includes('key')
+      !c.toLowerCase().startsWith('id_') &&
+      !c.toLowerCase().endsWith('_id') &&
+      c.toLowerCase() !== 'id' &&
+      isColNumeric(c)
   );
 
-  if (!nCol) nCol = columns.find((c) => typeof result.data_rows[0][c] === 'number') || columns[0];
+  let cCol = columns.find(
+    (c) =>
+      c !== nCol &&
+      !c.toLowerCase().startsWith('id_') &&
+      !c.toLowerCase().endsWith('_id') &&
+      !c.toLowerCase().includes('token') &&
+      !c.toLowerCase().includes('iban') &&
+      !c.toLowerCase().includes('key')
+  );
+
+  if (!nCol) nCol = columns.find((c) => isColNumeric(c)) || columns[0];
   if (!cCol) cCol = columns.find((c) => c !== nCol) || columns[0];
 
   let sorted = [...result.data_rows];

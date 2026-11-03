@@ -2,7 +2,7 @@ import { ChartType, THEME_COLORS, computeChartStats, deriveProcessedRows, format
 import { buildBarChartOption } from '../../features/dashboard/components/charts/barChartConfig';
 import { buildPieChartOption } from '../../features/dashboard/components/charts/pieChartConfig';
 import { buildLineChartOption } from '../../features/dashboard/components/charts/lineChartConfig';
-import { buildGaugeChartOption } from '../../features/dashboard/components/charts/gaugeConfig';
+import { buildExtraChartOption } from '../../features/dashboard/components/charts/extraChartConfig';
 
 export {
   THEME_COLORS,
@@ -43,5 +43,14 @@ export function buildDynamicChartOption(params: {
     return buildLineChartOption({ ...params, activeChartType });
   }
 
-  return buildGaugeChartOption(params);
+  if (
+    activeChartType === 'radial' ||
+    activeChartType === 'scatter' ||
+    activeChartType === 'gauge' ||
+    activeChartType === 'treemap'
+  ) {
+    return buildExtraChartOption({ ...params, activeChartType });
+  }
+
+  return fallbackChartOption;
 }

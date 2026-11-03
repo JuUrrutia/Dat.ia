@@ -105,9 +105,58 @@ class CorporateConnectionOut(BaseModel):
     is_uploaded: bool = False
     requires_permission_review: bool = False
     detected_tables: Optional[List[str]] = None
+    null_policy: Optional[str] = "open"
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class NullColumnInfo(BaseModel):
+    column_name: str
+    data_type: str
+    null_count: int
+    null_percentage: float
+
+class NullTableInfo(BaseModel):
+    table_name: str
+    schema_name: str = "main"
+    total_rows: int
+    total_null_columns: int
+    columns_with_nulls: List[NullColumnInfo]
+
+class NullsAuditResponse(BaseModel):
+    has_nulls: bool
+    total_tables_with_nulls: int
+    tables: List[NullTableInfo]
+    current_policy: str = "open"
+
+class ApplyNullPolicyRequest(BaseModel):
+    policy: str # "delete_rows" | "mode" | "nearest" | "open"
+
+# --- Cobertura de gobernanza (GET /permissions/coverage) ---
+# Derivada, no guardada: se recalcula en cada GET desde la misma fuente que usa
+# el chat, asi que este numero no puede contradecir al guardarrail.
+
+class GovernanceCoverageTable(BaseModel):
+    table: str
+    # Roles con ALGO asignado a esta tabla (allow o deny): "alguien lo toco".
+    assigned_roles: List[str] = []
+    # Roles que la pueden LEER de verdad, segun el resolutor del chat. Un rol al
+    # que solo se le denego NO cuenta.
+    visible_to_roles: List[str] = []
+    coverage: str  # "assigned" | "orphaned"
+    blocked_columns: List[str] = []
+    masked_columns: List[str] = []
+
+class GovernanceCoverageSummary(BaseModel):
+    total_tables: int
+    assigned_tables: int
+    orphaned_tables: int  # ningun rol las puede leer
+
+class GovernanceCoverageResponse(BaseModel):
+    connection_id: int
+    connection_name: str
+    tables: List[GovernanceCoverageTable] = []
+    summary: GovernanceCoverageSummary
 
 class ConnectionTestRequest(BaseModel):
     db_type: DatabaseType
@@ -122,19 +171,19 @@ class ConnectionTestResult(BaseModel):
     message: str
     latency_ms: int = 0
 
+class MetadataDBTestRequest(BaseModel):
+    server: str
+    port: int
+    db_name: str
+    user: Optional[str] = None
+    password: Optional[str] = None
+
 # --- Report Schemas ---
 class KPICardData(BaseModel):
     title: str
     value: str
     subtitle: Optional[str] = None
     change_direction: Optional[str] = None
-
-class MetricGaugeData(BaseModel):
-    title: str
-    percentage: float = 0.0
-    value_label: str = ""
-    target_label: str = ""
-    color: Optional[str] = None
 
 class ExecutiveReportData(BaseModel):
     overview: Optional[str] = ""
@@ -147,7 +196,11 @@ class TraceabilityAuditData(BaseModel):
     sql_executed: Optional[str] = ""
     execution_time_ms: Optional[int] = 0
     rows_returned: Optional[int] = 0
-    validation_status: Optional[str] = "APROBADO"
+    # ponytail: si no lo se, es None. El default "APROBADO" afirmaba una
+    # validacion que nadie hacia: un snapshot de auditoria sin este campo
+    # entraba al export con el default ya puesto y el informe ejecutivo
+    # imprimia "Estado AST: APROBADO" sobre una consulta no validada.
+    validation_status: Optional[str] = None
     schema_tables_used: List[str] = []
     explanation: Optional[str] = None
 
@@ -155,15 +208,18 @@ class ReportExportRequest(BaseModel):
     audit_log_id: int
     chart_image_base64: Optional[str] = None
     custom_notes: Optional[str] = None
+    custom_title: Optional[str] = None
+    include_raw_data: bool = True
 
 class ReportExportData(BaseModel):
     question: str
     summary_text: Optional[str] = None
     executive_report: Optional[ExecutiveReportData] = None
     kpis: List[KPICardData] = []
-    gauges: List[MetricGaugeData] = []
     data_columns: List[str] = []
     data_rows: List[Dict[str, Any]] = []
     traceability: Optional[TraceabilityAuditData] = None
     chart_image_base64: Optional[str] = None
     target_database: Optional[str] = None
+    custom_notes: Optional[str] = None
+    include_raw_data: bool = True
