@@ -42,6 +42,9 @@ const DEMO_PROFILES = CORPORATE_ROLES
   }));
 
 const PERFIL_INICIAL = DEMO_PROFILES[0].username;
+const QUICK_DEMO_PROFILES = DEMO_PROFILES.filter((profile) =>
+  ['admin', 'economista', 'ti'].includes(profile.username)
+);
 
 export const LoginPage: React.FC = () => {
   const { login, register, error, clearError } = useAuth();
@@ -113,6 +116,22 @@ export const LoginPage: React.FC = () => {
     setLocalError(null);
     clearError();
   };
+
+  const handleQuickLogin = async (profile: typeof DEMO_PROFILES[number]) => {
+    setUsername(profile.username);
+    setPassword(profile.password);
+    setLocalError(null);
+    clearError();
+    setIsSubmitting(true);
+    try {
+      await login(profile.username, profile.password);
+    } catch (err: any) {
+      setLocalError(err.message || 'No se pudo iniciar sesión. Verifica las credenciales o que el backend esté en ejecución.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const activeError = localError || error;
 
   return (
@@ -288,6 +307,22 @@ export const LoginPage: React.FC = () => {
             <p className="text-[10px] text-gray-500 mt-1.5 text-center">
               Rellena el formulario. El acceso ocurre al pulsar «Acceder al Sistema».
             </p>
+            {mode === 'login' && (
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {QUICK_DEMO_PROFILES.map((profile) => (
+                  <button
+                    key={profile.username}
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => handleQuickLogin(profile)}
+                    className="rounded-lg border border-dark-border bg-dark-base/50 p-2 text-center transition-colors hover:border-brand-500/40 disabled:opacity-50"
+                  >
+                    <span className="block truncate text-[10px] font-semibold text-app-text">{profile.role}</span>
+                    <span className="block text-[10px] text-brand-400">{profile.username}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

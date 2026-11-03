@@ -319,7 +319,8 @@ Genera la consulta SQL corregida y funcional para {engine_label}:"""
             if user_role:
                 # Un admin ve todas (incluidas las sin rol); para el resto solo las
                 # de su propio rol.
-                if user_role in ADMIN_ROLES:
+                admin_role_names = {role.casefold() for role in ADMIN_ROLES} | {"administrador"}
+                if str(user_role).casefold() in admin_role_names:
                     pass
                 else:
                     query = query.filter(

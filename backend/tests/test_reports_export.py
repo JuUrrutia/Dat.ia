@@ -119,6 +119,14 @@ SNAPSHOT = {
 }
 
 
+
+from app.modules.admin_catalog.schemas import (
+    ExecutiveReportData,
+    KPICardData,
+    ReportExportData,
+    TraceabilityAuditData,
+)
+
 def _section_numbers(text: str):
     return [int(m.group(1)) for m in SECTION_RE.finditer(text)]
 
@@ -222,7 +230,7 @@ class TestExportHttpContract(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("application/pdf", response.headers["content-type"])
-        self.assertIn("attachment; filename=informe_ejecutivo_dat.ia_", response.headers["content-disposition"])
+        self.assertIn("attachment; filename=informe_ejecutivo_datia_", response.headers["content-disposition"])
         self.assertTrue(response.content.startswith(b"%PDF-"))
 
         # Verifica que la entrada de auditoria del export quedo registrada
@@ -241,7 +249,7 @@ class TestExportHttpContract(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", response.headers["content-type"])
-        self.assertIn("attachment; filename=datos_dat.ia_", response.headers["content-disposition"])
+        self.assertIn("attachment; filename=datos_datia_", response.headers["content-disposition"])
         # Magic header de ZIP / OpenXML: PK\x03\x04
         self.assertTrue(response.content.startswith(b"PK\x03\x04"))
 

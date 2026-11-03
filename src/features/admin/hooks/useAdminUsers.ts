@@ -116,7 +116,7 @@ export function useAdminUsers(users: UserItem[], usersLoaded: boolean, onRefresh
     });
     dispatch({
       type: 'SET_SUCCESS_BANNER',
-      message: `Perfil de '${updatedItem.name}' actualizado: ${updatedItem.role}${updatedItem.is_admin ? ' (Administrador)' : ''}.`,
+      message: `Perfil de '${updatedItem.name}' actualizado: ${updatedItem.role}${updatedItem.is_admin ? ' (Super Admin)' : ''}.`,
     });
     if (onRefreshUsers) onRefreshUsers();
     setTimeout(() => dispatch({ type: 'SET_SUCCESS_BANNER', message: null }), 3500);

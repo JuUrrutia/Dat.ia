@@ -10,7 +10,7 @@ from app.core.security import verify_password, get_password_hash, create_access_
 from app.modules.auth.models import User, Role, UserSession
 from app.core.constants import (
     MAX_FAILED_LOGIN_ATTEMPTS, ACCOUNT_LOCKOUT_DURATION_MINUTES, ADMIN_ROLES,
-    DEFAULT_USER_ROLE,
+    DEFAULT_USER_ROLE, ROLE_ALIASES,
 )
 from app.modules.auth.schemas import (
     UserLogin, UserSelfRegister, UserOut, Token, PasswordChangeRequest,
@@ -355,7 +355,7 @@ def admin_update_user(
 
     new_role = None
     if payload.role is not None:
-        role_name = payload.role.strip()
+        role_name = ROLE_ALIASES.get(payload.role.strip(), payload.role.strip())
         if not role_name:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -455,7 +455,7 @@ def admin_reset_user_password(
             detail="Usuario no encontrado."
         )
 
-    temp_password = f"Dat.ia-{secrets.token_urlsafe(6)}"
+    temp_password = f"Datia-{secrets.token_urlsafe(6)}"
     user.hashed_password = get_password_hash(temp_password)
     user.must_change_password = True
     user.failed_login_attempts = 0

@@ -2,7 +2,7 @@ import re
 from typing import Set, Dict, Any, Optional, Tuple, List
 from sqlalchemy.orm import Session
 
-from app.core.constants import ADMIN_ROLES
+from app.core.constants import ADMIN_ROLES, ROLE_ADMINISTRADOR
 from app.core.database import discard_failed_transaction
 from app.core.prompts import PromptManager
 from app.modules.chat_engine.dynamic_schema import DynamicSchemaPruningService
@@ -78,7 +78,7 @@ class SQLGenerator:
                 is_llm_active = True
 
                 # Check explicit access denied XML tag (only for non-admin roles)
-                is_admin_user = is_admin or user_role in ADMIN_ROLES
+                is_admin_user = is_admin or user_role in ADMIN_ROLES or user_role in ("Administrador", ROLE_ADMINISTRADOR)
                 denied_match = re.search(r'<acceso_denegado>\s*(.*?)\s*</acceso_denegado>', llm_response_text, re.DOTALL | re.IGNORECASE)
                 if denied_match and not is_admin_user:
                     rbac_denial = denied_match.group(1).strip()

@@ -34,6 +34,7 @@ from sqlalchemy.exc import DBAPIError
 
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_user
 from app.core.constants import SYSTEM_STATUS_DEGRADED
 from app.core.database import engine, discard_failed_transaction, SessionLocal
 from app.modules.admin_catalog.models import CorporateConnection, DatabaseType
@@ -232,8 +233,16 @@ class TestEndpointsSurviveTheirOwnSwallowedFailure(unittest.TestCase):
         # es que la sonda llego a dispararse y que el componente se declara
         # degradado en vez de inventarse operativo: las dos aserciones caen si el
         # `except` best-effort deja de tragarse el error.
+        previous_override = app.dependency_overrides.get(get_current_user)
+        app.dependency_overrides[get_current_user] = lambda: None
         probe = self._arm()
-        resp = self.client.get("/api/v1/system/health", headers=self._h())
+        try:
+            resp = self.client.get("/api/v1/system/health")
+        finally:
+            if previous_override is None:
+                app.dependency_overrides.pop(get_current_user, None)
+            else:
+                app.dependency_overrides[get_current_user] = previous_override
 
         self.assertEqual(probe.fired, 1, "la sonda no llego a dispararse; test incompleto")
         self.assertEqual(
@@ -539,6 +548,42 @@ class TestBestEffortAuditIsPreserved(unittest.TestCase):
             db.commit()
         finally:
             db.close()
+
+    def test_failing_audit_log_returns_none_and_leaves_session_usable(self):
+        """El `except` de auditoria se traga el error: eso se preserva."""
+        from app.modules.chat_engine.router import _persist_audit_log
+        from app.modules.telemetry_audit.models import AuditLog
+
+        db = SessionLocal()
+        original_init = AuditLog.__init__
+
+        def _init_que_falla(self, **kwargs):
+            original_init(self, **kwargs)
+            fail_a_query(db)  # aborta la transaccion de verdad
+            raise DBAPIError("INSERT", {}, Exception("audit log no escribible"))
+
+        try:
+            AuditLog.__init__ = _init_que_falla
+            try:
+                audit_id = _persist_audit_log(
+                    db=db,
+                    user_id=None,
+                    username="admin",
+                    user_role=None,
+                    question_prompt="q",
+                    sql_generated=None,
+                    validation_status=None,
+                    target_database="demo",
+                )
+            finally:
+                AuditLog.__init__ = original_init
+
+            self.assertIsNone(audit_id, "un audit log fallido no devuelve id")
+            # Y sobre todo: la request sigue viva.
+            self.assertEqual(db.execute(text("SELECT 1")).scalar(), 1)
+        finally:
+            db.close()
+
 
 
 if __name__ == "__main__":

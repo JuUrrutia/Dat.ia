@@ -124,6 +124,12 @@ class TestUserRoleUpdate(unittest.TestCase):
         self.assertEqual(res.json()["role_name"], ROLE_INGENIERO_TI)
         self.assertEqual(self._role_of(self.target_id), ROLE_INGENIERO_TI)
 
+    def test_legacy_role_alias_is_normalized_to_catalog_role(self):
+        res = self._patch(self.target_id, {"role": "TI"}, as_user_id=self.admin_id)
+        self.assertEqual(res.status_code, 200, res.text[:300])
+        self.assertEqual(res.json()["role_name"], ROLE_INGENIERO_TI)
+        self.assertEqual(self._role_of(self.target_id), ROLE_INGENIERO_TI)
+
     def test_admin_can_change_only_is_admin(self):
         res = self._patch(self.target_id, {"is_admin": True}, as_user_id=self.admin_id)
         self.assertEqual(res.status_code, 200, res.text[:300])

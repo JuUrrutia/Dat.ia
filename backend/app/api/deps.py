@@ -248,7 +248,7 @@ def display_role_name(user: User) -> Optional[str]:
     piso que comparten, ya tiene la otra mitad de esta misma regla
     (`require_assigned_role`) y no importa a `reports`, asi que no crea ciclo.
     """
-    if user.role:
+    if user.role_id is not None and user.role:
         return user.role.name
     if user.is_admin:
         return ROLE_ADMINISTRADOR
@@ -260,7 +260,8 @@ def require_assigned_role(
 ) -> str:
     """Nombre del rol de la cuenta, o 403 si no tiene ninguno asignado.
 
-    El corte mira el REGISTRO (`user.role`), no el nombre resuelto. Antes cada
+    El corte mira el registro persistido (`role_id`) y su relación (`user.role`),
+    no el nombre resuelto. Antes cada
     endpoint resolvia el nombre con un fallback:
 
         role_name = user.role.name if user.role else ROLE_USUARIO
@@ -285,7 +286,7 @@ def require_assigned_role(
     no es una denegacion. Mismo `RECHAZADO_RBAC` que el motor escribe cuando la
     peticion llega hasta el.
     """
-    if user.role:
+    if user.role_id is not None and user.role:
         return user.role.name
     if user.is_admin:
         return ROLE_ADMINISTRADOR
@@ -307,7 +308,8 @@ def require_assigned_role(
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail=(
-            "Tu cuenta todavia no tiene un rol asignado. Un Administrador debe "
+            "Tu cuenta todavia no tiene un rol asignado y conserva el perfil inicial. "
+            "Un Administrador debe "
             "asignarte un perfil corporativo para acceder a los datos."
         ),
     )
