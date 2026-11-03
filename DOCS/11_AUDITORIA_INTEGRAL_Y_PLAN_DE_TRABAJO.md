@@ -29,7 +29,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ### Dimensión 1: Errores y Problemas de Funcionamiento (Bugs & Correctness)
 
 #### H-01: Caída por Desempaquetado de Tupla en Consultas sin Resultados (`ValueError: too many values to unpack`)
-- **Evidencia concreta:** [`backend/app/modules/chat_engine/kpi_calculator.py#L46-L60`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/kpi_calculator.py#L46-L60) y [`backend/app/modules/chat_engine/engine.py#L675`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/engine.py#L675).
+- **Evidencia concreta:** [`backend/app/modules/chat_engine/kpi_calculator.py#L46-L60`](../backend/app/modules/chat_engine/kpi_calculator.py#L46-L60) y [`backend/app/modules/chat_engine/engine.py#L675`](../backend/app/modules/chat_engine/engine.py#L675).
 - **Problema:** En `kpi_calculator.py`, cuando `rows` o `columns` está vacío (`if not rows or not columns:` en línea 47), el retorno es una tupla de **6 elementos**:
   ```python
   return kpis, "bar", chart_option, summary, exec_rep, []
@@ -46,7 +46,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ---
 
 #### H-02: Referencia a Variable Indefinida `logger` en Manejador de Excepciones de Remediación
-- **Evidencia concreta:** [`backend/app/modules/chat_engine/engine.py#L401`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/engine.py#L401).
+- **Evidencia concreta:** [`backend/app/modules/chat_engine/engine.py#L401`](../backend/app/modules/chat_engine/engine.py#L401).
 - **Problema:** En el bloque `try...except` de remediación de nulos en `engine.py`:
   ```python
   except Exception as ex:
@@ -61,7 +61,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ---
 
 #### H-03: Falla en Caso de Prueba `test_prompt2_remediation_answers_original_question` por Pérdida de Banner Conversacional
-- **Evidencia concreta:** [`backend/app/modules/chat_engine/engine.py#L720-L725`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/engine.py#L720-L725) y [`backend/tests/test_null_policy_and_visualizations.py#L280`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/tests/test_null_policy_and_visualizations.py#L280).
+- **Evidencia concreta:** [`backend/app/modules/chat_engine/engine.py#L720-L725`](../backend/app/modules/chat_engine/engine.py#L720-L725) y [`backend/tests/test_null_policy_and_visualizations.py#L280`](../backend/tests/test_null_policy_and_visualizations.py#L280).
 - **Problema:** En entornos de prueba o cuando el LLM local está desconectado, `IntentClassifier.generate_conversational_response` devuelve `None`. En `engine.py`, la inyección del banner de remediación condiciona:
   ```python
   if conversational:
@@ -80,7 +80,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ---
 
 #### H-04: Sustitución Silenciosa de Consultas Fallidas por Tablas Aleatorias en Modo Emergencia
-- **Evidencia concreta:** [`backend/app/modules/chat_engine/sql_executor.py#L187-L200`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/sql_executor.py#L187-L200).
+- **Evidencia concreta:** [`backend/app/modules/chat_engine/sql_executor.py#L187-L200`](../backend/app/modules/chat_engine/sql_executor.py#L187-L200).
 - **Problema:** Si la generación de SQL falla y la auto-corrección (`self-healing`) tampoco prospera, el sistema ejecuta:
   ```python
   first_table = sorted(list(allowed_tables))[0] if allowed_tables else "dual"
@@ -96,7 +96,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ---
 
 #### H-05: Desincronización de Parámetros de Enlace Compartido (`?thread=...`) en HashRouter
-- **Evidencia concreta:** [`src/components/chat/ChatMessageItem.tsx#L79`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/components/chat/ChatMessageItem.tsx#L79) y [`src/features/chat/hooks/useChatEngine.ts#L123`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/chat/hooks/useChatEngine.ts#L123).
+- **Evidencia concreta:** [`src/components/chat/ChatMessageItem.tsx#L79`](../src/components/chat/ChatMessageItem.tsx#L79) y `src/features/chat/hooks/useChatEngine.ts#L123`.
 - **Problema:** En `ChatMessageItem.tsx`, el botón de compartir hilo genera una URL concatenando:
   ```typescript
   const shareUrl = `${window.location.origin}${window.location.pathname}?thread=${encodeURIComponent(threadId)}`;
@@ -112,7 +112,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ### Dimensión 2: Deficiencias de Arquitectura y Diseño (Architecture & Design)
 
 #### H-06: Fuga de Conexiones y Recursos por Motores SQLAlchemy Efímeros sin `dispose()`
-- **Evidencia concreta:** [`backend/app/modules/chat_engine/sql_executor.py#L38-L60`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/sql_executor.py#L38-L60) y [`backend/app/core/database.py#L62-L78`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/core/database.py#L62-L78).
+- **Evidencia concreta:** [`backend/app/modules/chat_engine/sql_executor.py#L38-L60`](../backend/app/modules/chat_engine/sql_executor.py#L38-L60) y [`backend/app/core/database.py#L62-L78`](../backend/app/core/database.py#L62-L78).
 - **Problema:** En `execute_raw_sql`:
   ```python
   eng = build_engine_for_connector(target_db)
@@ -129,7 +129,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ---
 
 #### H-07: Inversión de Dependencias y Acoplamiento entre Módulos `admin_catalog` y `reports`
-- **Evidencia concreta:** [`backend/app/modules/admin_catalog/router.py#L206-L231`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/admin_catalog/router.py#L206-L231), [`backend/app/modules/reports/data_compiler.py#L2`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/reports/data_compiler.py#L2) y [`backend/app/modules/reports/schemas.py#L1-L8`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/reports/schemas.py#L1-L8).
+- **Evidencia concreta:** [`backend/app/modules/admin_catalog/router.py#L206-L231`](../backend/app/modules/admin_catalog/router.py#L206-L231), [`backend/app/modules/reports/data_compiler.py#L2`](../backend/app/modules/reports/data_compiler.py#L2) y `backend/app/modules/reports/schemas.py#L1-L8`.
 - **Problema:** El módulo `reports` posee su propio directorio (`backend/app/modules/reports`), pero carece de un router FastAPI propio. Los endpoints `/reports/export/pdf` y `/reports/export/excel` están declarados dentro de `admin_catalog/router.py`. A su vez, los servicios de exportación de reportes importan sus esquemas desde `admin_catalog.schemas`, mientras que `reports/schemas.py` es un archivo cascarón que solo reexporta desde `admin_catalog`.
 - **Consecuencias:** Violación de alta cohesión y bajo acoplamiento (DDD). Cualquier modificación en el catálogo administrativo arriesga romper la generación de reportes ejecutivos.
 - **Solución propuesta:** Trasladar la definición de esquemas a `modules/reports/schemas.py`, crear `modules/reports/router.py` con los endpoints de exportación y montarlo en `api/v1/router.py` con prefijo `/reports`.
@@ -139,7 +139,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ---
 
 #### H-08: Doble Registro Redundante del Enrutador de Diagnósticos LLM
-- **Evidencia concreta:** [`backend/app/modules/chat_engine/router.py#L30`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/router.py#L30) y [`backend/app/api/v1/router.py#L12`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/api/v1/router.py#L12).
+- **Evidencia concreta:** [`backend/app/modules/chat_engine/router.py#L30`](../backend/app/modules/chat_engine/router.py#L30) y [`backend/app/api/v1/router.py#L12`](../backend/app/api/v1/router.py#L12).
 - **Problema:** `llm_diagnostic_router` se incluye dos veces:
   1. Dentro de `chat_router` sin prefijo adicional (creando `/api/v1/chat/test-connection` y `/api/v1/chat/test-completion`).
   2. En el enrutador maestro `api_router` con prefijo `/llm` (creando `/api/v1/llm/test-connection` y `/api/v1/llm/test-completion`).
@@ -151,7 +151,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ---
 
 #### H-09: Migraciones de Esquema Artesanales e Inseguras en `init_db.py`
-- **Evidencia concreta:** [`backend/app/db/init_db.py#L19-L50`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/db/init_db.py#L19-L50).
+- **Evidencia concreta:** [`backend/app/db/init_db.py#L19-L50`](../backend/app/db/init_db.py#L19-L50).
 - **Problema:** La evolución del esquema de la base de datos se realiza mediante sentencias manuales `ALTER TABLE ... ADD COLUMN` dentro de un bloque `try...except Exception: pass` que silencia cualquier error. No se utiliza ninguna herramienta estándar de migración (como Alembic).
 - **Consecuencias:** En bases de datos PostgreSQL en producción, sintaxis válidas en SQLite como `BOOLEAN DEFAULT 0` fallan por incompatibilidad de tipos; el fallo se suprime silenciosamente y las columnas necesarias no se crean, dejando el esquema en un estado corrupto o inconsistente.
 - **Solución propuesta:** Integrar **Alembic** para el control versionado de esquemas en PostgreSQL y SQLite, eliminando los bloques DDL dinámicos en tiempo de arranque.
@@ -163,7 +163,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ### Dimensión 3: Código Duplicado, Innecesario o Mal Estructurado (Structure & Debt)
 
 #### H-10: Modo de Vista `studio` Inaccesible (Código Huérfano) en `ExecutiveDashboardView`
-- **Evidencia concreta:** [`src/components/dashboard/ExecutiveDashboardView.tsx#L133-L150`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/components/dashboard/ExecutiveDashboardView.tsx#L133-L150).
+- **Evidencia concreta:** [`src/components/dashboard/ExecutiveDashboardView.tsx#L133-L150`](../src/components/dashboard/ExecutiveDashboardView.tsx#L133-L150).
 - **Problema:** El componente define el tipo `type ViewMode = 'assistant' | 'studio' | 'report' | 'table';` y mantiene un bloque JSX de 18 líneas para renderizar `viewMode === 'studio'`. Sin embargo, la barra de botones de navegación (líneas 61-105) solo proporciona botones para `'assistant'`, `'report'` y `'table'`.
 - **Consecuencias:** El modo `'studio'` es inalcanzable para el usuario, acumulando código no probado y sobrecargando el ciclo de mantenimiento.
 - **Solución propuesta:** Habilitar el botón de acceso para `'studio'` (enfocado en tablero analítico directo sin narrativa previa) o consolidar el diseño dentro de `'assistant'` y eliminar el bloque huérfano.
@@ -173,7 +173,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ---
 
 #### H-11: Duplicación de Lógica de Detección de Python en Scripts Node.js
-- **Evidencia concreta:** [`scripts/run-backend.js#L8-L47`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/scripts/run-backend.js#L8-L47) y [`scripts/init-db.js#L9-L48`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/scripts/init-db.js#L9-L48).
+- **Evidencia concreta:** [`scripts/run-backend.js#L8-L47`](../scripts/run-backend.js#L8-L47) y [`scripts/init-db.js#L9-L48`](../scripts/init-db.js#L9-L48).
 - **Problema:** Ambos scripts implementan exactamente las mismas 40 líneas de código para buscar binarios de Python en entornos virtuales (`venv/Scripts/python.exe`, `.venv/bin/python`, etc.) y probar ejecutables en el sistema.
 - **Consecuencias:** Violación del principio DRY (Don't Repeat Yourself). Cualquier ajuste o soporte para nuevos entornos virtuales (ej. `uv`, `poetry`, `conda`) debe replicarse manualmente en múltiples archivos.
 - **Solución propuesta:** Extraer la función a un módulo utilitario compartido `scripts/utils/python-finder.js`.
@@ -183,7 +183,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ---
 
 #### H-12: Clases de Fondo Oscuro Rígidas (`bg-[#0A0D14]`) en Conflicto con el Tema Claro
-- **Evidencia concreta:** [`src/pages/ChatDashboardPage.tsx#L108-L125`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/pages/ChatDashboardPage.tsx#L108-L125).
+- **Evidencia concreta:** [`src/pages/ChatDashboardPage.tsx#L108-L125`](../src/pages/ChatDashboardPage.tsx#L108-L125).
 - **Problema:** A pesar de la integración de tema claro (`html.light`) en `globals.css`, el contenedor principal de `ChatDashboardPage` utiliza colores hexadecimales oscuros en línea:
   ```tsx
   className={`flex ... overflow-hidden bg-[#0A0D14] chat-shell`}
@@ -199,7 +199,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ### Dimensión 4: Problemas de Seguridad y Rendimiento (Security & Performance)
 
 #### H-13: Mutación Destructiva Directa de Datos (`DELETE`/`UPDATE`) en Base Corporativa vía Remediación de Nulos
-- **Evidencia concreta:** [`backend/app/modules/catalog/services/null_manager.py#L160-L248`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/catalog/services/null_manager.py#L160-L248) y [`backend/app/modules/chat_engine/engine.py#L395-L401`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/engine.py#L395-L401).
+- **Evidencia concreta:** [`backend/app/modules/catalog/services/null_manager.py#L160-L248`](../backend/app/modules/catalog/services/null_manager.py#L160-L248) y [`backend/app/modules/chat_engine/engine.py#L395-L401`](../backend/app/modules/chat_engine/engine.py#L395-L401).
 - **Problema:** Uno de los pilares inviolables del proyecto es la **Gobernanza de Solo Lectura Estricta (`READ ONLY`)**. Sin embargo, cuando se aplica una política de nulos en `NullManagerService.apply_null_policy` (incluso invocada desde el chat en `engine.py:397` cuando el usuario elige "Eliminar registros con nulos"), el sistema ejecuta sentencias destructivas directas:
   ```python
   cursor.execute(f'DELETE FROM "{tbl_name}" WHERE {conds}')
@@ -215,7 +215,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ---
 
 #### H-14: Evasión del Validador AST y Column-Level Security en Escaneo Proactivo de Anomalías
-- **Evidencia concreta:** [`backend/app/modules/system/router.py#L254-L257`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/system/router.py#L254-L257).
+- **Evidencia concreta:** [`backend/app/modules/system/router.py#L254-L257`](../backend/app/modules/system/router.py#L254-L257).
 - **Problema:** En el endpoint de anomalías (`/system/anomalies`), el servicio ejecuta una consulta de muestreo directo:
   ```python
   scan_sql = f'SELECT * FROM "{chosen_table}" LIMIT 60'
@@ -230,7 +230,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ---
 
 #### H-15: Inyección Ciega de Ejemplos en Pocas Pasadas (`Few-Shot`) sin Relevancia Semántica
-- **Evidencia concreta:** [`backend/app/modules/chat_engine/sql_executor.py#L256-L263`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/chat_engine/sql_executor.py#L256-L263).
+- **Evidencia concreta:** [`backend/app/modules/chat_engine/sql_executor.py#L256-L263`](../backend/app/modules/chat_engine/sql_executor.py#L256-L263).
 - **Problema:** La función `retrieve_few_shot_memories` recupera las primeras 3 consultas de la base de memoria ordenadas únicamente por `is_golden DESC, execution_count DESC, id DESC LIMIT 3`, sin ninguna verificación de coincidencia temática o similitud semántica con la pregunta del usuario.
 - **Consecuencias:** Si las consultas maestras o más frecuentes de la base son sobre `dim_servidores` o conteos genéricos, esos ejemplos se inyectan en el prompt de una consulta sobre finanzas o facturación, confundiendo al modelo LLM local y aumentando la probabilidad de alucinaciones en los nombres de tablas y cláusulas JOIN.
 - **Solución propuesta:** Implementar un filtro de concordancia por palabras clave relevantes / tablas mencionadas o similitud de texto (Jaccard / trigramas en SQLite/PostgreSQL) antes de inyectar las consultas en el contexto.
@@ -240,7 +240,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ---
 
 #### H-16: 253 Advertencias de Obsolescencia en Backend (`DeprecationWarning`)
-- **Evidencia concreta:** [`backend/main.py#L40`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/main.py#L40), [`backend/app/modules/auth/router.py#L85`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/auth/router.py#L85), [`backend/app/modules/telemetry_audit/router.py#L140`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/app/modules/telemetry_audit/router.py#L140) y otros 10 archivos.
+- **Evidencia concreta:** [`backend/main.py#L40`](../backend/main.py#L40), [`backend/app/modules/auth/router.py#L85`](../backend/app/modules/auth/router.py#L85), [`backend/app/modules/telemetry_audit/router.py#L140`](../backend/app/modules/telemetry_audit/router.py#L140) y otros 10 archivos.
 - **Problema:**
   1. Uso generalizado de `datetime.datetime.utcnow()`, obsoleto desde Python 3.12 y programado para eliminación definitiva en Python 3.15.
   2. Uso de `@app.on_event("startup")` en FastAPI, obsoleto en favor del gestor de contexto `lifespan`.
@@ -256,7 +256,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ### Dimensión 5: Funcionalidades Incompletas (Incomplete Features)
 
 #### H-17: Falta de Empaquetado Standalone con Electron 33
-- **Evidencia concreta:** [`package.json`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/package.json), [`DOCS/02_ARQUITECTURA_TECNICA.md#L30`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/DOCS/02_ARQUITECTURA_TECNICA.md#L30) y [`README.md#L26`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/README.md#L26).
+- **Evidencia concreta:** [`package.json`](../package.json), `DOCS/02_ARQUITECTURA_TECNICA.md#L30` y [`README.md#L26`](../README.md#L26).
 - **Problema:** Toda la documentación oficial del repositorio describe Datia como una "Aplicación de Escritorio Standalone 100% Offline basada en Electron 33". Sin embargo, en el repositorio no existe archivo principal de Electron (`electron/main.ts` o `public/electron.js`), ni configuración de `electron-builder.json`, ni scripts en `package.json` (`electron:dev`, `electron:build`).
 - **Consecuencias:** El proyecto actualmente solo puede ejecutarse como una aplicación web tradicional en el navegador, incumpliendo el formato de distribución comprometido para despliegues corporativos aislados.
 - **Solución propuesta:** Crear la configuración de entrada de Electron (`electron/main.ts`), enlazar el empaquetado con Vite (`vite-plugin-electron`) y configurar los scripts de lanzamiento y generación de instaladores ejecutables (`.exe` para Windows).
@@ -266,7 +266,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ---
 
 #### H-18: Servicios Frontend con Patrón de Respuestas Falsas (`Mock Fallback`)
-- **Evidencia concreta:** [`src/features/admin/services/connector_service.ts#L97-L115`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/admin/services/connector_service.ts#L97-L115) y [`src/features/auth/services/auth_service.ts#L52-L58`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/features/auth/services/auth_service.ts#L52-L58).
+- **Evidencia concreta:** [`src/features/admin/services/connector_service.ts#L97-L115`](../src/features/admin/services/connector_service.ts#L97-L115) y [`src/features/auth/services/auth_service.ts#L52-L58`](../src/features/auth/services/auth_service.ts#L52-L58).
 - **Problema:** Cuando una llamada a la API falla (por ejemplo, al registrar un conector con error o consultar usuarios sin permisos), los métodos atrapan el error (`catch`) y crean registros falsos en `localStorage` con `id: Date.now()`.
 - **Consecuencias:** Se ocultan los errores reales del backend, la interfaz muestra que la operación fue "exitosa", pero los registros no existen en la base de datos del servidor, provocando errores posteriores incomprensibles para el usuario.
 - **Solución propuesta:** Eliminar los generadores de objetos ficticios en `catch`. Propagar los errores hacia la UI a través del sistema de notificaciones (`notify('error', ...)`) o componentes de alerta visibles.
@@ -276,7 +276,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ---
 
 #### H-19: Ausencia de Interceptor Global HTTP 401 para Manejo de Sesiones Vencidas
-- **Evidencia concreta:** [`src/shared/api/api_client.ts#L68-L73`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/src/shared/api/api_client.ts#L68-L73).
+- **Evidencia concreta:** [`src/shared/api/api_client.ts#L68-L73`](../src/shared/api/api_client.ts#L68-L73).
 - **Problema:** Cuando el token JWT expira o la sesión es revocada en el backend, el cliente HTTP simplemente lanza una excepción genérica `Error(errorData.detail)`. No existe un mecanismo que limpie el almacenamiento local y redirija automáticamente al usuario a la pantalla de `/login`.
 - **Consecuencias:** El usuario queda en un estado "fantasma" donde la interfaz parece abierta pero todas las acciones subsecuentes fallan silenciosamente.
 - **Solución propuesta:** Incorporar un interceptor de respuestas en `apiClient` que, ante un código `401 Unauthorized`, invoque `setAuthToken(null)` y redirija a `#/login` con un mensaje informativo de sesión caducada.
@@ -304,7 +304,8 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ---
 
 #### D-03: Implementación Real de Conectores Corporativos MySQL y SQL Server
-- **Oportunidad:** En la documentación técnica y en los selectores visuales de la interfaz de administración se listan motores relacionales como Microsoft SQL Server (`mssql`) y MySQL/MariaDB (`mysql`). Sin embargo, en el backend solo se implementa lógica de conexión física para SQLite y PostgreSQL.
+- **Oportunidad:** En la documentación técnica y en los selectores visuales de la interfaz de administración se listaban motores relacionales como Microsoft SQL Server (`mssql`) y MySQL/MariaDB (`mysql`). Sin embargo, en el backend solo se implementa lógica de conexión física para SQLite y PostgreSQL.
+- **Estado (26/10/2026):** la UI ya se alineó con el backend y solo ofrece PostgreSQL; MySQL/MSSQL/Oracle siguen sin soporte real.
 - **Valor agregado:** Completar los adaptadores de dialecto en `build_engine_for_connector` para MySQL (`pymysql`) y MSSQL (`pyodbc`/`pymssql`), habilitando la integración real con bases de datos ERP y sistemas legados de clientes corporativos.
 - **Compensación / Trade-off:** Incrementa el tamaño de dependencias binarias en el backend para incluir los drivers correspondientes.
 - **Esfuerzo:** M | **Riesgo:** BAJO.
@@ -314,7 +315,7 @@ A continuación se detallan exhaustivamente todos los hallazgos clasificados en 
 ### Dimensión 7: Deuda Técnica y Mantenibilidad (Tech Debt & Maintainability)
 
 #### H-20: Pruebas de Integración Lentas y Frágiles por Falta de Simulación (`Mocking`) de LLM
-- **Evidencia concreta:** [`backend/tests/test_null_policy_and_visualizations.py#L211-L268`](file:///c:/Users/Felipe/Desktop/Proyectos/democratizacion%20de%20datos/backend/tests/test_null_policy_and_visualizations.py#L211-L268).
+- **Evidencia concreta:** [`backend/tests/test_null_policy_and_visualizations.py#L211-L268`](../backend/tests/test_null_policy_and_visualizations.py#L211-L268).
 - **Problema:** Mientras que `test_catalog_and_connectors.py` aplica `@patch("...LLMService.generate_completion")`, las pruebas en `test_null_policy_and_visualizations.py` invocan `QueryEngine.execute_query` directamente sin simular las llamadas HTTP al LLM local.
 - **Consecuencias:** Cada prueba intenta conectar sucesivamente a los 3 puertos por defecto (8080, 11434, 1234), esperando los tiempos de timeout de red. Esto eleva la duración total de la suite de pruebas a casi **3 minutos** y genera fallos espurios si algún servicio responde de forma inesperada.
 - **Solución propuesta:** Incorporar fixtures de simulación (`mock_llm_response`) en `conftest.py` para desacoplar las pruebas de integración del estado de los demonios locales.
