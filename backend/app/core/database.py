@@ -28,7 +28,11 @@ try:
         pool_size=10,
         max_overflow=20,
         echo=False,
+<<<<<<< HEAD
         connect_args={"connect_timeout": 2},
+=======
+        connect_args={"connect_timeout": 5},
+>>>>>>> 6e6a577a49a3ff502ef922f1acb5dfc4e1a0bc3a
     )
     with engine.connect() as conn:
         pass
