@@ -16,6 +16,7 @@ import {
   UserCircle,
 } from 'lucide-react';
 import { SystemHealthPopover } from './SystemHealthPopover';
+import { NO_ROLE_LABEL, resolveRoleLabel } from '../../constants';
 import logoDatiaDark from '../../pages/Logo_datia_2.png';
 import logoDatiaLight from '../../pages/Logo_Datia_3.png';
 
@@ -58,13 +59,23 @@ export const Header: React.FC = () => {
 
   if (!user) return null;
 
+  // Un solo nombre para el rol en las dos vistas (desktop y movil). La cuenta sin
+  // rol se marca en ambar: es un estado que exige atencion, no un rol mas.
+  const roleLabel = resolveRoleLabel(user);
+  const roleLabelColor = roleLabel === NO_ROLE_LABEL
+    ? 'text-amber-700 dark:text-amber-400 bg-amber-500/15 border-amber-500/30'
+    : 'text-brand-700 dark:text-brand-300 bg-brand-500/15 border-brand-500/30';
+  const roleLabelColorMobile = roleLabel === NO_ROLE_LABEL
+    ? 'text-amber-700 dark:text-amber-400'
+    : 'text-brand-700 dark:text-brand-400';
+
   return (
     <header className="h-16 border-b border-dark-border/80 bg-dark-surface/95 backdrop-blur-xl px-3 sm:px-6 flex items-center justify-between z-30 relative select-none font-sans">
       {/* Brand & Offline / Dynamic Health Status Badge */}
       <div className="flex items-center space-x-3 sm:space-x-4">
         <button
           type="button"
-          aria-label="Ir a Dashboard de DATIA"
+          aria-label="Ir a Dashboard de Dat.ia"
           className="flex items-center space-x-2.5 sm:space-x-3 text-left group rounded-xl p-1 transition-all focus-visible:ring-2 focus-visible:ring-brand-500"
           onClick={() => {
             navigate('/chat');
@@ -82,7 +93,7 @@ export const Header: React.FC = () => {
           />
           <div className="truncate">
             <h1 className="text-xs sm:text-base font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-1.5 sm:gap-2">
-              <span>DATIA</span>
+              <span>Dat.ia</span>
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand-500/15 text-brand-700 dark:text-brand-300 border border-brand-500/30">
                 IA Local
               </span>
@@ -190,8 +201,8 @@ export const Header: React.FC = () => {
           }`}
         >
           <div className="text-xs font-bold text-gray-900 dark:text-white tracking-tight">{user.username}</div>
-          <div className="text-[10px] font-semibold text-brand-700 dark:text-brand-300 bg-brand-500/15 px-2.5 py-0.5 rounded-full border border-brand-500/30 inline-block mt-0.5">
-            {user.role_name || (user.is_admin ? 'Super Administrador' : 'Usuario')}
+          <div className={`text-[10px] font-semibold ${roleLabelColor} px-2.5 py-0.5 rounded-full border inline-block mt-0.5`}>
+            {roleLabel}
           </div>
         </button>
 
@@ -222,8 +233,8 @@ export const Header: React.FC = () => {
               {/* User Info on Mobile */}
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-dark-base border border-slate-200 dark:border-dark-border">
                 <div className="text-xs font-bold text-gray-900 dark:text-white">{user.username}</div>
-                <div className="text-[10px] text-brand-700 dark:text-brand-400 mt-0.5">
-                  {user.role_name || (user.is_admin ? 'Super Administrador' : 'Usuario')}
+                <div className={`text-[10px] ${roleLabelColorMobile} mt-0.5`}>
+                  {roleLabel}
                 </div>
               </div>
 

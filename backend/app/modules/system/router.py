@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, get_current_user, require_assigned_role
 from app.core.database import discard_failed_transaction
 from app.modules.auth.models import User
 from app.modules.admin_catalog.models import CorporateConnection
@@ -14,9 +14,6 @@ from app.core.constants import (
     SYSTEM_STATUS_OPERATIONAL,
     SYSTEM_STATUS_DEGRADED,
     SYSTEM_STATUS_CRITICAL,
-    ADMIN_ROLES,
-    ROLE_ADMINISTRADOR,
-    ROLE_USUARIO,
 )
 from app.modules.system.schemas import ComponentHealth, SystemHealthResponse
 from app.modules.system.health_service import HealthService
@@ -94,7 +91,7 @@ async def get_system_health(
         discard_failed_transaction(db)
 
     meta_comp = ComponentHealth(
-        name="Metadata Store (Datia DB)",
+        name="Metadata Store (Dat.ia DB)",
         type="metadata_db",
         status=SYSTEM_STATUS_OPERATIONAL if meta_ok else SYSTEM_STATUS_DEGRADED,
         latency_ms=meta_latency,
@@ -172,6 +169,8 @@ async def get_system_anomalies(
     """
     from app.modules.telemetry_audit.models import AuditLog
     from app.modules.admin_catalog.models import SemanticCatalog, DatabaseType
+    from app.core.constants import ADMIN_ROLES
+    from app.modules.chat_engine.governance_guard import GovernanceGuard
     from sqlalchemy import func
 
     anomalies = []
@@ -184,6 +183,31 @@ async def get_system_anomalies(
         target_conn = db.query(CorporateConnection).filter(CorporateConnection.is_active == True).order_by(CorporateConnection.id.desc()).first()
     if not target_conn:
         target_conn = db.query(CorporateConnection).order_by(CorporateConnection.id.desc()).first()
+
+    # Mismo corte que `/chat/query` y `/catalog/data-dictionary`, y por el mismo
+    # helper. Antes el escaneo de abajo resolvia el nombre con `... if
+    # current_user.role else ROLE_USUARIO`, asi que una cuenta con `role_id = NULL,
+    # is_admin = False` heredaba la matriz del Usuario Consultor y el escaneo le
+    # describia outliers de tablas de negocio que no le corresponden.
+    #
+    # Va ACA y no adentro del `try/except Exception: pass` del escaneo: dentro se
+    # traga el 403 y el endpoint responderia 200 sin datos de anomalias, que es
+    # indistinguible de "no hay anomalias". Un corte que no se ve no es un corte.
+    # Antes de las anomalias de auditoria por la misma razon: si la cuenta no tiene
+    # perfil, tampoco es un lector valido del registro.
+    role_name = require_assigned_role(
+        current_user, db, "Anomalias del sistema: GET /system/anomalies",
+        target_conn.name if target_conn else "sin_conexion",
+    )
+    is_admin = current_user.is_admin or role_name in ADMIN_ROLES
+    allowed_tables = GovernanceGuard.get_allowed_tables_for_role(
+        role_name,
+        is_admin,
+        db=db,
+        role_id=current_user.role_id,
+        connection_id=target_conn.id if target_conn else connection_id,
+    )
+    allowed_lower = {table.lower() for table in (allowed_tables or set())}
 
     is_reachable = True
     if target_conn:
@@ -258,19 +282,6 @@ async def get_system_anomalies(
             engine_dialect = "postgres" if is_pg else "sqlite"
             target_exec = target_conn if is_pg else DynamicSchemaPruningService.resolve_db_path(db, target_conn.id)
 
-            # El escaneo no puede mirar una tabla que el perfil no puede ver. Antes
-            # elegia la primera tabla fact_ alfabetica del servidor y hacia SELECT *,
-            # devolviendo en crudo columnas BLOCKED y MASKED a cualquier usuario
-            # autenticado, sin importar su rol.
-            role_name = current_user.role.name if current_user.role else ROLE_USUARIO
-            is_admin = current_user.is_admin or role_name in ADMIN_ROLES
-            if is_admin and not current_user.role:
-                role_name = ROLE_ADMINISTRADOR
-            allowed_tables = GovernanceGuard.get_allowed_tables_for_role(
-                role_name, is_admin, db=db, role_id=current_user.role_id, connection_id=target_conn.id
-            )
-            allowed_lower = {t.lower() for t in (allowed_tables or set())}
-
             physical_tables = DynamicSchemaPruningService.get_physical_db_tables(target_exec)
             visible_tables = sorted(
                 t for t in physical_tables if is_admin or t.lower() in allowed_lower
@@ -344,4 +355,3 @@ async def get_system_anomalies(
         "anomalies": anomalies,
         "has_critical": any(a["severity"] == "critical" for a in anomalies)
     }
-

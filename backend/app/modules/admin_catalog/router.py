@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, status, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, get_current_user, get_current_admin
+from app.api.deps import (
+    get_db, get_current_user, get_current_admin, require_assigned_role,
+)
 from app.modules.auth.models import User
 from app.modules.admin_catalog.schemas import (
     SemanticCatalogCreate, SemanticCatalogUpdate, SemanticCatalogOut,
@@ -82,13 +84,8 @@ def get_data_dictionary(
     # el rol, este endpoint devolvia valores de columnas BLOCKED (token de tarjeta,
     # salario) y MASKED (RUT/DNI) a cualquier usuario autenticado, esquivando el
     # validador AST porque no es SQL de usuario sino introspeccion.
-    from app.core.constants import ADMIN_ROLES, ROLE_ADMINISTRADOR, ROLE_USUARIO
+    from app.core.constants import ADMIN_ROLES
     from app.modules.chat_engine.governance_guard import GovernanceGuard
-
-    role_name = current_user.role.name if current_user.role else ROLE_USUARIO
-    is_admin = current_user.is_admin or role_name in ADMIN_ROLES
-    if is_admin and not current_user.role:
-        role_name = ROLE_ADMINISTRADOR
 
     target_conn_id = connection_id
     if target_conn_id is None:
@@ -96,6 +93,23 @@ def get_data_dictionary(
             CorporateConnection.is_active == True
         ).order_by(CorporateConnection.id.desc()).first()
         target_conn_id = active.id if active else 1
+
+    # Mismo corte que `/chat/query` y `/predict`, y por el MISMO helper. Antes
+    # este endpoint resolvia el nombre con `... if current_user.role else
+    # ROLE_USUARIO`: una cuenta con `role_id = NULL, is_admin = False` caia en
+    # "Usuario Consultor", que es un rol real y valido del catalogo, asi que el
+    # guard le resolvia la matriz DEL CONSULTOR y le servia el diccionario con
+    # las columnas sensibles que ese perfil tiene permitidas (medido: 7 BLOCKED y
+    # 2 MASKED, sobre `allowed_tables = ['dim_categorias', 'dim_productos']`).
+    # El corte va DESPUES de resolver `target_conn_id` y no antes: la resolucion
+    # es una query de metadata, no lee el esquema del cliente.
+    audit_target = db.query(CorporateConnection.name).filter(
+        CorporateConnection.id == target_conn_id
+    ).scalar() or "desconocida"
+    role_name = require_assigned_role(
+        current_user, db, "Data dictionary: GET /catalog/data-dictionary", audit_target,
+    )
+    is_admin = current_user.is_admin or role_name in ADMIN_ROLES
 
     blocked_columns = GovernanceGuard.get_blocked_columns_for_role(
         role_name, is_admin, db=db, role_id=current_user.role_id,

@@ -66,6 +66,34 @@ const isPasswordChangePending = (status: number, data: any): boolean =>
   typeof data?.detail === 'string' &&
   data.detail.includes('/auth/change-password');
 
+/**
+ * Convierte `detail` de FastAPI en un string.
+ *
+ * `detail` es un string en los errores de dominio, pero en un 422 de validación
+ * es un ARRAY de objetos `{loc, msg, type}`. Los ~29 sitios que hacen
+ * `err.response?.data?.detail || 'texto legible'` asumian string, asi que el
+ * fallback nunca corria (un array es truthy) y `message` quedaba siendo un
+ * array de objetos. React no puede renderizar un objeto como child: lanza
+ * "Objects are not valid as a React child", sin ErrorBoundary tumba el arbol
+ * entero y la pagina queda en negro hasta recargar.
+ *
+ * Se normaliza AQUI, en el punto por el que pasan todos los callers, en vez de
+ * parchear los 29. Se reescribe `errorData.detail` Y no solo el mensaje del
+ * `Error`: los 29 leen `error.response.data.detail`, no `error.message`, asi
+ * que normalizar solo el segundo no arreglaria ni uno. Reescribiendo el campo,
+ * los que hacen `|| 'fallback'` recuperan su texto y el resto recibe un string.
+ */
+const detailToMessage = (detail: unknown, statusText: string): string => {
+  if (typeof detail === 'string' && detail.length > 0) return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((d: any) => (typeof d?.msg === 'string' ? d.msg : null))
+      .filter((m: string | null): m is string => Boolean(m));
+    if (parts.length > 0) return parts.join('; ');
+  }
+  return statusText || 'API Request Failed';
+};
+
 interface RequestConfig {
   params?: Record<string, any>;
   headers?: Record<string, string>;
@@ -147,7 +175,8 @@ async function request<T = any>(path: string, options: RequestInit & RequestConf
     if (isPasswordChangePending(response.status, errorData)) {
       window.dispatchEvent(new CustomEvent(PASSWORD_CHANGE_PENDING_EVENT));
     }
-    const error: any = new Error(errorData.detail || 'API Request Failed');
+    errorData.detail = detailToMessage(errorData.detail, response.statusText);
+    const error: any = new Error(errorData.detail);
     error.response = { status: response.status, data: errorData };
     throw error;
   }
@@ -194,7 +223,8 @@ export const apiClient = {
       if (isPasswordChangePending(response.status, errorData)) {
         window.dispatchEvent(new CustomEvent(PASSWORD_CHANGE_PENDING_EVENT));
       }
-      const error: any = new Error(errorData.detail || 'API Request Failed');
+      errorData.detail = detailToMessage(errorData.detail, response.statusText);
+      const error: any = new Error(errorData.detail);
       error.response = { status: response.status, data: errorData };
       throw error;
     }

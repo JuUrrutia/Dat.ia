@@ -13,20 +13,18 @@ ROLE_INGENIERO_TI = "Ingeniero de Infraestructura & TI"
 ROLE_OFICIAL_SEGURIDAD = "Oficial de Cumplimiento & Seguridad"
 ROLE_USUARIO = "Usuario Consultor"
 
-# Backward compatibility aliases
-ROLE_ECONOMISTA = "Economista"
-ROLE_TI = "TI"
-
 ADMIN_ROLES = {
     ROLE_ADMINISTRADOR,
-    "Administrador",
-    "Super Administrador",
-    "Admin",
-    "Data Platform Admin"
 }
 
 DEFAULT_USER_ROLE = ROLE_USUARIO
 DEFAULT_DEMO_ROLE = ROLE_ANALISTA_FINANCIERO
+ROLE_ALIASES = {
+    "Administrador": ROLE_ADMINISTRADOR,
+    "Economista": ROLE_ANALISTA_FINANCIERO,
+    "TI": ROLE_INGENIERO_TI,
+    "Usuario": ROLE_USUARIO,
+}
 
 # Security & Authentication Policies
 MAX_FAILED_LOGIN_ATTEMPTS = 5

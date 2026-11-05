@@ -6,6 +6,7 @@ import { createStreamBuffer } from '../../../shared/stream_buffer';
 import { ChatThread } from '../../../components/chat/SidebarChatHistory';
 import { queryService, isPredictionQuestion } from '../services/query_service';
 import { connectorService, CorporateConnection } from '../../admin/services/connector_service';
+import { resolveRoleLabel } from '../../../constants';
 
 // El motor encadena hasta 3 llamadas al LLM en CPU (clasificar intencion ->
 // recuperar esquema -> generar SQL) mas la validacion y la ejecucion. Medido en
@@ -79,7 +80,7 @@ export function useChatEngine() {
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const userRole = user?.role_name || (user?.is_admin ? 'Administrador' : 'Usuario');
+  const userRole = resolveRoleLabel(user);
   const [promptSuggestions, setPromptSuggestions] = useState<string[]>([]);
   const [connectors, setConnectors] = useState<CorporateConnection[]>([]);
 
@@ -833,4 +834,3 @@ export function useChatEngine() {
     handleFeedback,
   ]);
 }
-
