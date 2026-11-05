@@ -12,6 +12,8 @@ import {
   X,
   Moon,
   Sun,
+  LifeBuoy,
+  UserCircle,
 } from 'lucide-react';
 import { SystemHealthPopover } from './SystemHealthPopover';
 import logoDatiaDark from '../../pages/Logo_datia_2.png';
@@ -149,6 +151,19 @@ export const Header: React.FC = () => {
             <span>Gobernanza RBAC</span>
           </button>
         )}
+        <button
+          type="button"
+          aria-current={activePath === '/ayuda' ? 'page' : undefined}
+          onClick={() => navigate('/ayuda')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+            activePath === '/ayuda'
+              ? 'bg-brand-600 text-white shadow-sm'
+              : 'text-slate-600 dark:text-gray-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-dark-card/60'
+          }`}
+        >
+          <LifeBuoy className="w-4 h-4" />
+          <span>Ayuda</span>
+        </button>
       </nav>
 
       {/* Right Actions & Mobile Hamburger */}
@@ -164,12 +179,21 @@ export const Header: React.FC = () => {
           <span>{theme === 'dark' ? 'Claro' : 'Oscuro'}</span>
         </button>
 
-        <div className="text-right hidden sm:block">
+        <button
+          type="button"
+          onClick={() => navigate('/perfil')}
+          title="Ver mi perfil"
+          aria-label="Ver mi perfil"
+          aria-current={activePath === '/perfil' ? 'page' : undefined}
+          className={`text-right hidden sm:block rounded-xl px-2 py-1 transition-colors hover:bg-slate-200/60 dark:hover:bg-dark-card/60 ${
+            activePath === '/perfil' ? 'ring-1 ring-brand-500/40' : ''
+          }`}
+        >
           <div className="text-xs font-bold text-gray-900 dark:text-white tracking-tight">{user.username}</div>
           <div className="text-[10px] font-semibold text-brand-700 dark:text-brand-300 bg-brand-500/15 px-2.5 py-0.5 rounded-full border border-brand-500/30 inline-block mt-0.5">
             {user.role_name || (user.is_admin ? 'Super Administrador' : 'Usuario')}
           </div>
-        </div>
+        </button>
 
         <button
           type="button"
@@ -254,6 +278,36 @@ export const Header: React.FC = () => {
                     <span>Gobernanza RBAC & BD</span>
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate('/perfil');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-left transition-colors ${
+                    activePath === '/perfil'
+                      ? 'bg-brand-600 text-white'
+                      : 'text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-dark-card'
+                  }`}
+                >
+                  <UserCircle className="w-4 h-4" />
+                  <span>Mi Perfil</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate('/ayuda');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-left transition-colors ${
+                    activePath === '/ayuda'
+                      ? 'bg-brand-600 text-white'
+                      : 'text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-dark-card'
+                  }`}
+                >
+                  <LifeBuoy className="w-4 h-4" />
+                  <span>Centro de Ayuda</span>
+                </button>
               </div>
 
               {/* Theme & Logout Button */}

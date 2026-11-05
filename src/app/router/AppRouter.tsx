@@ -5,6 +5,7 @@ import { Header } from '../../shared/layout/Header';
 import { ToastContainer } from '../../components/shared/ToastContainer';
 import { MandatoryPasswordChangeModal } from '../../components/auth/MandatoryPasswordChangeModal';
 import { LoginPage } from '../../pages/LoginPage';
+import { KeyboardShortcutsModal } from '../../components/shared/KeyboardShortcutsModal';
 
 // Antes las cuatro paginas eran imports estaticos: entrar a /login descargaba
 // Admin, Settings y todo ECharts (~1 MB) sin que el usuario los fuera a pedir.
@@ -13,6 +14,8 @@ import { LoginPage } from '../../pages/LoginPage';
 const ChatDashboardPage = lazy(() => import('../../pages/ChatDashboardPage').then((m) => ({ default: m.ChatDashboardPage })));
 const SettingsPage = lazy(() => import('../../pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const AdminPage = lazy(() => import('../../pages/AdminPage').then((m) => ({ default: m.AdminPage })));
+const HelpPage = lazy(() => import('../../pages/HelpPage').then((m) => ({ default: m.HelpPage })));
+const ProfilePage = lazy(() => import('../../pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
 
 const RouteFallback: React.FC = () => (
   <div className="flex items-center justify-center h-full min-h-[50vh] text-[var(--app-text)]">
@@ -65,6 +68,7 @@ const ProtectedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
         {children}
       </main>
       <ToastContainer />
+      <KeyboardShortcutsModal />
     </div>
   );
 };
@@ -155,6 +159,26 @@ export const AppRouter: React.FC = () => {
             <ProtectedLayout>
               <Suspense fallback={<RouteFallback />}>
                 <AdminPage />
+              </Suspense>
+            </ProtectedLayout>
+          }
+        />
+        <Route
+          path="/ayuda"
+          element={
+            <ProtectedLayout>
+              <Suspense fallback={<RouteFallback />}>
+                <HelpPage />
+              </Suspense>
+            </ProtectedLayout>
+          }
+        />
+        <Route
+          path="/perfil"
+          element={
+            <ProtectedLayout>
+              <Suspense fallback={<RouteFallback />}>
+                <ProfilePage />
               </Suspense>
             </ProtectedLayout>
           }
