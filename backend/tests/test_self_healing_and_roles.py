@@ -2,6 +2,8 @@ import unittest
 import os
 import sqlite3
 import json
+import itertools
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
@@ -98,6 +100,220 @@ class TestSelfHealingAndCorporateRoles(unittest.TestCase):
         ti_perms = {p.table_name for p in self.db.query(RoleTablePermission).filter(RoleTablePermission.role_id == ti_role.id).all()}
         self.assertIn("dim_servidores", ti_perms)
         self.assertIn("fact_consumo_recursos", ti_perms)
+
+    def test_matriz_de_los_ocho_roles(self):
+        """La matriz por area, rol por rol.
+
+        Que 5 de los 8 roles tengan la matriz correcta no alcanza: el producto
+        promete que dos personas con roles distintos reciben respuestas distintas,
+        y eso solo se comprueba por comparación. Si un rol gana tablas de otro, la
+        promesa de aislamiento por area es falsa aunque los tests por rol sigan
+        verdes.
+
+        Los roles por area se fijan con su lista EXACTA. La razon para no usar
+        `assertIn`: un permiso de mas no rompe ninguna asercion positiva, y es
+        exactamente el bug que este test existe para cazar.
+        """
+        negocio = {"dim_categorias", "dim_productos", "dim_clientes",
+                   "fact_ventas", "fact_ingresos_costos"}
+        tech = {"dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos"}
+        personal = {"dim_empleados"}
+        surveys = {"Answer", "Question", "Survey", "answer", "question", "survey"}
+
+        esperado = {
+            ROLE_ADMINISTRADOR: negocio | tech | personal | surveys,
+            # Rentabilidad consolidada y cartera, NO el detalle transaccional.
+            # Rentabilidad consolidada y catálogo. NO la cartera ni el detalle.
+            ROLE_DIRECTOR_EJECUTIVO: (
+                {"fact_ingresos_costos", "dim_categorias", "dim_productos"}
+                | personal | surveys
+            ),
+            ROLE_ANALISTA_FINANCIERO: negocio | personal | surveys,
+            ROLE_GERENTE_TALENTO: personal | surveys,
+            # Sin el bloque transaccional. Comparte matriz con el Ingeniero de TI a
+            # proposito: se separan en la capa 2, no en la capa 1.
+            ROLE_ANALISTA_BI: tech | personal | surveys,
+            ROLE_INGENIERO_TI: tech | personal | surveys,
+            ROLE_OFICIAL_SEGURIDAD: tech | personal | surveys | {"dim_categorias", "dim_productos"},
+            ROLE_USUARIO: surveys | {"dim_categorias", "dim_productos"},
+        }
+
+        for nombre, tablas in esperado.items():
+            rol = self.db.query(Role).filter(Role.name == nombre).first()
+            self.assertIsNotNone(rol, f"no se sembro el rol {nombre}")
+            granted = {
+                p.table_name for p in self.db.query(RoleTablePermission).filter(
+                    RoleTablePermission.role_id == rol.id,
+                    RoleTablePermission.is_allowed == True,  # noqa: E712
+                ).all()
+            }
+            self.assertEqual(
+                granted, tablas,
+                f"La matriz de '{nombre}' no es la declarada. Un permiso de mas "
+                f"rompe el aislamiento por area aunque todos los tests por rol "
+                f"pasen.",
+            )
+
+    def test_ningun_rol_trae_las_tablas_de_otro_area(self):
+        """El cruce de areas, que es la promesa central del producto.
+
+        La matriz por rol de arriba verifica que cada uno tenga SU lista. Esto
+        verifica la otra mitad, que es la que el usuario perceive: si el rol de
+        finanzas puede ver `dim_servidores` y el de infraestructura puede ver
+        `fact_ventas`, entonces las dos listas estan bien pero el aislamiento no
+        existe, y un assert por rol no lo detectaria.
+
+        El Analista de Datos cruza areas a proposito, asi que no se cuenta como
+        fuga: tiene catalogo, personal y tecnica, y NO tiene el bloque de negocio.
+        """
+        negocio = {"dim_clientes", "fact_ventas", "fact_ingresos_costos"}
+        tech = {"dim_servidores", "fact_incidentes_ti", "fact_consumo_recursos"}
+
+        # (rol, tablas del area ajena que NO debe tener)
+        cruces = [
+            (ROLE_ANALISTA_FINANCIERO, tech),
+            (ROLE_INGENIERO_TI, negocio),
+            (ROLE_GERENTE_TALENTO, negocio),
+            (ROLE_GERENTE_TALENTO, tech),
+            (ROLE_ANALISTA_BI, negocio),
+            (ROLE_OFICIAL_SEGURIDAD, negocio),
+            (ROLE_DIRECTOR_EJECUTIVO, tech),
+            (ROLE_DIRECTOR_EJECUTIVO, {"fact_ventas", "dim_clientes"}),
+            (ROLE_USUARIO, negocio),
+            (ROLE_USUARIO, tech),
+            (ROLE_USUARIO, {"dim_empleados"}),
+        ]
+        for nombre, ajenas in cruces:
+            rol = self.db.query(Role).filter(Role.name == nombre).first()
+            granted = {
+                p.table_name for p in self.db.query(RoleTablePermission).filter(
+                    RoleTablePermission.role_id == rol.id,
+                    RoleTablePermission.is_allowed == True,  # noqa: E712
+                ).all()
+            }
+            self.assertEqual(
+                granted & ajenas, set(),
+                f"'{nombre}' tiene tablas de otra area ({sorted(granted & ajenas)}). "
+                f"El aislamiento entre roles no se sostiene con la lista correcta "
+                f"de cada uno: hace falta que no se toquen.",
+            )
+
+    def test_cada_rol_ve_algo_que_ningun_otro_ve(self):
+        """Contrapunto: que el aislamiento no sea solo "nadie ve finanzas".
+
+        Si dos roles tuvieran la misma matriz, la pregunta "que ve este perfil" no
+        tendria respuesta distinguible y la demo no demostraria nada.
+
+        EXCEPCION DOCUMENTADA: `ROLE_ANALISTA_BI` y `ROLE_INGENIERO_TI` comparten
+        tabla a proposito. Ambos trabajan sobre metricas tecnicas; lo que los
+        separa es la CAPA 2, no la capa 1:
+
+          - el nombre "Ingeniero de Infraestructura & TI" matchea la rama tecnica
+            del guard de dominio, asi que TI recibe un denegado temprano si pregunta
+            por ventas o margenes, aunque la capa 1 lo frena igual
+          - "Analista de Datos & BI" no matchea ninguna rama: es un perfil
+            transversal, y su proposito es cruzar areas
+
+        La separacion existe, pero vive en otra capa. Este test la excluye del
+        alcance de la matriz a proposito, y `test_bi_y_ti_se_diferencian_en_el_guard`
+        verifica que la diferencia siga existiendo.
+        """
+        matrices = {}
+        for nombre in (ROLE_ADMINISTRADOR, ROLE_DIRECTOR_EJECUTIVO,
+                       ROLE_ANALISTA_FINANCIERO, ROLE_GERENTE_TALENTO,
+                       ROLE_ANALISTA_BI, ROLE_INGENIERO_TI,
+                       ROLE_OFICIAL_SEGURIDAD, ROLE_USUARIO):
+            rol = self.db.query(Role).filter(Role.name == nombre).first()
+            matrices[nombre] = frozenset(
+                p.table_name for p in self.db.query(RoleTablePermission).filter(
+                    RoleTablePermission.role_id == rol.id,
+                    RoleTablePermission.is_allowed == True,  # noqa: E712
+                ).all()
+            )
+
+        compartible = frozenset({ROLE_ANALISTA_BI, ROLE_INGENIERO_TI})
+        for a, b in itertools.combinations(matrices, 2):
+            if {a, b} == compartible:
+                continue
+            self.assertNotEqual(
+                matrices[a], matrices[b],
+                f"'{a}' y '{b}' ven exactamente las mismas tablas. Dos perfiles "
+                f"indistinguibles hacen que la matriz no demuestre nada.",
+            )
+
+    def test_bi_y_ti_se_diferencian_en_el_guard_de_dominio(self):
+        """La compensacion del test anterior: si comparten matriz, tienen que
+        separarse en la capa 2, y seguir separandose.
+
+        Este es el unico punto donde el aislamiento depende del NOMBRE del rol
+        (`governance_guard` clasifica por substring), asi que un cambio de nombre
+        en `constants.py` puede borrarlo en silencio. Sin este test, el Analista de
+        Datos y el Ingeniero de TI serian el mismo rol con dos etiquetas.
+        """
+        from app.modules.chat_engine.governance_guard import GovernanceGuard
+
+        tablas = {"dim_servidores"}
+        pregunta_finanzas = "cuales son las ventas totales"
+
+        ti = GovernanceGuard.check_domain_governance(
+            pregunta_finanzas, ROLE_INGENIERO_TI, tablas)
+        bi = GovernanceGuard.check_domain_governance(
+            pregunta_finanzas, ROLE_ANALISTA_BI, tablas)
+
+        self.assertIsNotNone(
+            ti,
+            "El Ingeniero de TI debe recibir un denegado de dominio sobre finanzas. "
+            "Es la unica capa que lo distingue del Analista de Datos.",
+        )
+        self.assertIsNone(
+            bi,
+            "El Analista de Datos es un perfil transversal: el guard de dominio no "
+            "le restringe por area. Si esto cambia, cambio el diseno a proposito.",
+        )
+
+    def test_un_usuario_demo_por_rol_y_ninguno_sin_matriz(self):
+        """Cada rol corporativo tiene una cuenta, y ninguna entra al producto para
+        descubrir que no tiene tablas asignadas: un login que funciona pero no
+        muestra datos hace que el producto parezca roto."""
+        esperados = {
+            "admin": ROLE_ADMINISTRADOR,
+            "director": ROLE_DIRECTOR_EJECUTIVO,
+            "economista": ROLE_ANALISTA_FINANCIERO,
+            "talento": ROLE_GERENTE_TALENTO,
+            "bi": ROLE_ANALISTA_BI,
+            "ti": ROLE_INGENIERO_TI,
+            "seguridad": ROLE_OFICIAL_SEGURIDAD,
+            "consultor": ROLE_USUARIO,
+        }
+        for username, rol_nombre in esperados.items():
+            u = self.db.query(User).filter(User.username == username).first()
+            self.assertIsNotNone(u, f"falta el usuario demo {username}")
+            self.assertIsNotNone(u.role_id, f"{username} quedo sin rol asignado")
+            self.assertEqual(
+                u.role.name, rol_nombre,
+                f"{username} deberia tener el rol {rol_nombre}.",
+            )
+            granted = self.db.query(RoleTablePermission).filter(
+                RoleTablePermission.role_id == u.role_id,
+                RoleTablePermission.is_allowed == True,  # noqa: E712
+            ).count()
+            self.assertGreater(
+                granted, 0,
+                f"{username} ({rol_nombre}) no tiene tablas: entra al producto y "
+                f"recibe 'el rol no tiene tablas asignadas'.",
+            )
+
+    def test_no_quedan_alias_en_el_catalogo(self):
+        """La migracion de alias corre en el arranque; si un alias sobrevive,
+        aparece en el desplegable de 'Editar Rol' del panel de admin y el usuario
+        puede asignarse un rol que no tiene matriz."""
+        from app.db.init_db import _ALIAS_ROLES
+
+        for alias in _ALIAS_ROLES:
+            self.assertIsNone(
+                self.db.query(Role).filter(Role.name == alias).first(),
+                f"El alias '{alias}' no deberia existir en el catalogo.",
+            )
 
     def test_data_profiling_and_sample_extraction(self):
         """Verifies that DynamicSchemaPruningService samples real column values for data profiling."""

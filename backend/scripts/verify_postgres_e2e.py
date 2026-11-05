@@ -14,7 +14,7 @@ from app.modules.chat_engine.engine import QueryEngine
 
 async def main():
     print("==================================================")
-    print("VERIFICACIÓN END-TO-END POSTGRESQL (DATIA)")
+    print("VERIFICACIÓN END-TO-END POSTGRESQL (Dat.ia)")
     print("==================================================")
 
     # 1. Engine Check

@@ -3,6 +3,7 @@ import { X, Save, RefreshCw, AlertTriangle } from 'lucide-react';
 import { UserItem } from './AdminUsersTab';
 import { authService } from '../../features/auth/services/auth_service';
 import { useModalA11y } from '../../hooks/useModalA11y';
+import { resolveRoleLabel, PLATFORM_ADMIN_ROLE_NAME } from '../../constants';
 
 interface UserEditModalProps {
   isOpen: boolean;
@@ -84,7 +85,7 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
         name: saved.username,
         username: saved.username,
         email: saved.email || `${saved.username}@empresa.com`,
-        role: saved.role_name || (saved.is_admin ? 'Administrador' : 'Usuario'),
+        role: resolveRoleLabel(saved),
         is_admin: saved.is_admin,
       });
       onClose();
@@ -164,13 +165,13 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
             <input
               type="checkbox"
               id="edit-user-is-admin"
-              aria-label="Otorgar Privilegios de Super Administrador"
+              aria-label={`Otorgar Privilegios de ${PLATFORM_ADMIN_ROLE_NAME}`}
               checked={isAdminCheck}
               onChange={(e) => setIsAdminCheck(e.target.checked)}
               className="w-4 h-4 text-purple-600 rounded bg-dark-base border-dark-border focus:ring-purple-500"
             />
             <label htmlFor="edit-user-is-admin" className="text-gray-300 font-medium cursor-pointer">
-              Otorgar Privilegios de Super Administrador
+              Otorgar Privilegios de {PLATFORM_ADMIN_ROLE_NAME}
             </label>
           </div>
         </form>

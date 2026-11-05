@@ -1,4 +1,4 @@
-"""Las columnas MASKED se consultan pero su valor no sale en claro.
+﻿"""Las columnas MASKED se consultan pero su valor no sale en claro.
 
 El enum `ColumnPermissionType` define ALLOWED / BLOCKED / MASKED, e `init_db` siembra
 `dim_clientes.rut_dni_cliente` como MASKED para todos los roles. Antes de este fix
@@ -15,6 +15,11 @@ import unittest
 from main import app  # noqa: F401  registra los mappers de SQLAlchemy
 
 from app.core.database import SessionLocal
+from app.core.constants import (
+    ROLE_ANALISTA_FINANCIERO, ROLE_DIRECTOR_EJECUTIVO,
+    ROLE_GERENTE_TALENTO, ROLE_ANALISTA_BI, ROLE_INGENIERO_TI,
+    ROLE_OFICIAL_SEGURIDAD, ROLE_USUARIO,
+)
 from app.core.security import mask_rows, mask_value
 from app.modules.chat_engine.governance_guard import GovernanceGuard
 
@@ -89,10 +94,10 @@ class TestMaskedColumnsAreGovernedSeparately(unittest.TestCase):
     def test_masked_column_is_not_blocked(self):
         """MASKED debe seguir consultable: si se bloqueara, el LLM no puede join-ear."""
         blocked = GovernanceGuard.get_blocked_columns_for_role(
-            "Economista", False, db=self.db, role_id=None, connection_id=1
+            ROLE_ANALISTA_FINANCIERO, False, db=self.db, role_id=None, connection_id=1
         )
         masked = GovernanceGuard.get_masked_columns_for_role(
-            "Economista", False, db=self.db, role_id=None, connection_id=1
+            ROLE_ANALISTA_FINANCIERO, False, db=self.db, role_id=None, connection_id=1
         )
 
         self.assertIn("rut_dni_cliente", masked)
@@ -104,7 +109,7 @@ class TestMaskedColumnsAreGovernedSeparately(unittest.TestCase):
     def test_blocked_columns_are_unaffected(self):
         """El fix de MASKED no debe relajar el bloqueo de las columnas criticas."""
         blocked = GovernanceGuard.get_blocked_columns_for_role(
-            "Economista", False, db=self.db, role_id=None, connection_id=1
+            ROLE_ANALISTA_FINANCIERO, False, db=self.db, role_id=None, connection_id=1
         )
         for critical in ("tarjeta_credito_token", "sueldo_mensual", "salario"):
             self.assertIn(critical, blocked, f"{critical} dejo de estar bloqueada")
@@ -114,6 +119,62 @@ class TestMaskedColumnsAreGovernedSeparately(unittest.TestCase):
             "admin", True, db=self.db, role_id=None, connection_id=1
         )
         self.assertEqual(masked, set())
+
+    def test_el_director_no_ve_los_secretos(self):
+        """El C-Level mira rentabilidad global; no necesita el instrumento de pago de
+        un cliente ni la cuenta bancaria de un empleado.
+
+        El bug: `init_db` excluia al Director Ejecutivo de la CLS junto al admin
+        (`~Role.name.in_([ADMIN, DIRECTOR_EJECUTIVO])`), asi que le llegaba en
+        claro `tarjeta_credito_token`, `cuenta_bancaria_iban` y los sueldos. Es
+        el unico rol no-admin que quedaba fuera de la matriz de columnas.
+        """
+        bloqueadas = GovernanceGuard.get_blocked_columns_for_role(
+            ROLE_DIRECTOR_EJECUTIVO, False, db=self.db, role_id=None, connection_id=1
+        )
+        # `tarjeta_credito_token` y `api_key_servicio` viven en tablas que el
+        # Director ya no ve (dim_clientes, dim_servidores), asi que la columna no
+        # se le puede filtrar aunque la matriz se lo conceda. Lo que se verifica
+        # aca es la parte que SI es suya: leer la plantilla sin remuneraciones.
+        for secreto in ("sueldo_mensual", "salario", "salario_bruto",
+                        "bono_anual", "cuenta_bancaria_iban"):
+            self.assertIn(
+                secreto, bloqueadas,
+                f"El Director Ejecutivo tiene '{secreto}' en claro. Un rol de "
+                f"direccion no es el area que responde por ese dato.",
+            )
+
+    def test_el_gerente_de_talento_es_el_unico_que_ve_los_sueldos(self):
+        """Contrapunto del anterior: bloquear los sueldos a todos dejaria a RRHH sin
+        poder hacer su trabajo. El bloqueo tiene que discriminate por rol, no por
+        coluna para todos."""
+        rrhh = GovernanceGuard.get_blocked_columns_for_role(
+            ROLE_GERENTE_TALENTO, False, db=self.db, role_id=None, connection_id=1
+        )
+        for sueldo in ("sueldo_mensual", "salario_bruto"):
+            self.assertNotIn(
+                sueldo, rrhh,
+                f"El Gerente de Talento necesita ver '{sueldo}': es el area que "
+                f"responde por la remuneracion.",
+            )
+
+    def test_el_admin_es_el_unico_sin_restricciones_de_columna(self):
+        """Ningun otro rol puede tener las columnas criticas en claro a la vez."""
+        criticas = ("tarjeta_credito_token", "cuenta_bancaria_iban", "sueldo_mensual")
+        sin_bloqueo = []
+        for nombre in (ROLE_DIRECTOR_EJECUTIVO, ROLE_ANALISTA_FINANCIERO,
+                       ROLE_GERENTE_TALENTO, ROLE_ANALISTA_BI,
+                       ROLE_INGENIERO_TI, ROLE_OFICIAL_SEGURIDAD, ROLE_USUARIO):
+            bloqueadas = GovernanceGuard.get_blocked_columns_for_role(
+                nombre, False, db=self.db, role_id=None, connection_id=1
+            )
+            if criticas[0] not in bloqueadas:
+                sin_bloqueo.append(nombre)
+        self.assertEqual(
+            sin_bloqueo, [],
+            f"Estos roles tienen 'tarjeta_credito_token' en claro: {sin_bloqueo}. "
+            f"El admin es el unico con columna sin restringir.",
+        )
 
 
 class TestMaskingReachesTheResponse(unittest.TestCase):
@@ -179,7 +240,7 @@ class TestMaskingReachesTheResponse(unittest.TestCase):
         response = asyncio.run(
             self.QueryEngine.execute_query(
                 question="SELECT nombre, rut_dni_cliente FROM clientes",
-                user_role="Economista",
+                user_role=ROLE_ANALISTA_FINANCIERO,
                 is_admin=False,
                 db=self.mock_db,
                 connection_id=1,

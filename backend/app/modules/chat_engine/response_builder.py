@@ -485,4 +485,3 @@ class ResponseBuilder:
                 explanation=f"Consulta generada y validada con IA Local ({'Qwen2.5-Coder' if is_llm_active else 'Modo Determinístico'}). Tablas autorizadas: {', '.join(allowed_tables)}."
             )
         )
-

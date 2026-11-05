@@ -40,7 +40,7 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({ users, usersLoaded
             <Users className="w-4 h-4 text-brand-600 dark:text-purple-400" /> Matriz de Usuarios y Gobernanza RBAC
           </h3>
           <p className="text-xs text-slate-600 dark:text-gray-400">
-            Asignación de perfiles (Administrador, Economista, TI, Usuario), control de sesiones y reseteo de claves
+            Asignación de los 8 perfiles corporativos, control de sesiones y reseteo de claves
           </p>
         </div>
 
@@ -149,7 +149,7 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({ users, usersLoaded
                   {u.is_admin ? (
                     <span className="inline-flex items-center space-x-1 text-brand-700 bg-brand-50 border border-brand-200 dark:text-purple-400 dark:bg-purple-500/10 dark:border-purple-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">
                       <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>Super Admin</span>
+                      <span>Administrador</span>
                     </span>
                   ) : (
                     <span className="text-slate-500 dark:text-gray-500">Estándar</span>

@@ -122,15 +122,29 @@ class TestPredictRbac(unittest.TestCase):
         self.assertEqual(getattr(ctx.exception, "status_code", None), 403)
         self.assertIn("infraestructura TI", str(ctx.exception.detail))
 
-    # --- 2. Perfil "Usuario" sin rol ------------------------------------------
+    # --- 2. Cuenta sin rol asignado --------------------------------------------
 
-    def test_perfil_usuario_sin_rol_denegado(self):
-        """Mismo corte que `engine.py:155`: sin rol asignado no hay acceso."""
-        user = _usuario(ROLE_USUARIO, role_id=None)
+    def test_cuenta_sin_rol_denegado(self):
+        """El corte real: `user.role is None`, sin importar el nombre.
+
+        Antes disparaba con `role == ROLE_USUARIO`, o sea que un Usuario Consultor
+        con su rol asignado era rechazado igual. Con la matriz de 8 roles el
+        Consultor tiene lectura minima declarada y pasar por este gate lo dejaba
+        como un perfil que no puede hacer nada.
+        """
+        user = _usuario(None, role_id=None)
         with self.assertRaises(Exception) as ctx:
             self._correr(user, {"fact_ventas"})
         self.assertEqual(getattr(ctx.exception, "status_code", None), 403)
-        self.assertIn("perfil inicial", str(ctx.exception.detail).lower())
+        self.assertIn("rol asignado", str(ctx.exception.detail).lower())
+
+    def test_consultor_con_rol_no_es_bloqueado_por_el_gate(self):
+        """Contrapunto: tener rol es lo que abre la puerta, y el Usuario Consultor
+        tiene uno. Si este test falla, el gate volvio a bloquear por nombre y el
+        Consultor quedo muerto otra vez."""
+        user = _usuario(ROLE_USUARIO, role_id=12)
+        resp = self._correr(user, {"dim_categorias"})
+        self.assertEqual(resp.errors, [])
 
     # --- 3. El caso normal sigue funcionando ---------------------------------
 
@@ -185,6 +199,15 @@ class TestPredictRbac(unittest.TestCase):
 
         self.assertEqual(len(vistos), 3, "los tres bloques deben correr")
         self.assertEqual(len({b for _, b in vistos}), 1, "los tres deben compartir el budget")
+
+    def test_perfil_usuario_sin_rol_denegado(self):
+        """Mismo corte que `engine.py:155`: sin rol asignado no hay acceso."""
+        user = _usuario(ROLE_USUARIO, role_id=None)
+        with self.assertRaises(Exception) as ctx:
+            self._correr(user, {"fact_ventas"})
+        self.assertEqual(getattr(ctx.exception, "status_code", None), 403)
+        self.assertIn("perfil inicial", str(ctx.exception.detail).lower())
+
 
 
 class TestTablaDeHechosSeResuelveUnaVez(unittest.TestCase):
