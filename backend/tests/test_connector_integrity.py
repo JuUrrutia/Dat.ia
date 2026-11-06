@@ -168,9 +168,19 @@ class TestUploadPathCollision(unittest.TestCase):
         self.names = []
 
     def tearDown(self):
+        # Borrar la fila a mano dejaba su catalogo y sus permisos colgando: en
+        # SQLite el siguiente `connection_id` es max+1, asi que al borrar el max ese
+        # id vuelve a estar libre y la conexion siguiente hereda las filas de la
+        # que ya no existe (medido: un `datos` de una subida aparecia como tabla
+        # huerfana en la cobertura de gobernanza de OTRO test). Se borra por la
+        # misma via que el producto, que tambien se lleva el archivo subido.
+        from app.modules.catalog.services.connector_service import ConnectorDomainService
+
         for name in self.names:
-            self.db.query(CorporateConnection).filter(
-                CorporateConnection.name == name).delete()
+            conn = self.db.query(CorporateConnection).filter(
+                CorporateConnection.name == name).first()
+            if conn:
+                ConnectorDomainService.delete_connector(self.db, conn.id)
         self.db.commit()
         self.db.close()
 

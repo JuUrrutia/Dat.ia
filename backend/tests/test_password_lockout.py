@@ -99,7 +99,7 @@ class TestPasswordLockout(unittest.TestCase):
         )
         self.assertEqual(reset_resp.status_code, 200)
         temp_pwd = reset_resp.json()["temporary_password"]
-        self.assertTrue(temp_pwd.startswith("Datia-"))
+        self.assertTrue(temp_pwd.startswith("Dat.ia-"))
 
         # 3. User logs in with temporary password
         user_login = self.client.post("/api/v1/auth/login", json={

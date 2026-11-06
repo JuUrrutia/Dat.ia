@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.auth.models import User
 from app.modules.telemetry_audit.models import AuditLog
+from app.api.deps import display_role_name
 from app.modules.admin_catalog.schemas import ReportExportData, ReportExportRequest
 from app.modules.reports.pdf_exporter import PDFExporter
 from app.modules.reports.excel_exporter import ExcelExporter
@@ -37,14 +38,6 @@ class ReportGeneratorService:
         if data_obj.traceability and data_obj.traceability.rows_returned:
             return data_obj.traceability.rows_returned
         return original_rows
-
-    @classmethod
-    def _resolve_user_role_name(cls, user: User) -> str:
-        if hasattr(user, 'role_name') and user.role_name:
-            return user.role_name
-        if hasattr(user, 'role') and user.role and hasattr(user.role, 'name'):
-            return user.role.name
-        return "Administrador" if user.is_admin else "Usuario"
 
     @classmethod
     def export_pdf(cls, db: Session, current_user: User, req: ReportExportRequest) -> Tuple[bytes, str]:
@@ -96,7 +89,15 @@ class ReportGeneratorService:
             export_audit = AuditLog(
                 user_id=current_user.id,
                 username=current_user.username,
-                user_role=cls._resolve_user_role_name(current_user),
+                # `display_role_name` y no un nombre inventado: esta fila es
+                # evidencia de compliance, no una etiqueta de UI. Una exportacion
+                # registrada como "Usuario" de una cuenta sin rol affirmaria un
+                # perfil que la cuenta no tiene. Para la cuenta sin rol el
+                # registro queda con `user_role = NULL`, que es lo que la columna
+                # nullable admite y lo que los consumidores ya esperan: el CSV
+                # de `telemetry_audit/router.py` escribe `log.user_role or ""`
+                # y `AuditLogOut.user_role` es `Optional[str]`.
+                user_role=display_role_name(current_user),
                 question_prompt=data_obj.question,
                 sql_generated=data_obj.traceability.sql_executed if data_obj.traceability else None,
                 validation_status="EXPORTADO_PDF",
@@ -159,7 +160,7 @@ class ReportGeneratorService:
             export_audit = AuditLog(
                 user_id=current_user.id,
                 username=current_user.username,
-                user_role=cls._resolve_user_role_name(current_user),
+                user_role=display_role_name(current_user),
                 question_prompt=data_obj.question,
                 sql_generated=data_obj.traceability.sql_executed if data_obj.traceability else None,
                 validation_status="EXPORTADO_EXCEL",

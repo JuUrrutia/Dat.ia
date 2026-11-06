@@ -34,7 +34,7 @@ class TestOutOfScopeCapabilities(unittest.IsolatedAsyncioTestCase):
         valid_samples = [
             "¿Cuál es el total de ventas por categoría?",
             "Top 5 clientes con mayores compras",
-            "Hola DATIA, buenos días",
+            "Hola Dat.ia, buenos días",
             "Explícame qué significa el margen de contribución"
         ]
         for query in valid_samples:

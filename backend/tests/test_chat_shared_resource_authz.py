@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 from main import app
 from app.core.database import SessionLocal
 from app.db.init_db import init_db
+from app.core.constants import ROLE_ADMINISTRADOR, ROLE_ANALISTA_FINANCIERO, ROLE_DIRECTOR_EJECUTIVO
 from app.modules.auth.models import User, UserSession
 from app.modules.chat_engine.models import QueryLearningMemory
 from app.core.security import create_access_token
@@ -219,6 +220,48 @@ class TestSharedLearningMemoryAuthorization(unittest.TestCase):
         )
         self.assertNotIn("tabla_bloqueada", prompt)
         self.assertNotIn("[Consulta Maestra Verificada]", prompt)
+
+    # --- el corte por rol de la memoria ---------------------------------
+    #
+    # `ADMIN_ROLES` tiene UN solo elemento con mayusculas ("Administrador de
+    # Plataforma"), asi que la comparacion tiene que ser exacta. Con un
+    # `str(user_role).lower()` el admin caia en la rama de no-admin y perdia la
+    # memoria de los demas roles: nunca entra, comparacion contra un set con
+    # mayusculas.
+
+    def _seed_memories_for_roles(self):
+        self.db.add(QueryLearningMemory(
+            question_pattern="patron_del_analista",
+            connection_id=CONNECTION_ID,
+            user_role=ROLE_ANALISTA_FINANCIERO,
+            successful_sql="SELECT * FROM tabla_del_analista",
+        ))
+        self.db.add(QueryLearningMemory(
+            question_pattern="patron_sin_rol",
+            connection_id=CONNECTION_ID,
+            user_role=None,
+            successful_sql="SELECT * FROM tabla_sin_rol",
+        ))
+        self.db.commit()
+
+    def test_admin_role_sees_memories_of_other_roles(self):
+        from app.modules.chat_engine.sql_executor import SQLExecutor
+        self._seed_memories_for_roles()
+        prompt = SQLExecutor.retrieve_few_shot_memories(
+            self.db, "Ventas Totales", CONNECTION_ID, ROLE_ADMINISTRADOR
+        )
+        self.assertIn("tabla_del_analista", prompt)
+        self.assertIn("tabla_sin_rol", prompt)
+
+    def test_non_admin_role_does_not_see_other_roles_memories(self):
+        """El filtro sigue cerrandose: el fix no abre la memoria a cualquiera."""
+        from app.modules.chat_engine.sql_executor import SQLExecutor
+        self._seed_memories_for_roles()
+        prompt = SQLExecutor.retrieve_few_shot_memories(
+            self.db, "Ventas Totales", CONNECTION_ID, ROLE_DIRECTOR_EJECUTIVO
+        )
+        self.assertNotIn("tabla_del_analista", prompt)
+        self.assertIn("tabla_sin_rol", prompt)
 
 
 if __name__ == "__main__":

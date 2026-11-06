@@ -3,6 +3,7 @@ import { X, UserPlus, ShieldCheck } from 'lucide-react';
 import { UserItem } from './AdminUsersTab';
 import { authService } from '../../features/auth/services/auth_service';
 import { useModalA11y } from '../../hooks/useModalA11y';
+import { resolveRoleLabel } from '../../constants';
 
 interface UserAddModalProps {
   isOpen: boolean;
@@ -38,10 +39,10 @@ export const UserAddModal: React.FC<UserAddModalProps> = ({
 
     try {
       // /auth/register is a PUBLIC self-registration endpoint: the backend
-      // always assigns the default "Usuario" role and is_admin=false, ignoring
-      // the payload. Build the row from what the server actually did — a
-      // synthetic id 404s the next Edit/Sesiones/Reset call, and a role the
-      // account does not hold is worse than no role.
+      // ignores the payload and decides el rol (o lo deja en null). Build the row
+      // from what the server actually did — a synthetic id 404s the next
+      // Edit/Sesiones/Reset call, and a role the account does not hold is worse
+      // than saying que no tiene.
       const created = await authService.register({
         username: newUsername,
         email: newEmail || undefined,
@@ -52,7 +53,7 @@ export const UserAddModal: React.FC<UserAddModalProps> = ({
         id: created.id,
         name: created.username,
         email: created.email || `${created.username}@empresa.com`,
-        role: created.role_name || 'Usuario',
+        role: resolveRoleLabel(created),
         is_admin: created.is_admin,
       };
 

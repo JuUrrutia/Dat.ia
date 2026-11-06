@@ -9,7 +9,14 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 
-from app.api.deps import get_db, get_current_user, get_current_user_optional, get_current_admin
+from app.api.deps import (
+    get_db, get_current_user, get_current_user_optional, get_current_admin,
+    # El gate de "la cuenta tiene un rol" vive en `deps` porque lo necesitan
+    # tambien `admin_catalog` y `system`. `_persist_audit_log` se re-exporta con
+    # su nombre viejo porque `tests/test_transaction_hygiene.py` lo importa desde
+    # aca y esa ruta es parte del contrato del modulo.
+    _persist_audit_log, require_assigned_role as _require_assigned_role,
+)
 from app.core.database import SessionLocal
 from app.modules.auth.models import User
 from app.modules.telemetry_audit.models import AuditLog
@@ -28,7 +35,7 @@ from app.modules.chat_engine import forecast_service
 from app.modules.chat_engine.engine import QueryEngine
 from app.modules.chat_engine.llm_diagnostic_router import llm_diagnostic_router
 
-from app.core.constants import ADMIN_ROLES, ROLE_USUARIO, ROLE_ADMINISTRADOR
+from app.core.constants import ADMIN_ROLES, ROLE_ADMINISTRADOR
 from app.core.database import discard_failed_transaction
 from app.modules.chat_engine.governance_guard import GovernanceGuard
 
@@ -52,46 +59,13 @@ def _resolve_target_database(db: Session, connection_id: int) -> str:
         discard_failed_transaction(db)
     return "demo_corporativa.db"
 
-def _persist_audit_log(
-    db: Session,
-    user_id: Optional[int],
-    username: str,
-    user_role: Optional[str],
-    question_prompt: str,
-    sql_generated: Optional[str],
-    # `None` = "esta consulta no tiene registro de validacion". NO es un valor
-    # decorativo: el export de compliance lee esta columna de la BD y antes
-    # confundia "no lo se" con "APROBADO", que es una afirmacion distinta.
-    validation_status: Optional[str],
-    target_database: str,
-    execution_time_ms: int = 0,
-    rows_returned: int = 0,
-    error_message: Optional[str] = None,
-    result_snapshot: Optional[str] = None
-) -> Optional[int]:
-    """Safely persists an AuditLog record in a best-effort transaction and returns its ID."""
-    try:
-        audit_entry = AuditLog(
-            user_id=user_id,
-            username=username,
-            user_role=user_role,
-            question_prompt=question_prompt,
-            sql_generated=sql_generated,
-            validation_status=validation_status,
-            target_database=target_database,
-            execution_time_ms=execution_time_ms,
-            rows_returned=rows_returned,
-            error_message=error_message,
-            result_snapshot=result_snapshot
-        )
-        db.add(audit_entry)
-        db.commit()
-        db.refresh(audit_entry)
-        return audit_entry.id
-    except Exception as e:
-        db.rollback()
-        logger.warning(f"Error registrando auditoría: {e}")
-        return None
+# `_persist_audit_log` y `_require_assigned_role` viven en `app.api.deps` y se
+# importan arriba: son el piso comun de los endpoints que tocan datos corporativos,
+# y el gate tiene que ser UNA sola definicion. Cuando cada router tenia su propia
+# copia del fallback "sin rol -> Usuario Consultor", los tres llamadores
+# divergieron sobre la misma cuenta (`/chat/*` la cortaba, `/catalog/
+# data-dictionary` y `/system/anomalies` no).
+
 
 @router.post("/query", response_model=QueryResponse)
 async def process_chat_query(
@@ -104,9 +78,11 @@ async def process_chat_query(
     Invokes Local LLM, applies RBAC permissions & AST Guardrail validation.
     Persists audit log of approval or rejection with result snapshot.
     """
-    user_role_name = current_user.role.name if current_user.role else (ROLE_ADMINISTRADOR if current_user.is_admin else ROLE_USUARIO)
     conn_id = query_in.connection_id or 1
     target_db_name = _resolve_target_database(db, conn_id)
+    user_role_name = _require_assigned_role(
+        current_user, db, query_in.question, target_db_name
+    )
 
     try:
         response = await QueryEngine.execute_query(
@@ -217,8 +193,14 @@ async def process_chat_query_stream(
     que si los soporta. Un JWT en la URL quedaria en los logs del servidor y en
     el historial del navegador; no hace falta.
     """
-    user_role_name = current_user.role.name if current_user.role else (ROLE_ADMINISTRADOR if current_user.is_admin else ROLE_USUARIO)
     conn_id = query_in.connection_id or 1
+    # Antes de abrir el stream: el corte de rol tiene que ser un 403 HTTP de
+    # verdad. Adentro del generador las cabeceras ya se enviaron y un rechazo
+    # solo puede viajar como evento `error`, que el cliente no distingue de
+    # "el servidor se cayo".
+    user_role_name = _require_assigned_role(
+        current_user, db, query_in.question, _resolve_target_database(db, conn_id)
+    )
 
     # Los datos del usuario y la sesion se leen ANTES de abrir el stream. Durante
     # la generacion el generador corre sobre su propia sesion: `current_user`
@@ -378,34 +360,21 @@ async def run_prediction(
     con 3 puntos no es una aproximacion: es una cifra con mas decimales que
     evidencia.
     """
-    user_role_name = current_user.role.name if current_user.role else (ROLE_ADMINISTRADOR if current_user.is_admin else ROLE_USUARIO)
     conn_id = payload.connection_id or 1
     target_db_name = _resolve_target_database(db, conn_id)
 
-    # --- Gate 1: perfil "Usuario" sin rol asignado. Idéntico a `engine.py:155`.
+    # --- Gate 1: la cuenta no tiene ningun rol asignado.
     # `/predict` genera el SQL por código, pero lee la misma base corporativa que
-    # el chat. Sin este corte, un usuario con el perfil inicial sacaba forecast y
-    # retención de la fact table.
-    if not current_user.is_admin and (user_role_name == ROLE_USUARIO or not user_role_name):
-        _persist_audit_log(
-            db=db,
-            user_id=current_user.id,
-            username=current_user.username,
-            user_role=user_role_name,
-            question_prompt=payload.question or "Prediccion: forecast y retencion",
-            sql_generated=None,
-            validation_status="RECHAZADO_RBAC",
-            target_database=target_db_name,
-            error_message="Perfil 'Usuario' sin rol asignado",
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                "Tu cuenta se encuentra registrada con el perfil inicial 'Usuario'. Un "
-                "Administrador debe asignarte un rol (Economista o TI) para acceder a los "
-                "datos corporativos."
-            ),
-        )
+    # el chat, asi que corta por la MISMA razon y con el mismo helper que
+    # `/chat/query`: una sola definicion del corte, no dos que puedan divergir.
+    #
+    # El corte es "no tiene rol", no "es el Usuario Consultor": el Consultor es un
+    # perfil del catálogo con lectura mínima declarada y sin tablas de negocio, así
+    # que si pregunta por ventas lo frena la matriz de permisos, con un mensaje que
+    # explica el motivo. Acá no hay rol que explicar.
+    user_role_name = _require_assigned_role(
+        current_user, db, payload.question or "Prediccion: forecast y retencion", target_db_name
+    )
 
     # --- Gate 2: gobernanza de dominio. Idéntico a `engine.py:164-167`.
     #
@@ -609,9 +578,6 @@ async def get_dynamic_suggestions(
             suggestions=generic_suggestions
         )
 
-    role_name = current_user.role.name if current_user.role else (ROLE_ADMINISTRADOR if current_user.is_admin else ROLE_USUARIO)
-    is_admin = current_user.is_admin or role_name in ADMIN_ROLES
-
     # Resolve active connection when omitted
     effective_conn_id = connection_id
     if effective_conn_id is None and db is not None:
@@ -626,6 +592,23 @@ async def get_dynamic_suggestions(
             # Sin conexion resuelta, `effective_conn_id` queda None y el prompt
             # degrada. Lo que no puede pasar es devolver la sesion abortada.
             discard_failed_transaction(db)
+
+    # Mismo gate que `/chat/query`, `/chat/predict`, `/catalog/data-dictionary` y
+    # `/system/anomalies`. Este endpoint resolvia el nombre con su propio fallback
+    # ("sin rol -> Usuario Consultor") y despues lo devolvia EN EL CUERPO de la
+    # respuesta: `user_role` y `allowed_tables` de la matriz del Consultor. No es
+    # el leak de columnas del diccionario, pero es la misma confusion de
+    # identidad: una cuenta sin perfil no puede ver las tablas de otro perfil.
+    #
+    # Va DESPUES de resolver `effective_conn_id` para poder nombrar la conexion en
+    # la auditoria de la denegacion. La rama de `current_user is None` de mas
+    # arriba NO pasa por aca: el anonimo recibe sugerencias genericas y
+    # `allowed_tables=None`, y asi sigue.
+    role_name = _require_assigned_role(
+        current_user, db, "Sugerencias: GET /chat/suggestions",
+        _resolve_target_database(db, effective_conn_id) if effective_conn_id else "demo_corporativa.db",
+    )
+    is_admin = current_user.is_admin or role_name in ADMIN_ROLES
 
     allowed_tables = QueryEngine.get_allowed_tables_for_role(
         user_role=role_name,
