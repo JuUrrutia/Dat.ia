@@ -5,11 +5,12 @@ import uuid
 from typing import List, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
-from app.api.deps import get_db, get_current_user, get_current_admin
+from app.api.deps import get_db, get_current_user, get_current_admin, display_role_name
 from app.core.security import verify_password, get_password_hash, create_access_token, decode_token_payload
 from app.modules.auth.models import User, Role, UserSession
 from app.core.constants import (
-    MAX_FAILED_LOGIN_ATTEMPTS, ACCOUNT_LOCKOUT_DURATION_MINUTES, ADMIN_ROLES
+    MAX_FAILED_LOGIN_ATTEMPTS, ACCOUNT_LOCKOUT_DURATION_MINUTES, ADMIN_ROLES,
+    DEFAULT_USER_ROLE, ROLE_ALIASES,
 )
 from app.modules.auth.schemas import (
     UserLogin, UserSelfRegister, UserOut, Token, PasswordChangeRequest,
@@ -75,9 +76,7 @@ def register_user(
                 detail="El correo electrónico ya está registrado."
             )
 
-    default_role = db.query(Role).filter(Role.name == "Usuario").first()
-    assigned_role_id = default_role.id if default_role else None
-    role_name = default_role.name if default_role else "Usuario"
+    default_role = db.query(Role).filter(Role.name == DEFAULT_USER_ROLE).first()
 
     hashed_pwd = get_password_hash(_require_strong_password(user_in.password))
 
@@ -87,7 +86,7 @@ def register_user(
         hashed_password=hashed_pwd,
         is_admin=False,
         is_active=True,
-        role_id=assigned_role_id,
+        role_id=default_role.id if default_role else None,
         failed_login_attempts=0,
         must_change_password=False
     )
@@ -96,8 +95,11 @@ def register_user(
     db.commit()
     db.refresh(new_user)
 
+    # La etiqueta sale del registro, no del string que se busco: si el catalogo
+    # no tuviera el rol por defecto, `role_id` queda NULL y decir "Usuario
+    # Consultor" seria afirmar un perfil que la cuenta recien creada no tiene.
     user_out = UserOut.model_validate(new_user)
-    user_out.role_name = role_name
+    user_out.role_name = display_role_name(new_user)
     return user_out
 
 @router.post("/login", response_model=Token)
@@ -182,9 +184,8 @@ def login_user(
     db.add(user_session)
     db.commit()
 
-    role_name = user.role.name if user.role else ("Super Administrador" if user.is_admin else "Usuario")
     user_out = UserOut.model_validate(user)
-    user_out.role_name = role_name
+    user_out.role_name = display_role_name(user)
 
     return {
         "access_token": access_token,
@@ -197,9 +198,8 @@ def read_current_user_profile(
     current_user: User = Depends(get_current_user)
 ) -> Any:
     """Returns profile of currently authenticated user."""
-    role_name = current_user.role.name if current_user.role else ("Super Administrador" if current_user.is_admin else "Usuario")
     user_out = UserOut.model_validate(current_user)
-    user_out.role_name = role_name
+    user_out.role_name = display_role_name(current_user)
     return user_out
 
 @router.post("/change-password")
@@ -263,9 +263,8 @@ def list_all_users(
     users = db.query(User).all()
     out = []
     for u in users:
-        role_name = u.role.name if u.role else ("Administrador" if u.is_admin else "Usuario")
         u_out = UserOut.model_validate(u)
-        u_out.role_name = role_name
+        u_out.role_name = display_role_name(u)
         out.append(u_out)
     return out
 
@@ -356,7 +355,7 @@ def admin_update_user(
 
     new_role = None
     if payload.role is not None:
-        role_name = payload.role.strip()
+        role_name = ROLE_ALIASES.get(payload.role.strip(), payload.role.strip())
         if not role_name:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -413,9 +412,8 @@ def admin_update_user(
     db.commit()
     db.refresh(user)
 
-    role_name = user.role.name if user.role else ("Super Administrador" if user.is_admin else "Usuario")
     user_out = UserOut.model_validate(user)
-    user_out.role_name = role_name
+    user_out.role_name = display_role_name(user)
     return user_out
 
 @router.post("/users/{user_id}/revoke-all-sessions")

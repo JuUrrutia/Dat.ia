@@ -119,6 +119,14 @@ SNAPSHOT = {
 }
 
 
+
+from app.modules.admin_catalog.schemas import (
+    ExecutiveReportData,
+    KPICardData,
+    ReportExportData,
+    TraceabilityAuditData,
+)
+
 def _section_numbers(text: str):
     return [int(m.group(1)) for m in SECTION_RE.finditer(text)]
 

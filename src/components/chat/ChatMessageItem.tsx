@@ -422,4 +422,3 @@ const MemoChatMessageItem = React.memo(ChatMessageItemBase);
 MemoChatMessageItem.displayName = 'ChatMessageItem';
 
 export const ChatMessageItem = MemoChatMessageItem;
-

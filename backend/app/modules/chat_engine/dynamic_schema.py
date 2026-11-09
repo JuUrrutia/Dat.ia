@@ -40,21 +40,55 @@ class DynamicSchemaPruningService:
     _PHYSICAL_CACHE_MAX: int = 512
 
     @classmethod
+    def _is_postgres(cls, target: Any) -> bool:
+        """`target` es una conexion a PostgreSQL, no una ruta de fichero.
+
+        El `==` es el que decide: `DatabaseType` es un `str, Enum`, asi que
+        `str(DatabaseType.POSTGRESQL)` vale `"DatabaseType.POSTGRESQL"` y compararlo
+        con `"postgresql"` nunca da True. El `or` del `str()` cubre el caso de que
+        `db_type` venga como texto plano desde una consulta cruda.
+        """
+        if not hasattr(target, "db_type"):
+            return False
+        db_type = getattr(target, "db_type")
+        return db_type == DatabaseType.POSTGRESQL or str(db_type).lower() == "postgresql"
+
+    @classmethod
     def _physical_key(cls, target: Any) -> str:
         """Identidad estable de la base fisica a la que apunta `target`.
 
         `target` es un `CorporateConnection` (Postgres) o una ruta de fichero
         SQLite, y ambos determinan por completo que se va a leer.
         """
-        if hasattr(target, "db_type"):
+        if cls._is_postgres(target):
             return "pg|{}|{}|{}|{}".format(
                 getattr(target, "db_type", ""),
                 getattr(target, "host", "") or "",
                 getattr(target, "port", "") or "",
                 getattr(target, "database_name", "") or "",
             )
-        path = target if (isinstance(target, str) and target) else settings.SQLITE_DB_PATH
-        return f"sqlite|{path}"
+        return f"sqlite|{cls._sqlite_path(target)}"
+
+    @classmethod
+    def _sqlite_path(cls, target: Any) -> str:
+        """La ruta de fichero que hay que abrir para leer `target`.
+
+        `target` llega de tres formas: una `CorporateConnection` de PostgreSQL (que
+        no se abre como fichero), una `CorporateConnection` de SQLite (SI es un
+        fichero: el dataset que el admin subio) o una ruta suelta.
+
+        La `CorporateConnection` de SQLite es la que se estaba perdiendo: no es un
+        `str`, asi que caia en el `else` y se leia `SQLITE_DB_PATH`, la demo
+        INTERNA de la plataforma. O sea, el esquema que se ofrecia como de la
+        conexion del cliente era el de otra base, y una consulta sobre una tabla
+        que el cliente si tiene se reportaba como inexistente.
+        """
+        if hasattr(target, "db_type") and not cls._is_postgres(target):
+            for candidate in (getattr(target, "host", None), getattr(target, "database_name", None)):
+                if candidate and os.path.exists(candidate):
+                    return candidate
+            return ""
+        return target if (isinstance(target, str) and target) else settings.SQLITE_DB_PATH
 
     @classmethod
     def invalidate_schema_cache(cls, connection_id: Optional[int] = None) -> None:
@@ -90,7 +124,7 @@ class DynamicSchemaPruningService:
             except Exception as ex:
                 # Fallar aqui significa que NO sabemos a que base del cliente
                 # apuntan los permisos ya calculados. Devolver `SQLITE_DB_PATH`
-                # (la BD demo interna de Datia) ejecutaba la consulta del cliente
+                # (la BD demo interna de Dat.ia) ejecutaba la consulta del cliente
                 # contra la base interna de la plataforma, con los permisos de otra
                 # conexion: un fallo de resolucion se.convertia en una lectura de
                 # otra base. Se falla cerrado y se propaga; el rollback deja la
@@ -168,9 +202,10 @@ class DynamicSchemaPruningService:
             except Exception:
                 return set()
 
-        # Case 2: SQLite database file path
+        # Case 2: SQLite database file path (tambien una CorporateConnection de
+        # SQLite, que ES un fichero: su dataset, no la demo interna)
         try:
-            target_path = target if (isinstance(target, str) and target) else settings.SQLITE_DB_PATH
+            target_path = cls._sqlite_path(target)
             if not target_path or not os.path.exists(target_path):
                 return set()
             conn = sqlite3.connect(target_path)
@@ -252,9 +287,10 @@ class DynamicSchemaPruningService:
             except Exception:
                 return []
 
-        # Case 2: SQLite database file
+        # Case 2: SQLite database file (tambien una CorporateConnection de
+        # SQLite, que ES un fichero: su dataset, no la demo interna)
         try:
-            target_path = db_path if (isinstance(db_path, str) and db_path) else settings.SQLITE_DB_PATH
+            target_path = cls._sqlite_path(db_path)
             if not target_path or not os.path.exists(target_path):
                 return []
             conn = sqlite3.connect(target_path)
@@ -770,5 +806,4 @@ class DynamicSchemaPruningService:
                     cls._schema_cache.clear()
             cls._schema_cache[cache_key] = (now, result)
         return result
-
 

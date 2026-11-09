@@ -191,6 +191,64 @@ describe('api_client: FormData manda su propio Content-Type', () => {
   });
 });
 
+describe('api_client: el detail de un 422 llega como string, no como array', () => {
+  it('aplana el detail de validacion para que se pueda renderizar', async () => {
+    // Este es el body exacto que devuelve FastAPI en un 422 de pydantic. Sin
+    // aplanarlo, el catch de connector_service.testConnection lo asignaba a
+    // `message` (un array es truthy, asi que su fallback nunca corria) y React
+    // lanzaba "Objects are not valid as a React child" al pintarlo, dejando la
+    // pagina en negro porque no hay ErrorBoundary.
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      errResponse(422, {
+        detail: [
+          { type: 'missing', loc: ['password'], msg: 'Field required', input: {}, url: 'https://errors.pydantic.dev/2.13/v/missing' },
+        ],
+      })
+    ));
+
+    const { apiClient } = await loadClient();
+
+    let caught: any = null;
+    try {
+      await apiClient.post('/connectors/test', { db_type: 'sqlite', host: 'x', port: 0, database_name: 'd', username: 'admin' });
+    } catch (e) {
+      caught = e;
+    }
+
+    // Es lo que leen los ~29 `err.response?.data?.detail || 'fallback'`.
+    expect(Array.isArray(caught.response.data.detail)).toBe(false);
+    expect(typeof caught.response.data.detail).toBe('string');
+    expect(caught.response.data.detail).toBe('Field required');
+    // Y el patron del catch de connector_service, tal cual.
+    const shown = caught.response?.data?.detail || 'No se pudo conectar a x:0 (SQLITE).';
+    expect(typeof shown).toBe('string');
+    expect(caught.message).toBe('Field required');
+  });
+
+  it('une varios errores de validacion en un solo string', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      errResponse(422, {
+        detail: [
+          { type: 'missing', loc: ['password'], msg: 'Field required' },
+          { type: 'missing', loc: ['username'], msg: 'Field required' },
+        ],
+      })
+    ));
+
+    const { apiClient } = await loadClient();
+    await expect(apiClient.post('/connectors/test', {})).rejects.toThrow('Field required; Field required');
+  });
+
+  it('no toca un detail que ya es string de error de dominio', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      errResponse(404, { detail: 'Conexion no encontrada' })
+    ));
+
+    const { apiClient } = await loadClient();
+    await expect(apiClient.get('/connectors/9')).rejects.toThrow('Conexion no encontrada');
+  });
+});
+
 describe('parseSseEvent', () => {
   it('devuelve null para los keep-alives que inyectan los proxies', async () => {
     const { parseSseEvent } = await loadClient();

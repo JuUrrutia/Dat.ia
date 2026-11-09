@@ -12,6 +12,7 @@ import { authService } from '../features/auth/services/auth_service';
 import { useAuth } from '../features/auth/context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { User } from '../types';
+import { resolveRoleLabel } from '../constants';
 
 export const AdminPage: React.FC = () => {
   const { notify } = useNotifications();
@@ -45,7 +46,7 @@ export const AdminPage: React.FC = () => {
           name: u.username,
           username: u.username,
           email: u.email || `${u.username}@empresa.com`,
-          role: u.role_name || (u.is_admin ? 'Administrador' : 'Usuario'),
+          role: resolveRoleLabel(u),
           is_admin: u.is_admin,
         }))
       );

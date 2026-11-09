@@ -1,4 +1,4 @@
-"""
+﻿"""
 `PATCH /auth/users/{user_id}`: actualizacion de rol e `is_admin`.
 
 La UI (AdminUsersTab) prometa "Editar Rol" y lo que habia era un boton que
@@ -28,6 +28,7 @@ from main import app  # noqa: F401
 from app.core.database import SessionLocal
 from app.db.init_db import init_db
 from app.modules.auth.models import User, Role, UserSession
+from app.core.constants import (ROLE_ADMINISTRADOR, ROLE_ANALISTA_FINANCIERO, ROLE_INGENIERO_TI)
 from app.core.security import create_access_token, get_password_hash
 
 PREFIX = "test_roleupd_"
@@ -48,9 +49,9 @@ class TestUserRoleUpdate(unittest.TestCase):
         self._created = []
         # Admin propio de este archivo. Se usa el admin de demo solo como
         # referencia de "ultimo admin" cuando hace falta, nunca como actor.
-        self.admin_id = self._make(f"{PREFIX}admin", is_admin=True, role_name="Administrador")
-        self.plain_id = self._make(f"{PREFIX}plain", is_admin=False, role_name="Economista")
-        self.target_id = self._make(f"{PREFIX}target", is_admin=False, role_name="Economista")
+        self.admin_id = self._make(f"{PREFIX}admin", is_admin=True, role_name=ROLE_ADMINISTRADOR)
+        self.plain_id = self._make(f"{PREFIX}plain", is_admin=False, role_name=ROLE_ANALISTA_FINANCIERO)
+        self.target_id = self._make(f"{PREFIX}target", is_admin=False, role_name=ROLE_ANALISTA_FINANCIERO)
 
     def tearDown(self):
         ids = [u.id for u in self.db.query(User).filter(User.username.like(f"{PREFIX}%")).all()]
@@ -105,23 +106,29 @@ class TestUserRoleUpdate(unittest.TestCase):
     # --- 1. quien no es admin no entra -------------------------------------
 
     def test_non_admin_gets_403(self):
-        res = self._patch(self.target_id, {"role": "TI"}, as_user_id=self.plain_id)
+        res = self._patch(self.target_id, {"role": ROLE_INGENIERO_TI}, as_user_id=self.plain_id)
         self.assertEqual(res.status_code, 403, res.text[:300])
-        self.assertEqual(self._role_of(self.target_id), "Economista")
+        self.assertEqual(self._role_of(self.target_id), ROLE_ANALISTA_FINANCIERO)
 
     def test_anonymous_gets_401(self):
-        res = self.client.patch(f"/api/v1/auth/users/{self.target_id}", json={"role": "TI"})
+        res = self.client.patch(f"/api/v1/auth/users/{self.target_id}", json={"role": ROLE_INGENIERO_TI})
         self.assertEqual(res.status_code, 401, res.text[:300])
 
     # --- 2. el admin cambia el rol y el usuario queda con el rol nuevo ------
 
     def test_admin_changes_role_and_response_confirms_it(self):
-        res = self._patch(self.target_id, {"role": "TI"}, as_user_id=self.admin_id)
+        res = self._patch(self.target_id, {"role": ROLE_INGENIERO_TI}, as_user_id=self.admin_id)
         self.assertEqual(res.status_code, 200, res.text[:300])
         # La UI afirma contra la respuesta del servidor, asi que la respuesta
         # tiene que traer el rol nuevo y no el viejo.
-        self.assertEqual(res.json()["role_name"], "TI")
-        self.assertEqual(self._role_of(self.target_id), "TI")
+        self.assertEqual(res.json()["role_name"], ROLE_INGENIERO_TI)
+        self.assertEqual(self._role_of(self.target_id), ROLE_INGENIERO_TI)
+
+    def test_legacy_role_alias_is_normalized_to_catalog_role(self):
+        res = self._patch(self.target_id, {"role": "TI"}, as_user_id=self.admin_id)
+        self.assertEqual(res.status_code, 200, res.text[:300])
+        self.assertEqual(res.json()["role_name"], ROLE_INGENIERO_TI)
+        self.assertEqual(self._role_of(self.target_id), ROLE_INGENIERO_TI)
 
     def test_admin_can_change_only_is_admin(self):
         res = self._patch(self.target_id, {"is_admin": True}, as_user_id=self.admin_id)
@@ -133,7 +140,7 @@ class TestUserRoleUpdate(unittest.TestCase):
         )
 
     def test_unknown_user_returns_404(self):
-        res = self._patch(999999, {"role": "TI"}, as_user_id=self.admin_id)
+        res = self._patch(999999, {"role": ROLE_INGENIERO_TI}, as_user_id=self.admin_id)
         self.assertEqual(res.status_code, 404, res.text[:300])
 
     # --- 3. un admin no se degrada a si mismo -------------------------------
@@ -151,22 +158,22 @@ class TestUserRoleUpdate(unittest.TestCase):
         """El bloqueo no mira solo `is_admin`.
 
         `get_current_admin` acepta tambien el rol de catalogo, asi que un usuario
-        con rol "Administrador" e `is_admin=False` administra igual. Moverle el
-        rol a uno no-admin es degradarse a si mismo aunque el body no toque
-        `is_admin`, asi que da el mismo 400."""
+        con rol "Administrador de Plataforma" e `is_admin=False` administra igual.
+        Moverle el rol a uno no-admin es degradarse a si mismo aunque el body no
+        toque `is_admin`, asi que da el mismo 400."""
         role_admin_id = self._make(
-            f"{PREFIX}roleadmin", is_admin=False, role_name="Administrador"
+            f"{PREFIX}roleadmin", is_admin=False, role_name=ROLE_ADMINISTRADOR
         )
-        res = self._patch(role_admin_id, {"role": "Economista"}, as_user_id=role_admin_id)
+        res = self._patch(role_admin_id, {"role": ROLE_ANALISTA_FINANCIERO}, as_user_id=role_admin_id)
         self.assertEqual(res.status_code, 400, res.text[:300])
-        self.assertEqual(self._role_of(role_admin_id), "Administrador")
+        self.assertEqual(self._role_of(role_admin_id), ROLE_ADMINISTRADOR)
 
     def test_role_change_does_not_degrade_when_is_admin_stays_true(self):
         """Contrapunto del anterior: cambiar el rol no degrada a nadie si el flag
         `is_admin` sigue en True."""
-        res = self._patch(self.admin_id, {"role": "Economista"}, as_user_id=self.admin_id)
+        res = self._patch(self.admin_id, {"role": ROLE_ANALISTA_FINANCIERO}, as_user_id=self.admin_id)
         self.assertEqual(res.status_code, 200, res.text[:300])
-        self.assertEqual(res.json()["role_name"], "Economista")
+        self.assertEqual(res.json()["role_name"], ROLE_ANALISTA_FINANCIERO)
         self.assertTrue(res.json()["is_admin"])
 
     # --- 4. el ultimo admin no se puede degradar ----------------------------
@@ -195,7 +202,7 @@ class TestUserRoleUpdate(unittest.TestCase):
 
     def test_last_admin_can_be_demoted_when_another_admin_exists(self):
         """La salvaguarda es "queda al menos uno", no "nunca se degrada"."""
-        second_admin = self._make(f"{PREFIX}admin2", is_admin=True, role_name="Administrador")
+        second_admin = self._make(f"{PREFIX}admin2", is_admin=True, role_name=ROLE_ADMINISTRADOR)
         res = self._patch(self.admin_id, {"is_admin": False}, as_user_id=self.admin_id)
         self.assertEqual(res.status_code, 400, res.text[:300])
 
@@ -213,12 +220,12 @@ class TestUserRoleUpdate(unittest.TestCase):
         self.assertEqual(res.status_code, 400, res.text[:300])
         # Y lo importante: no queda el string suelto, que despues no matchea
         # ningun rol y rompe el badge.
-        self.assertEqual(self._role_of(self.target_id), "Economista")
+        self.assertEqual(self._role_of(self.target_id), ROLE_ANALISTA_FINANCIERO)
 
     def test_empty_role_string_is_rejected(self):
         res = self._patch(self.target_id, {"role": "   "}, as_user_id=self.admin_id)
         self.assertEqual(res.status_code, 400, res.text[:300])
-        self.assertEqual(self._role_of(self.target_id), "Economista")
+        self.assertEqual(self._role_of(self.target_id), ROLE_ANALISTA_FINANCIERO)
 
     # --- 6. body vacio ------------------------------------------------------
 
@@ -265,7 +272,7 @@ class TestUserRoleUpdate(unittest.TestCase):
         self.db.add(UserSession(user_id=target.id, jti=target_session_jti, is_revoked=False))
         self.db.commit()
 
-        second_admin = self._make(f"{PREFIX}admin3", is_admin=True, role_name="Administrador")
+        second_admin = self._make(f"{PREFIX}admin3", is_admin=True, role_name=ROLE_ADMINISTRADOR)
         token = None
         # Login de verdad para el objetivo, con su sesion propia.
         res = self.client.post("/api/v1/auth/login", json={
@@ -294,12 +301,12 @@ class TestUserRoleUpdate(unittest.TestCase):
         })
         token = res.json()["access_token"]
 
-        res = self._patch(self.target_id, {"role": "TI"}, as_user_id=self.admin_id)
+        res = self._patch(self.target_id, {"role": ROLE_INGENIERO_TI}, as_user_id=self.admin_id)
         self.assertEqual(res.status_code, 200, res.text[:300])
 
         still = self.client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
         self.assertEqual(still.status_code, 200, still.text[:300])
-        self.assertEqual(still.json()["role_name"], "TI")
+        self.assertEqual(still.json()["role_name"], ROLE_INGENIERO_TI)
 
 
 if __name__ == "__main__":
