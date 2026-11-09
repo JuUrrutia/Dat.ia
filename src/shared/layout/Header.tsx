@@ -13,6 +13,7 @@ import {
   Moon,
   Sun,
   LifeBuoy,
+  UserCircle,
 } from 'lucide-react';
 import { SystemHealthPopover } from './SystemHealthPopover';
 import { NO_ROLE_LABEL, resolveRoleLabel } from '../../constants';
@@ -189,12 +190,21 @@ export const Header: React.FC = () => {
           <span>{theme === 'dark' ? 'Claro' : 'Oscuro'}</span>
         </button>
 
-        <div className="text-right hidden sm:block">
+        <button
+          type="button"
+          onClick={() => navigate('/perfil')}
+          title="Ver mi perfil"
+          aria-label="Ver mi perfil"
+          aria-current={activePath === '/perfil' ? 'page' : undefined}
+          className={`text-right hidden sm:block rounded-xl px-2 py-1 transition-colors hover:bg-slate-200/60 dark:hover:bg-dark-card/60 ${
+            activePath === '/perfil' ? 'ring-1 ring-brand-500/40' : ''
+          }`}
+        >
           <div className="text-xs font-bold text-gray-900 dark:text-white tracking-tight">{user.username}</div>
           <div className={`text-[10px] font-semibold ${roleLabelColor} px-2.5 py-0.5 rounded-full border inline-block mt-0.5`}>
             {roleLabel}
           </div>
-        </div>
+        </button>
 
         <button
           type="button"
@@ -279,6 +289,21 @@ export const Header: React.FC = () => {
                     <span>Gobernanza RBAC & BD</span>
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate('/perfil');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-left transition-colors ${
+                    activePath === '/perfil'
+                      ? 'bg-brand-600 text-white'
+                      : 'text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-dark-card'
+                  }`}
+                >
+                  <UserCircle className="w-4 h-4" />
+                  <span>Mi Perfil</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => {
