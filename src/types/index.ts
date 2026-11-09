@@ -3,7 +3,9 @@ export interface User {
   username: string;
   email?: string;
   is_admin: boolean;
-  role_name?: string;
+  // null = la cuenta no tiene rol. Es lo que manda el backend, asi que el tipo
+  // tiene que decirlo: los callers resolvian ese null como si fuera un rol.
+  role_name?: string | null;
   must_change_password?: boolean;
   failed_login_attempts?: number;
   locked_until?: string | null;

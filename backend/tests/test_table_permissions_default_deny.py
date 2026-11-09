@@ -1,4 +1,4 @@
-"""Default-deny en permisos de tabla.
+﻿"""Default-deny en permisos de tabla.
 
 El bug: `upload_database_file` creaba un RoleTablePermission(is_allowed=True) por
 cada (rol, tabla) del dataset nuevo y solo se saltaba unas tablas de la demo SAP,
@@ -13,6 +13,7 @@ Lo que se verifica aca:
   - un admin concede y revoca por endpoint, y el permiso se respeta en la consulta
   - sin permiso explicito la respuesta es RECHAZADO_RBAC, no un resultado vacio
   - la migracion de default-deny es idempotente y no toca las conexiones de plataforma
+  - el corte por area revoca el residuo sin procedencia y respeta lo que concedio un admin
 """
 import io
 import os
@@ -40,6 +41,11 @@ DEMO_TECH_TABLES = {
     "dim_empleados", "Answer", "Question", "Survey", "answer", "question", "survey",
 }
 
+
+
+from app.modules.admin_catalog.models import (
+    CorporateConnection, DatabaseType, RoleTablePermission,
+)
 
 class TestDefaultDenyPermissions(unittest.TestCase):
     """Base: sesión real contra la metadata, como corre el producto."""
@@ -141,9 +147,7 @@ class TestDefaultDenyPermissions(unittest.TestCase):
 
         for role_name, expected in (
             ("Analista Financiero & Comercial", DEMO_BUSINESS_TABLES),
-            ("Economista", DEMO_BUSINESS_TABLES),
             ("Ingeniero de Infraestructura & TI", DEMO_TECH_TABLES),
-            ("TI", DEMO_TECH_TABLES),
         ):
             role = self._role(role_name)
             self.assertIsNotNone(role, role_name)
@@ -160,7 +164,7 @@ class TestDefaultDenyPermissions(unittest.TestCase):
                 f"seguir dando exactamente el mismo acceso.",
             )
 
-        admin_role = self._role("Administrador")
+        admin_role = self._role("Administrador de Plataforma")
         admin_tables = {
             p.table_name for p in self.db.query(RoleTablePermission).filter(
                 RoleTablePermission.role_id == admin_role.id,
@@ -198,13 +202,13 @@ class TestDefaultDenyPermissions(unittest.TestCase):
             body = self._upload_csv("Default Deny Grant")
             conn_id = body["id"]
             table = body["detected_tables"][0]
-            role = self._role("Economista")
+            role = self._role("Analista Financiero & Comercial")
             self._invalidate_schema_cache()
 
             # Sin permiso: set vacio (fail-closed).
             self.assertEqual(
                 GovernanceGuard.get_allowed_tables_for_role(
-                    user_role="Economista", is_admin=False, db=self.db,
+                    user_role="Analista Financiero & Comercial", is_admin=False, db=self.db,
                     role_id=role.id, connection_id=conn_id,
                 ),
                 set(),
@@ -226,7 +230,7 @@ class TestDefaultDenyPermissions(unittest.TestCase):
 
             self.assertEqual(
                 GovernanceGuard.get_allowed_tables_for_role(
-                    user_role="Economista", is_admin=False, db=self.db,
+                    user_role="Analista Financiero & Comercial", is_admin=False, db=self.db,
                     role_id=role.id, connection_id=conn_id,
                 ),
                 {table.lower()},
@@ -248,7 +252,7 @@ class TestDefaultDenyPermissions(unittest.TestCase):
             self.db.expire_all()
             self.assertEqual(
                 GovernanceGuard.get_allowed_tables_for_role(
-                    user_role="Economista", is_admin=False, db=self.db,
+                    user_role="Analista Financiero & Comercial", is_admin=False, db=self.db,
                     role_id=role.id, connection_id=conn_id,
                 ),
                 set(),
@@ -266,7 +270,7 @@ class TestDefaultDenyPermissions(unittest.TestCase):
         h = {"Authorization": f"Bearer {create_access_token(subject=eco.id, jti=jti)}"}
 
         conn = self._platform_connection()
-        role = self._role("Economista")
+        role = self._role("Analista Financiero & Comercial")
         res = self.client.put(
             "/api/v1/permissions",
             params={
@@ -357,8 +361,8 @@ class TestDefaultDenyPermissions(unittest.TestCase):
 
           - el bypass es del SUPER ADMIN (is_admin / rol de plataforma), que es un
             granting explicito del sistema para poder gobernar el producto
-          - NO aplica a los roles operativos: Economista y TI sin permiso explicito
-            siguen sin ver nada (tests 1, 2 y 4)
+          - NO aplica a los roles operativos: el Analista Financiero y el Ingeniero
+            de TI, sin permiso explicito, siguen sin ver nada (tests 1, 2 y 4)
         """
         from app.modules.chat_engine.governance_guard import GovernanceGuard
         from app.core.constants import ADMIN_ROLES
@@ -381,7 +385,9 @@ class TestDefaultDenyPermissions(unittest.TestCase):
             )
 
             # El bypass NO se extiende a roles que solo se parecen al admin.
-            for role_name in ("Economista", "TI", "Analista de Datos & BI",
+            for role_name in ("Analista Financiero & Comercial",
+                              "Ingeniero de Infraestructura & TI",
+                              "Analista de Datos & BI",
                               "Gerente de Talento & Operaciones",
                               "Oficial de Cumplimiento & Seguridad"):
                 self.assertNotIn(role_name, ADMIN_ROLES)
@@ -408,7 +414,7 @@ class TestDefaultDenyPermissions(unittest.TestCase):
             body = self._upload_csv("Default Deny Migracion")
             conn_id = body["id"]
             table = body["detected_tables"][0]
-            role = self._role("TI")
+            role = self._role("Ingeniero de Infraestructura & TI")
 
             # Simula el estado previo: una fila del auto-grant viejo (sin decision).
             self.db.add(RoleTablePermission(
@@ -438,7 +444,7 @@ class TestDefaultDenyPermissions(unittest.TestCase):
             body = self._upload_csv("Default Deny Migracion Admin")
             conn_id = body["id"]
             table = body["detected_tables"][0]
-            role = self._role("TI")
+            role = self._role("Ingeniero de Infraestructura & TI")
 
             res = self.client.put(
                 "/api/v1/permissions",
@@ -471,7 +477,7 @@ class TestDefaultDenyPermissions(unittest.TestCase):
             body = self._upload_csv("Default Deny Idempotente")
             conn_id = body["id"]
             table = body["detected_tables"][0]
-            role = self._role("TI")
+            role = self._role("Ingeniero de Infraestructura & TI")
 
             self.db.add(RoleTablePermission(
                 role_id=role.id, connection_id=conn_id,
@@ -494,7 +500,19 @@ class TestDefaultDenyPermissions(unittest.TestCase):
                 self.client.delete(f"/api/v1/connectors/{conn_id}", headers=self.headers)
 
     def test_migration_does_not_touch_platform_connections(self):
-        """La migracion no revoca la matriz de la demo (is_uploaded == False)."""
+        """La migracion de default-deny no revoca la matriz de la demo.
+
+        Lo que fija no es que la matriz quede IDENTICA, sino que la migracion no
+        saques filas: el seeder puede CONCEDER las que la matriz corporativa de 8
+        roles declara, y conceder no es revocar. Por eso la comparacion va con
+        `issubset` y no con igualdad.
+
+        Con igualdad el test moria en cuanto el Usuario Consultor recibio su
+        lectura minima del catalogo: el seed le suma `dim_categorias` y
+        `dim_productos`, el archivo lo leia como una revocacion y el bug real
+        (permisos que el admin concedio y el arranque se lleva) queda sin
+        cobertura.
+        """
         conn = self._platform_connection()
         before = {
             (p.role_id, p.table_name) for p in self.db.query(RoleTablePermission).filter(
@@ -508,11 +526,108 @@ class TestDefaultDenyPermissions(unittest.TestCase):
                 RoleTablePermission.connection_id == conn.id
             ).all()
         }
-        self.assertEqual(after, before)
         self.assertTrue(before)
+        self.assertTrue(
+            before.issubset(after),
+            f"La migracion revoco filas de la conexion de plataforma, que es justo "
+            f"lo que no debe hacer: {sorted(before - after)}",
+        )
+        revocados, agregados = before - after, after - before
+        self.assertEqual(
+            revocados, set(),
+            "Ninguna fila de la matriz de la demo puede desaparecer en un arranque.",
+        )
+        # Todo lo que se sumo tiene que ser declaracion del seeder, no un
+        # over-grant: las unicas filas admitidas son las que el Usuario Consultor
+        # tiene por matriz corporativa.
+        consultor = self._role("Usuario Consultor")
+        self.assertTrue(
+            agregados.issubset({(consultor.id, "dim_categorias"), (consultor.id, "dim_productos")}),
+            f"aparecieron permisos no declarados en la matriz: {sorted(agregados)}",
+        )
 
     # ------------------------------------------------------------------
-    # 7. Borrados
+    # 7. Corte por area: que revoca y que no
+    # ------------------------------------------------------------------
+    def test_area_cut_keeps_admin_grant_outside_the_area(self):
+        """El corte por area no puede borrar una decision de un admin.
+
+        El bug: el `DELETE` de la revocacion por area matcheaba por nombre de
+        tabla, sin mirar `granted_by_admin`. El admin concedia `dim_servidores`
+        al Analista Financiero (fuera de su area), el reinicio siguiente lo
+        borraba, y el producto se quedaba sin forma de recuperar el acceso.
+        Ocurria en los datasets subidos y tambien en la conexion de plataforma,
+        donde vive la matriz declarada.
+        """
+        conn = self._platform_connection()
+        role = self._role("Analista Financiero & Comercial")
+        try:
+            res = self.client.put(
+                "/api/v1/permissions",
+                params={"connection_id": conn.id, "role_id": role.id,
+                        "table_names": ["dim_servidores"], "is_allowed": "true"},
+                headers=self.headers,
+            )
+            self.assertEqual(res.status_code, 200, res.text)
+
+            init_db(self.db)
+            self.db.expire_all()
+
+            row = self.db.query(RoleTablePermission).filter(
+                RoleTablePermission.role_id == role.id,
+                RoleTablePermission.connection_id == conn.id,
+                RoleTablePermission.table_name == "dim_servidores",
+            ).first()
+            self.assertIsNotNone(
+                row,
+                "El arranque se llevo un permiso que concedio un admin. El corte "
+                "por area solo puede revocar filas sin procedencia demostrable.",
+            )
+            self.assertTrue(row.is_allowed)
+            self.assertTrue(row.granted_by_admin)
+        finally:
+            # La matriz declarada no incluye esta fila: si queda, el aislamiento
+            # por area se rompe para el resto de la suite.
+            self.db.query(RoleTablePermission).filter(
+                RoleTablePermission.role_id == role.id,
+                RoleTablePermission.connection_id == conn.id,
+                RoleTablePermission.table_name == "dim_servidores",
+            ).delete(synchronize_session=False)
+            self.db.commit()
+
+    def test_area_cut_still_revokes_rows_without_provenance(self):
+        """El corte por area sigue limpiando el residuo del seed viejo.
+
+        La contraparte del test de arriba: agregar el filtro por `granted_by_admin`
+        no puede volver inocuo el bloque. Lo que no puede probarse como decision
+        de nadie (el auto-grant viejo, que copiaba la matriz de otro rol) se
+        revoca, y es lo unico que revoca.
+        """
+        conn = self._platform_connection()
+        role = self._role("Analista Financiero & Comercial")
+        # Sin `granted_by_admin`: el default es False a proposito.
+        self.db.add(RoleTablePermission(
+            role_id=role.id, connection_id=conn.id, schema_name="main",
+            table_name="dim_servidores", is_allowed=True,
+        ))
+        self.db.commit()
+
+        init_db(self.db)
+        self.db.expire_all()
+
+        row = self.db.query(RoleTablePermission).filter(
+            RoleTablePermission.role_id == role.id,
+            RoleTablePermission.connection_id == conn.id,
+            RoleTablePermission.table_name == "dim_servidores",
+        ).first()
+        self.assertIsNone(
+            row,
+            "El residuo de una instalacion vieja tiene que seguir revocandose: "
+            "si no, un despliegue con permisos de mas los conserva para siempre.",
+        )
+
+    # ------------------------------------------------------------------
+    # 8. Borrados
     # ------------------------------------------------------------------
     def test_delete_connector_takes_its_permissions_and_leaves_others(self):
         conn_a = None
@@ -522,7 +637,7 @@ class TestDefaultDenyPermissions(unittest.TestCase):
             conn_a = body_a["id"]
             body_b = self._upload_csv("Default Deny Borrar B")
             conn_b = body_b["id"]
-            role = self._role("TI")
+            role = self._role("Ingeniero de Infraestructura & TI")
 
             for cid, body in ((conn_a, body_a), (conn_b, body_b)):
                 res = self.client.put(
@@ -556,7 +671,7 @@ class TestDefaultDenyPermissions(unittest.TestCase):
             body = self._upload_csv("Default Deny Revocar")
             conn_id = body["id"]
             table = body["detected_tables"][0]
-            role = self._role("TI")
+            role = self._role("Ingeniero de Infraestructura & TI")
 
             res = self.client.put(
                 "/api/v1/permissions",
@@ -636,7 +751,7 @@ class TestColumnMigrationsOnFreshDB(unittest.TestCase):
             init_db(db)
             init_db(db)  # segunda corrida: la migracion es idempotente
 
-            role = db.query(Role).filter(Role.name == "Economista").first()
+            role = db.query(Role).filter(Role.name == "Analista Financiero & Comercial").first()
             self.assertIsNotNone(role)
             tables = {
                 p.table_name for p in db.query(RoleTablePermission).filter(

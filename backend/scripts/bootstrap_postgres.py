@@ -1,5 +1,5 @@
 """
-DATIA - PostgreSQL Database Bootstrapper
+Dat.ia - PostgreSQL Database Bootstrapper
 Checks if PostgreSQL database and tables exist.
 Creates database, schemas, tables, and seeds initial data idempotently.
 """

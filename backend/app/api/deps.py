@@ -1,4 +1,5 @@
 import datetime
+import logging
 from typing import Generator, Optional
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
@@ -10,7 +11,14 @@ import app.modules.chat_engine.models
 from app.core.database import SessionLocal
 from app.core.security import decode_token_payload
 from app.modules.auth.models import User, UserSession
-from app.core.constants import SESSION_LAST_SEEN_UPDATE_INTERVAL_MINUTES, ADMIN_ROLES
+from app.modules.telemetry_audit.models import AuditLog
+from app.core.constants import (
+    SESSION_LAST_SEEN_UPDATE_INTERVAL_MINUTES,
+    ADMIN_ROLES,
+    ROLE_ADMINISTRADOR,
+)
+
+logger = logging.getLogger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -171,3 +179,137 @@ def get_current_admin(
             detail="Acceso denegado. Se requieren privilegios de Administrador."
         )
     return current_user
+
+def _persist_audit_log(
+    db: Session,
+    user_id: Optional[int],
+    username: str,
+    user_role: Optional[str],
+    question_prompt: str,
+    sql_generated: Optional[str],
+    # `None` = "esta consulta no tiene registro de validacion". NO es un valor
+    # decorativo: el export de compliance lee esta columna de la BD y antes
+    # confundia "no lo se" con "APROBADO", que es una afirmacion distinta.
+    validation_status: Optional[str],
+    target_database: str,
+    execution_time_ms: int = 0,
+    rows_returned: int = 0,
+    error_message: Optional[str] = None,
+    result_snapshot: Optional[str] = None
+) -> Optional[int]:
+    """Safely persists an AuditLog record in a best-effort transaction and returns its ID."""
+    try:
+        audit_entry = AuditLog(
+            user_id=user_id,
+            username=username,
+            user_role=user_role,
+            question_prompt=question_prompt,
+            sql_generated=sql_generated,
+            validation_status=validation_status,
+            target_database=target_database,
+            execution_time_ms=execution_time_ms,
+            rows_returned=rows_returned,
+            error_message=error_message,
+            result_snapshot=result_snapshot
+        )
+        db.add(audit_entry)
+        db.commit()
+        db.refresh(audit_entry)
+        return audit_entry.id
+    except Exception as e:
+        db.rollback()
+        logger.warning(f"Error registrando auditoria: {e}")
+        return None
+
+def display_role_name(user: User) -> Optional[str]:
+    """Nombre del rol para MOSTRAR, o `None` si la cuenta no tiene ninguno.
+
+    Antes cada router se resolvia el nombre por su cuenta con un fallback:
+
+        role_name = user.role.name if user.role else (
+            "Super Administrador" if user.is_admin else "Usuario"
+        )
+
+    Ninguno de esos tres nombres existe en el catalogo de 8 roles, asi que la
+    etiqueta no describia nada: era texto libre que recien despues se comparaba
+    contra nombres reales. Para lo visual no era grave; para auditoria si.
+
+    `ROLE_ADMINISTRADOR` para el admin sin fila de rol NO es inventar un nombre:
+    `is_admin` es un hecho persistido en la columna y esa persona administra en
+    todas las capas de auth. Le corresponde el nombre real del catalogo. Es la
+    misma decision que toma `require_assigned_role` de abajo.
+
+    `None` para la cuenta sin rol y sin `is_admin`: el rol no se sabe, y el
+    contrato lo admite (`UserOut.role_name` y `AuditLog.user_role` son ambos
+    `Optional`). Un nombre inventado seria un hecho falso en la evidencia.
+
+    Vive aca y no en `auth/router.py` porque lo necesitan al menos dos modulos
+    (`auth` y `reports`) y ninguno de los dos es el piso comun: `deps` ya es el
+    piso que comparten, ya tiene la otra mitad de esta misma regla
+    (`require_assigned_role`) y no importa a `reports`, asi que no crea ciclo.
+    """
+    if user.role_id is not None and user.role:
+        return user.role.name
+    if user.is_admin:
+        return ROLE_ADMINISTRADOR
+    return None
+
+
+def require_assigned_role(
+    user: User, db: Session, question: str, target_database: str
+) -> str:
+    """Nombre del rol de la cuenta, o 403 si no tiene ninguno asignado.
+
+    El corte mira el registro persistido (`role_id`) y su relación (`user.role`),
+    no el nombre resuelto. Antes cada
+    endpoint resolvia el nombre con un fallback:
+
+        role_name = user.role.name if user.role else ROLE_USUARIO
+
+    Una cuenta con `role_id = NULL` y `is_admin = False` caia en "Usuario
+    Consultor", que es truthy y es un rol REAL y VALIDO del catalogo. El guard
+    resuelve por nombre cuando `role_id` es None (a proposito: asi funcionan sus
+    tests y el self-healing), asi que la cuenta sin rol heredaba la matriz del
+    Consultor. La cuenta sin rol y el Consultor son dos hechos distintos, y el que
+    decide es si existe la fila.
+
+    Vive aca y no en `chat_engine/router.py` porque lo necesitan endpoints de
+    `admin_catalog` y `system`, que no importan a `chat_engine` en module scope
+    (lo hacen con imports diferidos, justo para no crear el acoplamiento). Este
+    modulo es el que YA comparte `get_current_admin` con esos routers, asi que no
+    crea ninguna arista nueva: `deps` es el piso comun de dependencias.
+
+    El admin sin fila de rol NO entra por aca: `is_admin` manda y recibe el
+    nombre de administrador, que es lo que el resto del pipeline espera.
+
+    El 403 va con su registro en auditoria: una denegacion que no deja rastro
+    no es una denegacion. Mismo `RECHAZADO_RBAC` que el motor escribe cuando la
+    peticion llega hasta el.
+    """
+    if user.role_id is not None and user.role:
+        return user.role.name
+    if user.is_admin:
+        return ROLE_ADMINISTRADOR
+
+    _persist_audit_log(
+        db=db,
+        user_id=user.id,
+        username=user.username,
+        # `None` y no un nombre inventado: la columna es nullable justamente
+        # para este caso. Poner "Usuario Consultor" seria afirmar un rol que la
+        # cuenta no tiene, en el registro que el compliance lee.
+        user_role=None,
+        question_prompt=question,
+        sql_generated=None,
+        validation_status="RECHAZADO_RBAC",
+        target_database=target_database,
+        error_message="Cuenta sin rol asignado",
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=(
+            "Tu cuenta todavia no tiene un rol asignado y conserva el perfil inicial. "
+            "Un Administrador debe "
+            "asignarte un perfil corporativo para acceder a los datos."
+        ),
+    )

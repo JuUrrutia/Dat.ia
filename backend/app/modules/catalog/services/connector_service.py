@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.logging import logger
 from app.core.security import encrypt_credential
-from app.modules.admin_catalog.models import CorporateConnection, DatabaseType, SemanticCatalog, RoleTablePermission
+from app.modules.admin_catalog.models import CorporateConnection, DatabaseType, SemanticCatalog, RoleTablePermission, RoleColumnPermission
 from app.modules.auth.models import Role
 from app.modules.admin_catalog.schemas import (
     CorporateConnectionCreate, CorporateConnectionUpdate, CorporateConnectionOut,
@@ -481,8 +481,13 @@ class ConnectorDomainService:
             # Si es una base de plataforma se dejan las tablas: borrarlas seria
             # destructivo y el conector es solo una referencia administrative.
 
+        # Todo lo que cuelga de la conexion se borra con ella. Sin las de columna,
+        # un `connection_id` reutilizado (SQLite lo reutiliza: el siguiente
+        # `INTEGER PRIMARY KEY` es max+1, y al borrar el max ese id vuelve a estar
+        # libre) hereda permisos de una conexion que ya no existe.
         db.query(SemanticCatalog).filter(SemanticCatalog.connection_id == conn_id).delete()
         db.query(RoleTablePermission).filter(RoleTablePermission.connection_id == conn_id).delete()
+        db.query(RoleColumnPermission).filter(RoleColumnPermission.connection_id == conn_id).delete()
 
         # `conn.host` es una ruta libre que introduce el admin al registrar el
         # conector. Sin esta comprobacion, registrar un "conector SQLite" apuntando a

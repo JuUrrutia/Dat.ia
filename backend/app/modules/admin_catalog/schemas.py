@@ -164,7 +164,16 @@ class ConnectionTestRequest(BaseModel):
     port: int
     database_name: str
     username: str
-    password: str
+    # Este endpoint NO lee la contraseña: `test_connection_connectivity` solo
+    # abre un socket TCP o el fichero SQLite en modo ro. Exigirla era un
+    # requisito falso que rompia al boton "Probar" de la tarjeta, que prueba una
+    # conexion YAGUARDADA y por tanto no tiene la contraseña en el cliente
+    # (vive cifrada en el servidor). Ese 422 era ademas la causa de que la
+    # pantalla quedara en negro: FastAPI devuelve `detail` como ARRAY de
+    # objetos, el catch del front lo pasaba tal cual a `message` y React no
+    # puede renderizar un objeto como child. El modal si la mandaba, por eso
+    # solo fallaba la tarjeta.
+    password: str = ""
 
 class ConnectionTestResult(BaseModel):
     success: bool
