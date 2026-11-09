@@ -15,7 +15,7 @@ import {
   FileCheck2,
   Sparkles,
   ArrowRight,
-  Settings,
+  UserCircle,
 } from 'lucide-react';
 import {
   FAQ_ITEMS,
@@ -101,7 +101,7 @@ export const HelpPage: React.FC = () => {
                 Centro de Ayuda
               </h1>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Guía rápida, preguntas frecuentes y todo lo que necesitas para sacar provecho a Dat.ia.
+                Guía rápida, preguntas frecuentes y todo lo que necesitas para sacar provecho a Datia.
               </p>
             </div>
           </div>
@@ -321,16 +321,16 @@ export const HelpPage: React.FC = () => {
             <div>
               <h2 className="text-sm font-bold text-gray-900 dark:text-white">¿Necesitas más acceso o algo no funciona?</h2>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Los permisos sobre tablas y columnas los gestiona el administrador de la plataforma. Tu rol actual aparece arriba a la derecha, junto a tu nombre.
+                Los permisos sobre tablas y columnas los gestiona el administrador de la plataforma. Revisa tu perfil para ver tu rol actual.
               </p>
             </div>
             <button
               type="button"
-              onClick={() => navigate('/settings')}
+              onClick={() => navigate('/perfil')}
               className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border border-brand-500/40 text-brand-700 dark:text-brand-300 hover:bg-brand-500/10 transition-colors shrink-0"
             >
-              <Settings className="w-4 h-4" />
-              Ir a Opciones
+              <UserCircle className="w-4 h-4" />
+              Ver mi perfil
             </button>
           </div>
         </>

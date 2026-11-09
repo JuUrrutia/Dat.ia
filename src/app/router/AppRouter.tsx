@@ -15,6 +15,7 @@ const ChatDashboardPage = lazy(() => import('../../pages/ChatDashboardPage').the
 const SettingsPage = lazy(() => import('../../pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const AdminPage = lazy(() => import('../../pages/AdminPage').then((m) => ({ default: m.AdminPage })));
 const HelpPage = lazy(() => import('../../pages/HelpPage').then((m) => ({ default: m.HelpPage })));
+const ProfilePage = lazy(() => import('../../pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
 
 const RouteFallback: React.FC = () => (
   <div className="flex items-center justify-center h-full min-h-[50vh] text-[var(--app-text)]">
@@ -168,6 +169,16 @@ export const AppRouter: React.FC = () => {
             <ProtectedLayout>
               <Suspense fallback={<RouteFallback />}>
                 <HelpPage />
+              </Suspense>
+            </ProtectedLayout>
+          }
+        />
+        <Route
+          path="/perfil"
+          element={
+            <ProtectedLayout>
+              <Suspense fallback={<RouteFallback />}>
+                <ProfilePage />
               </Suspense>
             </ProtectedLayout>
           }

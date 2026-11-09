@@ -32,7 +32,7 @@ export interface FaqItem {
 export const FAQ_ITEMS: FaqItem[] = [
   {
     category: 'Uso',
-    question: '¿Necesito saber SQL para usar Dat.ia?',
+    question: '¿Necesito saber SQL para usar Datia?',
     answer:
       'No. Escribes tu pregunta en español, como se la harías a un colega ("¿Cuáles fueron las ventas por región el último trimestre?"). La IA genera la consulta SQL, la valida y te devuelve tablas, gráficos e indicadores.',
   },
@@ -94,7 +94,7 @@ export const FAQ_ITEMS: FaqItem[] = [
     category: 'Cuenta',
     question: '¿Cómo cambio mi contraseña?',
     answer:
-      'Pide a un administrador que la restablezca desde Gobernanza RBAC. Al entrar con la clave temporal, el sistema te pedirá crear una nueva y se cerrarán tus otras sesiones abiertas.',
+      'Entra a "Mi Perfil" (haz clic en tu nombre en la barra superior) y usa el formulario de cambio de contraseña. Al cambiarla, se cierran tus otras sesiones abiertas por seguridad.',
   },
   {
     category: 'Cuenta',
@@ -132,7 +132,7 @@ export const QUICK_START_STEPS: QuickStartStep[] = [
   },
   {
     title: 'Revisa el resultado',
-    description: 'Dat.ia muestra KPIs, gráficos interactivos y la tabla de datos que respalda la respuesta.',
+    description: 'Datia muestra KPIs, gráficos interactivos y la tabla de datos que respalda la respuesta.',
   },
   {
     title: 'Profundiza',
